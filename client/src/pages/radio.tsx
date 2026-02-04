@@ -161,26 +161,26 @@ export default function RadioPage() {
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden">
-      <div className="flex-1 flex px-8 py-6 gap-8 overflow-hidden">
+      <div className="flex-1 flex px-4 md:px-6 py-4 gap-4 md:gap-6 overflow-hidden">
         {/* Now Playing Area */}
-        <div className="flex-1 flex flex-col items-center justify-center gap-6">
-          <p className="text-2xl md:text-4xl lg:text-5xl text-muted-foreground uppercase tracking-[0.2em]">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <p className="text-xl md:text-3xl lg:text-4xl text-muted-foreground uppercase tracking-[0.2em]">
             Radio
           </p>
 
           {/* Station Display */}
-          <div className="w-full max-w-md aspect-square bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl flex flex-col items-center justify-center p-8 border">
+          <div className="w-full max-w-lg lg:max-w-xl aspect-[4/3] md:aspect-square bg-gradient-to-br from-primary/20 to-primary/5 rounded-2xl flex flex-col items-center justify-center p-6 border">
             {currentStation?.logo ? (
-              <img 
-                src={currentStation.logo} 
+              <img
+                src={currentStation.logo}
                 alt={currentStation.name}
-                className="w-28 h-28 rounded-2xl object-cover mb-4"
+                className="w-24 h-24 md:w-32 md:h-32 rounded-2xl object-cover mb-3"
               />
             ) : (
-              <Radio className="w-28 h-28 text-primary mb-4" />
+              <Radio className="w-24 h-24 md:w-32 md:h-32 text-primary mb-3" />
             )}
-            
-            <p className="text-3xl md:text-4xl font-bold text-center" data-testid="text-station-name">
+
+            <p className="text-2xl md:text-4xl lg:text-5xl font-bold text-center" data-testid="text-station-name">
               {currentStation?.name || "Select a Station"}
             </p>
             
@@ -228,13 +228,13 @@ export default function RadioPage() {
           </div>
 
           {/* Controls */}
-          <Card className="w-full max-w-lg p-6">
-            <div className="flex items-center gap-4">
+          <Card className="w-full max-w-lg lg:max-w-xl p-4 md:p-6">
+            <div className="flex items-center gap-3 md:gap-4">
               <Button
                 size="icon"
                 onClick={togglePlayPause}
                 disabled={!selectedStation || radioState.isBuffering}
-                className="h-14 w-14"
+                className="h-12 w-12 md:h-14 md:w-14"
                 data-testid="button-play-pause"
               >
                 {radioState.isBuffering ? (
@@ -297,7 +297,7 @@ export default function RadioPage() {
         </div>
 
         {/* Station List with Country Tabs */}
-        <div className="w-80 flex flex-col gap-2 overflow-hidden">
+        <div className="w-72 lg:w-80 xl:w-96 flex flex-col gap-2 overflow-hidden">
           {/* Country Tabs */}
           <div className="flex flex-wrap gap-1 pb-2 border-b">
             {countries.map((country) => (

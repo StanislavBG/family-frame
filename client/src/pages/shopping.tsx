@@ -105,11 +105,11 @@ export default function ShoppingPage() {
   const checkedItems = shoppingList.filter((item) => item.checked);
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="h-full flex flex-col overflow-hidden p-4 md:p-6">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <ShoppingCart className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">
+          <ShoppingCart className="h-7 w-7 text-primary" />
+          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">
             Shopping List
           </h1>
         </div>
@@ -138,9 +138,9 @@ export default function ShoppingPage() {
         )}
       </div>
 
-      <div className="flex-1 flex gap-6 overflow-hidden">
+      <div className="flex-1 flex gap-4 md:gap-6 overflow-hidden">
         {/* Shopping List */}
-        <Card className="flex-1 p-6 overflow-auto">
+        <Card className="flex-1 p-4 md:p-6 overflow-auto">
           {shoppingList.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
               <ShoppingCart className="h-16 w-16 mb-4 opacity-50" />
@@ -226,9 +226,9 @@ export default function ShoppingPage() {
         </Card>
 
         {/* Item Picker */}
-        <div className="w-80 flex flex-col gap-4">
+        <div className="w-72 lg:w-80 xl:w-96 flex flex-col gap-3">
           {/* Aisle Tabs */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {AISLES.map((aisle) => (
               <Button
                 key={aisle.id}
