@@ -48,6 +48,15 @@ export const queryKeys = {
 
   // Shopping
   shopping: () => ["/api/shopping"] as const,
+
+  // Playlists (custom YouTube playlists for Baby Songs)
+  playlists: () => ["/api/playlists"] as const,
+
+  // YouTube video info
+  youtube: {
+    video: (videoId: string) => ["/api/youtube/video", videoId] as const,
+    videos: (videoIds: string[]) => ["/api/youtube/videos", videoIds.join(",")] as const,
+  },
 } as const;
 
 /**

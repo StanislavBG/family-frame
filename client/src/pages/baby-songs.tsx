@@ -9,14 +9,17 @@ import { radioService } from "@/lib/radio-service";
 import { useAppControls } from "@/components/app-controls";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { 
-  BABY_RADIO_STATIONS, 
+import {
+  BABY_RADIO_STATIONS,
   BABY_RADIO_LIBRARY,
   BABY_AGE_RANGES,
   KPOPDH_PLAYLIST,
+  BUILT_IN_MOOD_STATIONS,
+  moodStationToTracks,
   getTracksForStation,
-  type BabyRadioStation, 
-  type UserSettings 
+  type BabyRadioStation,
+  type MoodStation,
+  type UserSettings
 } from "@shared/schema";
 import { YouTubeAudioPlayer } from "@/components/youtube-audio-player";
 import {
@@ -34,6 +37,13 @@ import {
   Sparkles,
   Square,
   Music,
+  Droplet,
+  Car,
+  BookOpen,
+  Cloud,
+  TreePine,
+  PartyPopper,
+  Video,
 } from "lucide-react";
 
 function getStationIcon(iconHint: string) {
@@ -48,19 +58,40 @@ function getStationIcon(iconHint: string) {
       return Moon;
     case "utensils":
       return Utensils;
+    case "droplet":
+      return Droplet;
+    case "car":
+      return Car;
+    case "book":
+      return BookOpen;
+    case "cloud":
+      return Cloud;
+    case "tree":
+      return TreePine;
+    case "party":
+      return PartyPopper;
+    case "music":
+      return Music;
+    case "video":
+      return Video;
     default:
       return Baby;
   }
 }
 
-type StationSelection = BabyRadioStation | "kpopdh" | null;
+type StationSelection = BabyRadioStation | MoodStation | null;
 
 export default function BabySongsPage() {
   const { addDebugLog } = useAppControls();
   const [selectedStation, setSelectedStation] = useState<StationSelection>(BABY_RADIO_STATIONS[0] || null);
   const [radioState, setRadioState] = useState(radioService.getState());
   const [localVolume, setLocalVolume] = useState(50);
-  const [kpopdhPlaying, setKpopdhPlaying] = useState(false);
+  const [moodStationPlaying, setMoodStationPlaying] = useState<string | null>(null);
+
+  // Check if selected station is a mood station (has videoIds)
+  const isMoodStation = (station: StationSelection): station is MoodStation => {
+    return station !== null && "videoIds" in station;
+  };
 
   const { data: settings } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
@@ -126,9 +157,7 @@ export default function BabySongsPage() {
   }, [addDebugLog]);
 
   const handleSelectStation = (station: StationSelection) => {
-    if (station === "kpopdh") {
-      addDebugLog("info", "Station selected", "KPOPDH");
-    } else if (station) {
+    if (station) {
       addDebugLog("info", "Station selected", station.name);
     }
     setSelectedStation(station);
@@ -142,7 +171,7 @@ export default function BabySongsPage() {
   };
 
   const currentTracks = useMemo(() => {
-    if (!selectedStation || selectedStation === "kpopdh") return [];
+    if (!selectedStation || isMoodStation(selectedStation)) return [];
     return getTracksForStation(selectedStation.id, babyAgeMonths);
   }, [selectedStation, babyAgeMonths]);
 
@@ -155,10 +184,10 @@ export default function BabySongsPage() {
   }, [babyAgeMonths]);
 
   const handlePlayTracks = () => {
-    if (!selectedStation || selectedStation === "kpopdh" || currentTracks.length === 0) return;
-    
+    if (!selectedStation || isMoodStation(selectedStation) || currentTracks.length === 0) return;
+
     const playlistName = selectedStation.name;
-    
+
     addDebugLog("info", `Playing playlist: ${playlistName}`, `${currentTracks.length} tracks`);
     radioService.playPlaylist(currentTracks, playlistName);
   };
@@ -176,16 +205,16 @@ export default function BabySongsPage() {
   };
 
   const isPlayingFromStation = (station: BabyRadioStation) => {
-    return radioState.mode === "playlist" && 
+    return radioState.mode === "playlist" &&
            radioState.playlistName?.includes(station.name);
   };
 
-  const isCurrentlyPlaying = selectedStation && 
-    selectedStation !== "kpopdh" &&
-    radioState.mode === "playlist" && 
+  const isCurrentlyPlaying = selectedStation &&
+    !isMoodStation(selectedStation) &&
+    radioState.mode === "playlist" &&
     radioState.playlistName?.includes(selectedStation.name);
-  
-  const isKpopdhSelected = selectedStation === "kpopdh";
+
+  const selectedMoodStation = isMoodStation(selectedStation) ? selectedStation : null;
 
   return (
     <div className="flex h-full">
@@ -271,71 +300,83 @@ export default function BabySongsPage() {
             
             <div className="pt-4 pb-2">
               <p className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Mood Stations
+                Mood Stations (YouTube)
               </p>
             </div>
-            
-            <button
-              onClick={() => handleSelectStation("kpopdh")}
-              className={cn(
-                "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors",
-                isKpopdhSelected ? "bg-primary/10" : "hover:bg-muted"
-              )}
-              data-testid="station-button-kpopdh"
-            >
-              <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "#E91E6325" }}
-              >
-                <Music
-                  className="h-5 w-5"
-                  style={{ color: "#E91E63" }}
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "font-medium truncate",
-                    isKpopdhSelected && "text-primary"
-                  )}>
-                    KPOPDH
-                  </span>
-                  {kpopdhPlaying && (
-                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+
+            {BUILT_IN_MOOD_STATIONS.map((moodStation) => {
+              const Icon = getStationIcon(moodStation.iconHint);
+              const isActive = selectedMoodStation?.id === moodStation.id;
+              const isPlaying = moodStationPlaying === moodStation.id;
+
+              return (
+                <button
+                  key={moodStation.id}
+                  onClick={() => handleSelectStation(moodStation)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors",
+                    isActive ? "bg-primary/10" : "hover:bg-muted"
                   )}
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {KPOPDH_PLAYLIST.length} tracks
-                </span>
-              </div>
-            </button>
+                  data-testid={`station-button-${moodStation.id}`}
+                >
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: moodStation.colorTheme + "25" }}
+                  >
+                    <Icon
+                      className="h-5 w-5"
+                      style={{ color: moodStation.colorTheme }}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "font-medium truncate",
+                        isActive && "text-primary"
+                      )}>
+                        {moodStation.name}
+                      </span>
+                      {isPlaying && (
+                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {moodStation.videoIds.length} videos
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </ScrollArea>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {isKpopdhSelected ? (
+        {selectedMoodStation ? (
           <>
             <div className="p-4 border-b bg-background/95 flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div
                   className="w-10 h-10 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: "#E91E6325" }}
+                  style={{ backgroundColor: selectedMoodStation.colorTheme + "25" }}
                 >
-                  <Music className="h-5 w-5" style={{ color: "#E91E63" }} />
+                  {(() => {
+                    const Icon = getStationIcon(selectedMoodStation.iconHint);
+                    return <Icon className="h-5 w-5" style={{ color: selectedMoodStation.colorTheme }} />;
+                  })()}
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold">KPOPDH</h2>
+                  <h2 className="text-xl font-semibold">{selectedMoodStation.name}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Special mood station with curated tracks
+                    {selectedMoodStation.description || "YouTube music videos"}
                   </p>
                 </div>
               </div>
             </div>
-            <YouTubeAudioPlayer 
-              playlist={KPOPDH_PLAYLIST} 
-              isActive={isKpopdhSelected}
-              onPlayStateChange={setKpopdhPlaying}
+            <YouTubeAudioPlayer
+              playlist={moodStationToTracks(selectedMoodStation)}
+              isActive={!!selectedMoodStation}
+              onPlayStateChange={(playing) => setMoodStationPlaying(playing ? selectedMoodStation.id : null)}
             />
           </>
         ) : selectedStation ? (
