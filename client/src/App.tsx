@@ -31,7 +31,8 @@ import ScreensaverPage from "@/pages/screensaver";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, MessageSquare, Clock, Mail, StickyNote, Tv, BarChart3 } from "lucide-react";
-import { Component, ErrorInfo, ReactNode, useState, useEffect } from "react";
+import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { GlobalRadioPlayer } from "@/components/global-radio-player";
 import { AppControlsProvider, AppControlsWidget, HeaderControls } from "@/components/app-controls";
@@ -177,197 +178,347 @@ function AuthenticatedLayout() {
 }
 
 function LandingPage() {
-  const applications = [
+  const prefersReducedMotion = useReducedMotion();
+  const [activeFeature, setActiveFeature] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const features = useMemo(() => [
     {
       icon: Clock,
       title: "Clock",
-      description: "A simple clock to always know the time",
-      color: "text-blue-500",
-      bgColor: "bg-blue-500/10",
+      tagline: "Always Know the Time",
+      description: "A beautiful, large-format clock that's easy to read from across the room. Perfect for the kitchen or living room.",
+      color: "text-amber-600",
+      bgColor: "bg-amber-500",
+      gradient: "from-amber-500/20 via-amber-400/10 to-transparent",
     },
     {
       icon: Cloud,
       title: "Weather",
-      description: "Check the weather for you and your family",
-      color: "text-sky-500",
-      bgColor: "bg-sky-500/10",
+      tagline: "Stay Ahead of the Forecast",
+      description: "Real-time weather updates so you always know whether to grab an umbrella or a sunhat before heading out.",
+      color: "text-sky-600",
+      bgColor: "bg-sky-500",
+      gradient: "from-sky-500/20 via-sky-400/10 to-transparent",
     },
     {
       icon: ImageIcon,
-      title: "Picture Frame",
-      description: "See your favorite photos on screen",
-      color: "text-pink-500",
-      bgColor: "bg-pink-500/10",
+      title: "Photos",
+      tagline: "Your Memories on Display",
+      description: "Turn your screen into a digital photo frame showing cherished family moments. Like having a window to your loved ones.",
+      color: "text-rose-500",
+      bgColor: "bg-rose-400",
+      gradient: "from-rose-400/20 via-rose-300/10 to-transparent",
     },
     {
       icon: Calendar,
       title: "Calendar",
-      description: "Keep track of birthdays and events",
-      color: "text-orange-500",
-      bgColor: "bg-orange-500/10",
-    },
-    {
-      icon: StickyNote,
-      title: "Notepad",
-      description: "Write notes and little reminders",
-      color: "text-yellow-600",
-      bgColor: "bg-yellow-500/10",
+      tagline: "Never Miss a Birthday",
+      description: "Keep track of birthdays, anniversaries, and family gatherings. Get gentle reminders for the moments that matter most.",
+      color: "text-orange-600",
+      bgColor: "bg-orange-500",
+      gradient: "from-orange-500/20 via-orange-400/10 to-transparent",
     },
     {
       icon: MessageSquare,
       title: "Messages",
-      description: "Send notes to your loved ones",
+      tagline: "Stay Close, Even Far Away",
+      description: "Send and receive loving notes between homes. Perfect for quick hellos to grandchildren or checking in with parents.",
       color: "text-violet-500",
-      bgColor: "bg-violet-500/10",
+      bgColor: "bg-violet-400",
+      gradient: "from-violet-400/20 via-violet-300/10 to-transparent",
     },
     {
       icon: Radio,
       title: "Radio",
-      description: "Listen to Bulgarian radio stations",
-      color: "text-green-500",
-      bgColor: "bg-green-500/10",
+      tagline: "Music Fills the Home",
+      description: "Listen to your favorite radio stations while browsing photos or checking the weather. Background music for your day.",
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-500",
+      gradient: "from-emerald-500/20 via-emerald-400/10 to-transparent",
     },
-    {
-      icon: Tv,
-      title: "TV",
-      description: "Watch Bulgarian television channels",
-      color: "text-red-500",
-      bgColor: "bg-red-500/10",
-    },
-    {
-      icon: ShoppingCart,
-      title: "Shopping List",
-      description: "Remember what you need from the store",
-      color: "text-emerald-500",
-      bgColor: "bg-emerald-500/10",
-    },
-    {
-      icon: BarChart3,
-      title: "Stocks",
-      description: "See how the market is doing",
-      color: "text-indigo-500",
-      bgColor: "bg-indigo-500/10",
-    },
-  ];
+  ], []);
+
+  const applications = useMemo(() => [
+    { icon: Clock, title: "Clock", color: "text-amber-600", bgColor: "bg-amber-500/10", description: "Display current time" },
+    { icon: Cloud, title: "Weather", color: "text-sky-600", bgColor: "bg-sky-500/10", description: "Check weather forecasts" },
+    { icon: ImageIcon, title: "Photos", color: "text-rose-500", bgColor: "bg-rose-400/10", description: "View family photos" },
+    { icon: Calendar, title: "Calendar", color: "text-orange-600", bgColor: "bg-orange-500/10", description: "Track events and birthdays" },
+    { icon: StickyNote, title: "Notepad", color: "text-yellow-600", bgColor: "bg-yellow-500/10", description: "Write notes and reminders" },
+    { icon: MessageSquare, title: "Messages", color: "text-violet-500", bgColor: "bg-violet-400/10", description: "Send family messages" },
+    { icon: Radio, title: "Radio", color: "text-emerald-600", bgColor: "bg-emerald-500/10", description: "Listen to radio stations" },
+    { icon: Tv, title: "TV", color: "text-red-500", bgColor: "bg-red-400/10", description: "Watch television channels" },
+    { icon: ShoppingCart, title: "Shopping", color: "text-teal-600", bgColor: "bg-teal-500/10", description: "Manage shopping lists" },
+    { icon: BarChart3, title: "Stocks", color: "text-indigo-500", bgColor: "bg-indigo-400/10", description: "Track market updates" },
+  ], []);
+
+  // Auto-rotate carousel
+  useEffect(() => {
+    if (isPaused || prefersReducedMotion) return;
+    const interval = setInterval(() => {
+      setActiveFeature((prev) => (prev + 1) % features.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isPaused, prefersReducedMotion, features.length]);
+
+  const fadeInUp = prefersReducedMotion ? {} : {
+    initial: { opacity: 0, y: 20 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.5 }
+  };
+
+  const staggerContainer = prefersReducedMotion ? {} : {
+    animate: { transition: { staggerChildren: 0.05 } }
+  };
+
+  const fadeInItem = prefersReducedMotion ? {} : {
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 }
+  };
+
+  const currentFeature = features[activeFeature];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Top Header with Sign In */}
-      <header className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-            <Home className="h-5 w-5 text-primary-foreground" />
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-background via-background to-muted/30">
+      {/* Header */}
+      <header role="banner" className="flex items-center justify-between px-4 md:px-6 py-3 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+        <a href="/" className="flex items-center gap-2 min-h-11" aria-label="Family Frame Home">
+          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center" aria-hidden="true">
+            <Home className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-lg font-semibold">Family Frame</span>
-        </div>
-        <SignInButton mode="modal">
-          <Button size="lg" data-testid="button-sign-in-header">
-            <LogIn className="h-5 w-5 mr-2" />
-            Sign In
-          </Button>
-        </SignInButton>
-      </header>
-
-      {/* Welcome Header */}
-      <section className="px-6 py-12 md:py-16 text-center">
-        <div className="max-w-4xl mx-auto">
-          <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-6">
-            <Home className="h-10 w-10 text-primary-foreground" />
-          </div>
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-3" data-testid="text-landing-title">
-            Welcome to Family Frame
-          </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground mb-2">
-            A friendly display for your home
-          </p>
-          <p className="text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
-            Everything you need, all in one easy place
-          </p>
-        </div>
-      </section>
-
-      {/* Applications Grid */}
-      <section className="flex-1 px-6 pb-12">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-semibold text-center mb-3">
-            Here is what you can do
-          </h2>
-          <p className="text-muted-foreground text-center mb-10 text-lg">
-            Tap any tile after signing in to explore
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
-            {applications.map((app, index) => (
-              <Card key={index} className="hover-elevate" data-testid={`app-card-${index}`}>
-                <CardContent className="flex flex-col items-center justify-center p-6 md:p-8 text-center">
-                  <div className={`w-14 h-14 md:w-16 md:h-16 rounded-xl ${app.bgColor} flex items-center justify-center mb-4`}>
-                    <app.icon className={`h-7 w-7 md:h-8 md:w-8 ${app.color}`} />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-1">{app.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {app.description}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Sign In Section */}
-      <section className="py-12 px-6 bg-muted/30">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-xl md:text-2xl font-semibold mb-3">
-            Ready to get started?
-          </h2>
-          <p className="text-muted-foreground mb-6">
-            Sign in to set up your own Family Frame
-          </p>
+          <span className="font-semibold">Family Frame</span>
+        </a>
+        <nav role="navigation" aria-label="Main navigation">
           <SignInButton mode="modal">
-            <Button size="lg" className="text-lg px-8" data-testid="button-sign-in">
-              <LogIn className="h-5 w-5 mr-2" />
+            <Button className="min-h-11" data-testid="button-sign-in-header">
+              <LogIn className="h-4 w-4 mr-2" aria-hidden="true" />
               Sign In
             </Button>
           </SignInButton>
-          <p className="text-sm text-muted-foreground mt-4">
-            Free to use. No payment needed.
-          </p>
-        </div>
-      </section>
+        </nav>
+      </header>
+
+      <main role="main" id="main-content">
+        {/* Hero Section */}
+        <motion.section
+          className="px-4 md:px-6 py-8 md:py-12"
+          aria-labelledby="hero-heading"
+          {...fadeInUp}
+        >
+          <div className="max-w-4xl mx-auto text-center">
+            <p className="text-primary font-medium mb-2">Welcome to Family Frame</p>
+            <h1
+              id="hero-heading"
+              className="text-2xl md:text-3xl lg:text-4xl font-bold mb-3"
+              data-testid="text-landing-title"
+            >
+              Bringing Families Together,<br className="hidden sm:inline" /> One Screen at a Time
+            </h1>
+            <p className="text-muted-foreground text-base md:text-lg max-w-2xl mx-auto mb-6">
+              A simple, beautiful display for your home. See the weather, share photos with grandchildren, and stay connected with loved ones.
+            </p>
+            <SignInButton mode="modal">
+              <Button size="lg" className="shadow-lg min-h-12" data-testid="button-sign-in-hero">
+                <LogIn className="h-4 w-4 mr-2" aria-hidden="true" />
+                Join Your Family
+              </Button>
+            </SignInButton>
+          </div>
+        </motion.section>
+
+        {/* Feature Showcase Carousel */}
+        <section
+          className="px-4 md:px-6 py-6 md:py-10"
+          aria-labelledby="showcase-heading"
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+        >
+          <h2 id="showcase-heading" className="sr-only">Feature Showcase</h2>
+          <div className="max-w-5xl mx-auto">
+            {/* Main Banner */}
+            <div className={`relative overflow-hidden rounded-2xl md:rounded-3xl bg-gradient-to-br ${currentFeature.gradient} border shadow-lg`}>
+              <div className="flex flex-col md:flex-row items-center gap-6 p-6 md:p-10">
+                {/* Icon Display */}
+                <motion.div
+                  key={`icon-${activeFeature}`}
+                  initial={prefersReducedMotion ? {} : { scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.4 }}
+                  className={`w-24 h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 rounded-2xl md:rounded-3xl ${currentFeature.bgColor} flex items-center justify-center shadow-xl flex-shrink-0`}
+                >
+                  <currentFeature.icon className="w-12 h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 text-white" />
+                </motion.div>
+
+                {/* Content */}
+                <motion.div
+                  key={`content-${activeFeature}`}
+                  initial={prefersReducedMotion ? {} : { x: 20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ duration: 0.4, delay: 0.1 }}
+                  className="flex-1 text-center md:text-left"
+                >
+                  <p className={`text-sm font-semibold uppercase tracking-wider ${currentFeature.color} mb-1`}>
+                    {currentFeature.title}
+                  </p>
+                  <h3 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-3">
+                    {currentFeature.tagline}
+                  </h3>
+                  <p className="text-muted-foreground text-sm md:text-base max-w-lg">
+                    {currentFeature.description}
+                  </p>
+                </motion.div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/30">
+                <motion.div
+                  key={`progress-${activeFeature}`}
+                  className={`h-full ${currentFeature.bgColor}`}
+                  initial={{ width: "0%" }}
+                  animate={{ width: isPaused ? "0%" : "100%" }}
+                  transition={{ duration: isPaused ? 0 : 5, ease: "linear" }}
+                />
+              </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex justify-center gap-2 mt-4" role="tablist" aria-label="Feature tabs">
+              {features.map((feature, index) => (
+                <button
+                  key={feature.title}
+                  onClick={() => setActiveFeature(index)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-all min-h-10 ${
+                    index === activeFeature
+                      ? `${feature.bgColor} text-white shadow-md`
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  }`}
+                  role="tab"
+                  aria-selected={index === activeFeature}
+                  aria-controls={`feature-panel-${index}`}
+                  data-testid={`tab-feature-${feature.title.toLowerCase()}`}
+                >
+                  <feature.icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{feature.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* All Features Grid */}
+        <section className="px-4 md:px-6 pb-6" aria-labelledby="features-heading">
+          <div className="max-w-5xl mx-auto">
+            <h2 id="features-heading" className="text-center text-lg font-semibold text-muted-foreground mb-4">
+              All 10 Features Included
+            </h2>
+            <motion.ul
+              className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-10 gap-2"
+              role="list"
+              aria-label="Application features"
+              initial="initial"
+              animate="animate"
+              {...staggerContainer}
+            >
+              {applications.map((app, index) => (
+                <motion.li
+                  key={app.title}
+                  className="flex flex-col items-center gap-1.5 p-2 md:p-3 rounded-xl bg-card border hover:shadow-md hover:border-primary/20 transition-all"
+                  data-testid={`app-card-${index}`}
+                  {...fadeInItem}
+                >
+                  <div
+                    className={`w-8 h-8 md:w-10 md:h-10 rounded-lg ${app.bgColor} flex items-center justify-center`}
+                    aria-hidden="true"
+                  >
+                    <app.icon className={`h-4 w-4 md:h-5 md:w-5 ${app.color}`} />
+                  </div>
+                  <span className="text-xs font-medium text-center">{app.title}</span>
+                </motion.li>
+              ))}
+            </motion.ul>
+          </div>
+        </section>
+
+        {/* Benefits Section */}
+        <section className="px-4 md:px-6 py-6 bg-muted/40" aria-labelledby="benefits-heading">
+          <h2 id="benefits-heading" className="sr-only">Why Families Love Family Frame</h2>
+          <div className="max-w-4xl mx-auto">
+            <ul className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4" role="list">
+              <li className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4 min-h-11">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                  <Home className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm md:mb-1">Easy for Everyone</h3>
+                  <p className="text-xs text-muted-foreground">Large buttons and clear text that grandma will love</p>
+                </div>
+              </li>
+              <li className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4 min-h-11">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                  <ImageIcon className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm md:mb-1">Share Precious Moments</h3>
+                  <p className="text-xs text-muted-foreground">Photos of grandchildren update automatically</p>
+                </div>
+              </li>
+              <li className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4 min-h-11">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm md:mb-1">Feel Close, Always</h3>
+                  <p className="text-xs text-muted-foreground">Send love notes even when miles apart</p>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        {/* CTA Section */}
+        <section className="px-4 md:px-6 py-8 text-center" aria-labelledby="cta-heading">
+          <h2 id="cta-heading" className="text-lg md:text-xl font-semibold mb-2">Ready to bring your family closer?</h2>
+          <p className="text-muted-foreground text-sm mb-4">Completely free. Set up in minutes.</p>
+          <SignInButton mode="modal">
+            <Button size="lg" className="min-h-12" data-testid="button-sign-in">
+              <LogIn className="h-4 w-4 mr-2" aria-hidden="true" />
+              Get Started for Free
+            </Button>
+          </SignInButton>
+        </section>
+      </main>
 
       {/* Footer */}
-      <footer className="py-8 px-6 border-t">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Home className="h-4 w-4" />
-            <span>Family Frame</span>
+      <footer role="contentinfo" className="py-4 px-4 md:px-6 border-t mt-auto">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <Home className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>&copy; {new Date().getFullYear()} Family Frame</span>
           </div>
-          <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground">
-            <a 
-              href="/privacy" 
-              className="hover:text-foreground transition-colors" 
+          <nav aria-label="Footer navigation" className="flex flex-wrap justify-center gap-4">
+            <a
+              href="/privacy"
+              className="hover:text-foreground transition-colors min-h-11 flex items-center"
               data-testid="link-privacy"
             >
-              Privacy Policy
+              Privacy
             </a>
-            <a 
-              href="/terms" 
-              className="hover:text-foreground transition-colors" 
+            <a
+              href="/terms"
+              className="hover:text-foreground transition-colors min-h-11 flex items-center"
               data-testid="link-terms"
             >
-              Terms of Service
+              Terms
             </a>
-            <a 
-              href="mailto:support@familyframe.app" 
-              className="hover:text-foreground transition-colors flex items-center gap-1" 
+            <a
+              href="mailto:support@familyframe.app"
+              className="hover:text-foreground transition-colors min-h-11 flex items-center gap-1"
               data-testid="link-support"
             >
-              <Mail className="h-3.5 w-3.5" />
+              <Mail className="h-3 w-3" aria-hidden="true" />
               Support
             </a>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {new Date().getFullYear()} Family Frame
-          </div>
+          </nav>
         </div>
       </footer>
     </div>

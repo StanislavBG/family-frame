@@ -3,6 +3,52 @@ import type { GooglePhotoItem } from "@shared/schema";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
+
+// Helper function for retrying fetch requests with exponential backoff
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  context: string,
+  maxRetries = MAX_RETRIES
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Don't retry client errors (4xx) except for 429 (rate limit)
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        return response;
+      }
+
+      // Retry on server errors (5xx) or rate limiting (429)
+      if (response.status >= 500 || response.status === 429) {
+        if (attempt < maxRetries) {
+          const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+          console.log(`[${context}] Got ${response.status}, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+        console.log(`[${context}] Network error, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries}):`, error);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+
+  throw lastError || new Error(`[${context}] All ${maxRetries} retries failed`);
+}
+
 // New Photos Picker API scope (replaces deprecated photoslibrary.readonly)
 const PICKER_SCOPE = "https://www.googleapis.com/auth/photospicker.mediaitems.readonly";
 
@@ -30,19 +76,23 @@ export async function exchangeCodeForTokens(
   redirectUri: string
 ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
   try {
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+    const response = await fetchWithRetry(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          code,
+          client_id: GOOGLE_CLIENT_ID || "",
+          client_secret: GOOGLE_CLIENT_SECRET || "",
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
       },
-      body: new URLSearchParams({
-        code,
-        client_id: GOOGLE_CLIENT_ID || "",
-        client_secret: GOOGLE_CLIENT_SECRET || "",
-        redirect_uri: redirectUri,
-        grant_type: "authorization_code",
-      }),
-    });
+      "Google Token Exchange"
+    );
 
     if (!response.ok) {
       const error = await response.text();
@@ -68,23 +118,27 @@ export async function refreshAccessToken(
   refreshToken: string
 ): Promise<{ accessToken: string; expiresAt: number } | null> {
   console.log("[Google Refresh] Attempting token refresh...");
-  
+
   try {
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+    const response = await fetchWithRetry(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          refresh_token: refreshToken,
+          client_id: GOOGLE_CLIENT_ID || "",
+          client_secret: GOOGLE_CLIENT_SECRET || "",
+          grant_type: "refresh_token",
+        }),
       },
-      body: new URLSearchParams({
-        refresh_token: refreshToken,
-        client_id: GOOGLE_CLIENT_ID || "",
-        client_secret: GOOGLE_CLIENT_SECRET || "",
-        grant_type: "refresh_token",
-      }),
-    });
+      "Google Refresh"
+    );
 
     console.log("[Google Refresh] Response status:", response.status);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Google Refresh] Token refresh FAILED:", response.status, errorText);
@@ -132,19 +186,23 @@ export interface PickedMediaItem {
 // Create a new Picker session - returns a pickerUri for the user to select photos
 export async function createPickerSession(accessToken: string): Promise<PickerSession | null> {
   console.log("[Picker] Creating new picker session...");
-  
+
   try {
-    const response = await fetch("https://photospicker.googleapis.com/v1/sessions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+    const response = await fetchWithRetry(
+      "https://photospicker.googleapis.com/v1/sessions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
       },
-      body: JSON.stringify({}),
-    });
+      "Picker Create Session"
+    );
 
     console.log("[Picker] Create session response status:", response.status);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Picker] Create session FAILED:", response.status, errorText);
@@ -169,16 +227,20 @@ export async function createPickerSession(accessToken: string): Promise<PickerSe
 // Poll a Picker session to check if user has finished selecting
 export async function getPickerSession(accessToken: string, sessionId: string): Promise<PickerSession | null> {
   console.log("[Picker] Getting session status for:", sessionId);
-  
+
   try {
-    const response = await fetch(`https://photospicker.googleapis.com/v1/sessions/${sessionId}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+    const response = await fetchWithRetry(
+      `https://photospicker.googleapis.com/v1/sessions/${sessionId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    });
+      "Picker Get Session"
+    );
 
     console.log("[Picker] Get session response status:", response.status);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Picker] Get session FAILED:", response.status, errorText);
@@ -203,10 +265,10 @@ export async function getPickerSession(accessToken: string, sessionId: string): 
 // Get the media items that were selected in the picker session
 export async function getPickedMediaItems(accessToken: string, sessionId: string): Promise<GooglePhotoItem[]> {
   console.log("[Picker] Fetching selected media items for session:", sessionId);
-  
+
   const photos: GooglePhotoItem[] = [];
   let pageToken: string | undefined;
-  
+
   try {
     do {
       const url = new URL(`https://photospicker.googleapis.com/v1/mediaItems`);
@@ -216,14 +278,18 @@ export async function getPickedMediaItems(accessToken: string, sessionId: string
         url.searchParams.set("pageToken", pageToken);
       }
 
-      const response = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+      const response = await fetchWithRetry(
+        url.toString(),
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         },
-      });
+        "Picker Get Media Items"
+      );
 
       console.log("[Picker] Get media items response status:", response.status);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("[Picker] Get media items FAILED:", response.status, errorText);
@@ -262,21 +328,25 @@ export async function getPickedMediaItems(accessToken: string, sessionId: string
     return photos;
   } catch (error) {
     console.error("[Picker] Get media items exception:", error);
-    return [];
+    return photos; // Return partial results instead of empty array
   }
 }
 
 // Delete/close a picker session
 export async function deletePickerSession(accessToken: string, sessionId: string): Promise<boolean> {
   console.log("[Picker] Deleting session:", sessionId);
-  
+
   try {
-    const response = await fetch(`https://photospicker.googleapis.com/v1/sessions/${sessionId}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+    const response = await fetchWithRetry(
+      `https://photospicker.googleapis.com/v1/sessions/${sessionId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    });
+      "Picker Delete Session"
+    );
 
     console.log("[Picker] Delete session response status:", response.status);
     return response.ok;
@@ -287,42 +357,60 @@ export async function deletePickerSession(accessToken: string, sessionId: string
 }
 
 // Refresh a photo's baseUrl using the Picker API (URLs expire after 60 minutes)
+// Now with pagination support to find photos beyond the first 100
 export async function refreshPickerPhotoUrl(
   accessToken: string,
   mediaItemId: string,
   sessionId: string
 ): Promise<{ baseUrl: string; fetchedAt: number } | null> {
   console.log("[Picker] Refreshing photo URL for:", mediaItemId);
-  
+
+  let pageToken: string | undefined;
+  let pagesSearched = 0;
+  const maxPages = 10; // Safety limit: 10 pages * 100 items = 1000 photos max
+
   try {
-    // We need to re-fetch from the session's media items
-    const url = new URL(`https://photospicker.googleapis.com/v1/mediaItems`);
-    url.searchParams.set("sessionId", sessionId);
-    url.searchParams.set("pageSize", "100");
+    do {
+      const url = new URL(`https://photospicker.googleapis.com/v1/mediaItems`);
+      url.searchParams.set("sessionId", sessionId);
+      url.searchParams.set("pageSize", "100");
+      if (pageToken) {
+        url.searchParams.set("pageToken", pageToken);
+      }
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+      const response = await fetchWithRetry(
+        url.toString(),
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+        "Picker Refresh Photo URL"
+      );
 
-    if (!response.ok) {
-      console.error("[Picker] Refresh photo URL FAILED:", await response.text());
-      return null;
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[Picker] Refresh photo URL FAILED:", response.status, errorText);
+        return null;
+      }
 
-    const data = await response.json();
-    const item = data.mediaItems?.find((i: any) => i.id === mediaItemId);
-    
-    if (!item) {
-      console.error("[Picker] Photo not found in session");
-      return null;
-    }
+      const data = await response.json();
+      const item = data.mediaItems?.find((i: any) => i.id === mediaItemId);
 
-    return {
-      baseUrl: item.mediaFile?.baseUrl || "",
-      fetchedAt: Date.now(),
-    };
+      if (item) {
+        console.log("[Picker] Found photo on page", pagesSearched + 1);
+        return {
+          baseUrl: item.mediaFile?.baseUrl || "",
+          fetchedAt: Date.now(),
+        };
+      }
+
+      pageToken = data.nextPageToken;
+      pagesSearched++;
+    } while (pageToken && pagesSearched < maxPages);
+
+    console.error("[Picker] Photo not found in session after", pagesSearched, "pages");
+    return null;
   } catch (error) {
     console.error("[Picker] Refresh photo URL exception:", error);
     return null;

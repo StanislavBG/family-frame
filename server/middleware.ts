@@ -52,6 +52,7 @@ function getDefaultUserData(clerkId: string, username: string): UserData {
       radioStation: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
       trackedStocks: ["DJI", "BTC"],
       babyAgeMonths: 12,
+      customPlaylists: [],
       tvVolume: 50,
       // Screensaver settings
       screensaverEnabled: true,
@@ -66,6 +67,8 @@ function getDefaultUserData(clerkId: string, username: string): UserData {
       weatherAlertsEnabled: true,
       // Dashboard settings
       dashboardLayout: "default",
+      babySongsFavorites: [],
+      babySongsShuffleEnabled: false,
     },
     people: [],
     events: [],
