@@ -69,34 +69,23 @@ initializeFirebase();
 // UserData interface and getOrCreateUser moved to middleware.ts
 
 async function getValidGoogleToken(userData: UserData): Promise<string | null> {
-  console.log("[Token] getValidGoogleToken called for user:", userData.clerkId?.substring(0, 15) + "...");
-  
   if (!userData.googleTokens) {
-    console.log("[Token] No googleTokens found in userData");
     return null;
   }
 
   const now = Date.now();
   const expiresAt = userData.googleTokens.expiresAt;
-  const timeUntilExpiry = expiresAt - now;
-  console.log("[Token] Token expires in:", Math.round(timeUntilExpiry / 1000), "seconds");
 
   // Return current token if still valid (with 60s buffer)
   if (now < expiresAt - 60000) {
-    console.log("[Token] Current token is still valid, returning it");
     return userData.googleTokens.accessToken;
   }
 
-  console.log("[Token] Token expired or expiring soon, attempting refresh...");
-  console.log("[Token] Has refresh token:", !!userData.googleTokens.refreshToken);
-  
   const refreshed = await refreshAccessToken(userData.googleTokens.refreshToken);
   if (!refreshed) {
-    console.log("[Token] Token refresh FAILED - refreshAccessToken returned null");
     return null;
   }
 
-  console.log("[Token] Token refresh SUCCESS, new expiry:", new Date(refreshed.expiresAt).toISOString());
   userData.googleTokens.accessToken = refreshed.accessToken;
   userData.googleTokens.expiresAt = refreshed.expiresAt;
   await updateUserData(userData.clerkId, { googleTokens: userData.googleTokens });
@@ -387,24 +376,20 @@ export async function registerRoutes(
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
-      console.log("Create event request:", { userId, body: req.body });
-
       if (!userId) {
-        console.log("Create event: No user ID");
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
 
       const parseResult = insertCalendarEventSchema.safeParse(req.body);
       if (!parseResult.success) {
-        console.log("Create event: Validation failed", parseResult.error.errors);
         res.status(400).json({ error: "Invalid event data", details: parseResult.error.errors });
         return;
       }
 
       const userData = await getOrCreateUser(userId, username);
       const creatorName = userData.settings?.homeName || username;
-      
+
       const newEvent: CalendarEvent = {
         id: randomUUID(),
         ...parseResult.data,
@@ -415,7 +400,6 @@ export async function registerRoutes(
       const updatedEvents = [...(userData.events || []), newEvent];
       await updateUserData(userId, { events: updatedEvents });
 
-      console.log("Create event: Success", newEvent);
       res.json(newEvent);
     } catch (error) {
       console.error("Calendar create error:", error);
@@ -429,8 +413,6 @@ export async function registerRoutes(
       const username = req.headers["x-clerk-username"] as string || "user";
       const { eventId } = req.params;
 
-      console.log("Update event request:", { userId, eventId, body: req.body });
-
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
         return;
@@ -438,19 +420,15 @@ export async function registerRoutes(
 
       const parseResult = insertCalendarEventSchema.safeParse(req.body);
       if (!parseResult.success) {
-        console.log("Update event: Validation failed", parseResult.error.errors);
         res.status(400).json({ error: "Invalid event data", details: parseResult.error.errors });
         return;
       }
 
       const userData = await getOrCreateUser(userId, username);
       const events = userData?.events || [];
-      
-      console.log("Update event: Found events", { count: events.length, eventId });
 
       const eventIndex = events.findIndex((e: CalendarEvent) => e.id === eventId);
       if (eventIndex === -1) {
-        console.log("Update event: Event not found or not owned", { eventId });
         res.status(403).json({ error: "You can only edit your own events" });
         return;
       }
@@ -466,7 +444,6 @@ export async function registerRoutes(
       events[eventIndex] = updatedEvent;
       await updateUserData(userId, { events });
 
-      console.log("Update event: Success", updatedEvent);
       res.json(updatedEvent);
     } catch (error) {
       console.error("Calendar update error:", error);
@@ -841,8 +818,8 @@ export async function registerRoutes(
                   entry.timezone = "Europe/London"; // Default, could be enhanced with timezone lookup
                 }
               }
-            } catch (e) {
-              console.log(`Could not get weather for ${connectedUserData.username}`);
+            } catch {
+              // Weather fetch failed for connected user
             }
           }
 
@@ -1296,9 +1273,8 @@ export async function registerRoutes(
               }
               reader.cancel();
             }
-          } catch (metaErr) {
+          } catch {
             // Ignore metadata parsing errors
-            console.log("[Radio Metadata] Could not parse inline metadata:", metaErr);
           }
         }
       }
@@ -1445,7 +1421,6 @@ export async function registerRoutes(
       const signedState = `${stateBase64}.${signature}`;
 
       const authUrl = getGoogleAuthUrl(redirectUri, signedState);
-      console.log(`[Google Auth] Generated auth URL for user ${userId}`);
       res.json({ url: authUrl });
     } catch (error) {
       console.error("Google auth URL error:", error);
@@ -1458,10 +1433,7 @@ export async function registerRoutes(
       const code = req.query.code as string;
       const stateParam = req.query.state as string;
 
-      console.log(`[Google Callback] Received callback. hasCode=${!!code}, hasState=${!!stateParam}`);
-
       if (!code) {
-        console.error("[Google Callback] No code in query params");
         res.redirect("/settings?error=no_code");
         return;
       }
@@ -1473,65 +1445,54 @@ export async function registerRoutes(
       if (stateParam) {
         try {
           const [stateBase64, signature] = stateParam.split(".");
-          
+
           if (!stateBase64 || !signature) {
-            console.error("[Google Callback] Invalid state format - missing signature");
             res.redirect("/settings?error=invalid_state");
             return;
           }
-          
+
           // Verify the signature to prevent forged states
           if (!verifyState(stateBase64, signature)) {
-            console.error("[Google Callback] State signature verification failed");
             res.redirect("/settings?error=invalid_state");
             return;
           }
-          
+
           const stateJson = Buffer.from(stateBase64, "base64url").toString();
           const stateData = JSON.parse(stateJson);
-          
+
           // Check timestamp - reject if older than 10 minutes
           if (Date.now() - stateData.ts > 10 * 60 * 1000) {
-            console.error("[Google Callback] State expired");
             res.redirect("/settings?error=state_expired");
             return;
           }
-          
+
           userId = stateData.userId;
           username = stateData.username || "user";
-          console.log(`[Google Callback] Verified state: userId=${userId}, username=${username}`);
-        } catch (e) {
-          console.error("[Google Callback] Failed to parse state parameter:", e);
+        } catch {
           res.redirect("/settings?error=invalid_state");
           return;
         }
       }
 
       if (!userId) {
-        console.error("[Google Callback] No userId available from state");
         res.redirect("/settings?error=auth_failed");
         return;
       }
 
       // Use the same production redirect URI as auth-url endpoint
       const redirectUri = "https://family-frame.replit.app/api/google/callback";
-      console.log(`[Google Callback] Using redirect URI: ${redirectUri}`);
 
       const tokens = await exchangeCodeForTokens(code, redirectUri);
       if (!tokens) {
-        console.error("[Google Callback] Token exchange failed");
         res.redirect("/settings?error=token_exchange_failed");
         return;
       }
-      console.log("[Google Callback] Token exchange successful");
 
-      console.log(`[Google Callback] Saving tokens for user ${userId}`);
       const userData = await getOrCreateUser(userId, username);
       await updateUserData(userId, {
         googleTokens: tokens,
         settings: { ...userData.settings, googlePhotosConnected: true },
       });
-      console.log("[Google Callback] Tokens saved successfully");
 
       res.redirect("/settings?success=google_connected");
     } catch (error) {
@@ -1544,8 +1505,7 @@ export async function registerRoutes(
   app.get("/api/google/status", async (req: Request, res: Response) => {
     try {
       const userId = req.headers["x-clerk-user-id"] as string;
-      console.log("[Google Status] Checking for userId:", userId?.substring(0, 15) + "...");
-      
+
       if (!userId) {
         res.json({ 
           authenticated: false, 
@@ -1573,37 +1533,22 @@ export async function registerRoutes(
       const isExpired = tokenExpiry ? Date.now() > tokenExpiry : true;
       const settingConnected = userData.settings?.googlePhotosConnected;
 
-      console.log("[Google Status] Token state:", { 
-        hasTokens, 
-        hasAccessToken, 
-        hasRefreshToken, 
-        isExpired, 
-        settingConnected,
-        expiresAt: tokenExpiry ? new Date(tokenExpiry).toISOString() : "N/A"
-      });
-
       // Try to get a valid token (will refresh if expired)
       let validToken: string | null = null;
       let tokenRefreshed = false;
       if (hasTokens) {
         validToken = await getValidGoogleToken(userData);
         tokenRefreshed = validToken !== userData.googleTokens?.accessToken;
-        console.log("[Google Status] getValidGoogleToken result:", { 
-          gotValidToken: !!validToken, 
-          tokenRefreshed 
-        });
       }
 
       // Test the token by fetching albums
       let albumTest: any = { tested: false };
       if (validToken) {
         try {
-          console.log("[Google Status] Testing token with albums API...");
           const response = await fetch("https://photoslibrary.googleapis.com/v1/albums?pageSize=5", {
             headers: { Authorization: `Bearer ${validToken}` }
           });
           const rawText = await response.text();
-          console.log("[Google Status] Albums API response:", response.status, rawText.substring(0, 500));
           
           let data: any = {};
           try {
@@ -1634,10 +1579,8 @@ export async function registerRoutes(
       let tokenInfo: any = { tested: false };
       if (validToken) {
         try {
-          console.log("[Google Status] Checking token scopes via tokeninfo...");
           const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${validToken}`);
           const rawText = await response.text();
-          console.log("[Google Status] Token info response:", response.status, rawText);
           
           let data: any = {};
           try {
@@ -1666,12 +1609,10 @@ export async function registerRoutes(
       let sharedAlbumTest: any = { tested: false };
       if (validToken) {
         try {
-          console.log("[Google Status] Testing shared albums API...");
           const response = await fetch("https://photoslibrary.googleapis.com/v1/sharedAlbums?pageSize=5", {
             headers: { Authorization: `Bearer ${validToken}` }
           });
           const rawText = await response.text();
-          console.log("[Google Status] Shared albums API response:", response.status, rawText.substring(0, 500));
           
           let data: any = {};
           try {
@@ -1743,8 +1684,6 @@ export async function registerRoutes(
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
-      console.log("[Picker] Creating session for userId:", userId?.substring(0, 15));
-
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
         return;
@@ -1772,7 +1711,6 @@ export async function registerRoutes(
         },
       });
 
-      console.log("[Picker] Session created:", session.id);
       res.json(session);
     } catch (error) {
       console.error("[Picker] Create session error:", error);
@@ -1786,8 +1724,6 @@ export async function registerRoutes(
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
       const { sessionId } = req.params;
-
-      console.log("[Picker] Polling session:", sessionId);
 
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
@@ -1810,13 +1746,12 @@ export async function registerRoutes(
 
       // If session is complete, merge photos into persistent list
       if (session.mediaItemsSet) {
-        console.log("[Picker] Session complete, merging photos...");
         const photos = await getPickedMediaItems(accessToken, sessionId);
-        
+
         // Get existing photos and merge (dedupe by ID)
         const existingPhotos = userData.settings?.selectedPhotos || [];
         const existingIds = new Set(existingPhotos.map(p => p.id));
-        
+
         const now = Date.now();
         const newPhotos = photos
           .filter(p => !existingIds.has(p.id))
@@ -1827,10 +1762,9 @@ export async function registerRoutes(
             creationTime: p.creationTime,
             addedAt: now,
           }));
-        
+
         const mergedPhotos = [...existingPhotos, ...newPhotos];
-        console.log("[Picker] Merged", newPhotos.length, "new photos. Total:", mergedPhotos.length);
-        
+
         // Update user settings with merged photos
         await updateUserData(userId, {
           settings: {
@@ -1898,7 +1832,6 @@ export async function registerRoutes(
         },
       });
 
-      console.log(`Google Photos disconnected for user ${userId}`);
       res.json({ success: true });
     } catch (error) {
       console.error("Google disconnect error:", error);
@@ -1912,8 +1845,6 @@ export async function registerRoutes(
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
-      console.log("[Photos] Getting photos for userId:", userId?.substring(0, 15));
-
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
         return;
@@ -1921,9 +1852,8 @@ export async function registerRoutes(
 
       const userData = await getOrCreateUser(userId, username);
       const selectedPhotos = userData.settings?.selectedPhotos || [];
-      
+
       if (selectedPhotos.length === 0) {
-        console.log("[Photos] No photos in persistent collection");
         res.json([]);
         return;
       }
@@ -1937,23 +1867,21 @@ export async function registerRoutes(
       // Get fresh URLs from the current session if available
       const sessionId = userData.settings?.pickerSessionId;
       let freshPhotos: GooglePhotoItem[] = [];
-      let sessionActive = false;
-      
+
       if (sessionId) {
         try {
           const session = await getPickerSession(accessToken, sessionId);
           if (session?.mediaItemsSet) {
             freshPhotos = await getPickedMediaItems(accessToken, sessionId);
-            sessionActive = true;
           }
-        } catch (err) {
-          console.log("[Photos] Session fetch failed, may be expired");
+        } catch {
+          // Session may be expired
         }
       }
 
       // Build a map of fresh URLs by photo ID
       const freshUrlMap = new Map(freshPhotos.map(p => [p.id, p]));
-      
+
       // Return ALL stored photos, with fresh URLs where available
       const now = Date.now();
       const photos: GooglePhotoItem[] = selectedPhotos.map(stored => {
@@ -1968,9 +1896,8 @@ export async function registerRoutes(
         };
       });
 
-      // Filter to only those with URLs for display, but log the total
+      // Filter to only those with URLs for display
       const displayablePhotos = photos.filter(p => p.baseUrl);
-      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored, session active:", sessionActive);
       
       // If no fresh URLs but we have stored photos, return empty with session status
       if (displayablePhotos.length === 0 && selectedPhotos.length > 0) {
@@ -2046,10 +1973,8 @@ export async function registerRoutes(
       let updatedPhotos: StoredPhoto[];
       if (photoId && photoId !== "all") {
         updatedPhotos = existingPhotos.filter((p: StoredPhoto) => p.id !== photoId);
-        console.log("[Photos] Removed photo", photoId, "- remaining:", updatedPhotos.length);
       } else {
         updatedPhotos = [];
-        console.log("[Photos] Cleared all photos");
       }
 
       await updateUserData(userId, {
@@ -2675,31 +2600,25 @@ export async function registerRoutes(
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
-      console.log("POST /api/messages - userId:", userId ? userId.substring(0, 10) + "..." : "NONE", "body:", JSON.stringify(req.body).substring(0, 200));
-
       if (!userId) {
-        console.log("POST /api/messages - No userId in headers, returning 401");
         res.status(401).json({ error: "Unauthorized - please sign in again" });
         return;
       }
 
       const validatedData = insertMessageSchema.safeParse(req.body);
       if (!validatedData.success) {
-        console.error("Message validation failed:", validatedData.error.errors);
         res.status(400).json({ error: "Invalid message data", details: validatedData.error.errors });
         return;
       }
 
       const { toUserId, toUsername, content, linkedNoteId } = validatedData.data;
-      console.log("Message validated - toUserId:", toUserId, "toUsername:", toUsername);
-      
+
       let userData;
       try {
         userData = await getOrCreateUser(userId, username);
-        console.log("Sender userData connections:", JSON.stringify(userData.connections));
       } catch (firebaseError: any) {
         console.error("Firebase error getting sender data:", firebaseError?.message || firebaseError);
-        res.status(500).json({ error: "Database error", debug: firebaseError?.message || String(firebaseError) });
+        res.status(500).json({ error: "Database error" });
         return;
       }
 
@@ -2713,7 +2632,6 @@ export async function registerRoutes(
 
       // Check if recipient is a connected user
       if (!connections.includes(toUserId)) {
-        console.error("User not in connections:", { toUserId, connections });
         res.status(400).json({ error: "You can only message connected users" });
         return;
       }
@@ -2749,11 +2667,8 @@ export async function registerRoutes(
       };
 
       // Add message to recipient's inbox
-      // Get or create recipient data to ensure message is persisted
-      console.log("Getting recipient data for:", toUserId);
       const recipientData = await getOrCreateUser(toUserId, toUsername);
-      console.log("Recipient data retrieved");
-      
+
       // Handle messages as either array or object
       let recipientMsgs: Message[] = [];
       if (Array.isArray(recipientData.messages)) {
@@ -2762,9 +2677,7 @@ export async function registerRoutes(
         recipientMsgs = [...(Object.values(recipientData.messages) as Message[])];
       }
       recipientMsgs.push(recipientMessage);
-      console.log("Updating recipient messages, count:", recipientMsgs.length);
       await updateUserData(toUserId, { messages: recipientMsgs });
-      console.log("Recipient messages updated");
 
       // Add sent copy to sender's messages
       let senderMsgs: Message[] = [];
@@ -2774,9 +2687,7 @@ export async function registerRoutes(
         senderMsgs = [...(Object.values(userData.messages) as Message[])];
       }
       senderMsgs.push(senderMessage);
-      console.log("Updating sender messages, count:", senderMsgs.length);
       await updateUserData(userId, { messages: senderMsgs });
-      console.log("Sender messages updated");
 
       res.status(201).json(senderMessage);
     } catch (error: any) {

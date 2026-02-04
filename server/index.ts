@@ -51,11 +51,9 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
           const user = await clerkClient.users.getUser(claims.sub);
           req.headers["x-clerk-username"] = user.username || user.emailAddresses[0]?.emailAddress?.split("@")[0] || "user";
         }
-      } catch (verifyError: any) {
-        console.error("Token verification failed:", verifyError?.message || verifyError);
+      } catch {
+        // Token verification failed - continue without auth
       }
-    } else if (req.path.startsWith("/api/") && req.method !== "GET") {
-      console.log("No session token for:", req.method, req.path);
     }
   } catch (error) {
     console.error("Auth middleware error:", error);

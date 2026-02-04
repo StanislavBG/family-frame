@@ -411,7 +411,6 @@ export default function CalendarPage() {
   });
 
   const onSubmit = (data: EventFormValues) => {
-    console.log("Submitting event:", data);
     createEventMutation.mutate({
       title: data.title,
       startDate: data.startDate,
@@ -435,8 +434,8 @@ export default function CalendarPage() {
     });
   };
 
-  const onFormError = (errors: any) => {
-    console.log("Form validation errors:", errors);
+  const onFormError = (_errors: unknown) => {
+    // Form validation errors handled by react-hook-form
   };
 
   const handleEditEvent = (event: CalendarEvent) => {
