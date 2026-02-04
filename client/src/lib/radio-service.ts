@@ -49,6 +49,11 @@ export type AudioMode = "stream" | "playlist";
 type RadioEventType = "stateChange" | "volumeChange" | "stationChange" | "trackChange" | "error" | "metadataChange";
 type RadioEventCallback = (data: any) => void;
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+const RECONNECT_DELAY_MS = 5000;
+
 class RadioService {
   private static instance: RadioService;
   private audio: HTMLAudioElement | null = null;
@@ -58,15 +63,17 @@ class RadioService {
   private isBuffering: boolean = false;
   private volume: number = 50;
   private listeners: Map<RadioEventType, Set<RadioEventCallback>> = new Map();
-  
+
   private mode: AudioMode = "stream";
   private playlist: PlaylistTrack[] = [];
   private currentTrackIndex: number = 0;
   private playlistName: string = "";
-  
+
   private currentStationData: RadioStation | null = null;
   private fallbackIndex: number = 0;
-  
+  private retryCount: number = 0;
+  private reconnectTimer: number | null = null;
+
   private metadata: StreamMetadata | null = null;
   private metadataPollingInterval: number | null = null;
 
@@ -100,6 +107,8 @@ class RadioService {
       this.audio.addEventListener("playing", () => {
         this.isBuffering = false;
         this.isPlaying = true;
+        // Reset retry count on successful playback
+        this.retryCount = 0;
         this.emit("stateChange", this.getState());
       });
       
@@ -113,7 +122,7 @@ class RadioService {
         const error = audio.error;
         console.error("[RadioService] Audio error:", error?.code, error?.message);
         console.error("[RadioService] Failed URL:", audio.src);
-        
+
         // Try fallback URL in stream mode
         if (this.mode === "stream" && this.currentStationData?.fallbackUrls) {
           const fallbacks = this.currentStationData.fallbackUrls;
@@ -123,25 +132,47 @@ class RadioService {
             this.fallbackIndex++;
             this.playStreamUrl(nextUrl);
             return;
-          } else {
-            console.error("[RadioService] All stream sources failed for station:", this.currentStationData?.name);
           }
         }
-        
+
+        // Retry with exponential backoff before giving up
+        if (this.mode === "stream" && this.retryCount < MAX_RETRIES) {
+          this.retryCount++;
+          const delay = RETRY_DELAY_MS * Math.pow(2, this.retryCount - 1);
+          console.log(`[RadioService] Retrying stream in ${delay}ms (attempt ${this.retryCount}/${MAX_RETRIES})`);
+
+          this.emit("error", {
+            message: `Connection lost. Reconnecting... (${this.retryCount}/${MAX_RETRIES})`,
+            isRetrying: true,
+          });
+
+          this.reconnectTimer = window.setTimeout(() => {
+            // Reset fallback index to try all URLs again
+            this.fallbackIndex = 0;
+            if (this.currentStationData) {
+              this.playStreamUrl(this.currentStationData.url);
+            }
+          }, delay);
+          return;
+        }
+
+        console.error("[RadioService] All stream sources and retries failed for station:", this.currentStationData?.name);
+
         this.isPlaying = false;
         this.isBuffering = false;
         this.emit("stateChange", this.getState());
-        
+
         // Emit user-friendly error message
         const stationName = this.currentStationData?.name;
         if (stationName && this.mode === "stream") {
-          this.emit("error", { 
-            message: `Unable to play ${stationName}. All sources unavailable.` 
+          this.emit("error", {
+            message: `Unable to play ${stationName}. Please try another station.`,
+            isRetrying: false,
           });
         } else {
-          this.emit("error", { message: `Stream error: ${error?.message || 'Unknown'}` });
+          this.emit("error", { message: `Stream error: ${error?.message || 'Unknown'}`, isRetrying: false });
         }
-        
+
         // Auto-skip to next track on error in playlist mode
         if (this.mode === "playlist" && this.playlist.length > 1) {
           setTimeout(() => this.nextTrack(), 500);
@@ -242,24 +273,26 @@ class RadioService {
     return RADIO_STATIONS.find(s => s.url === url || s.fallbackUrls?.includes(url));
   }
 
-  play(stationUrl: string): void {
+  play(stationUrl: string, stationData?: RadioStation): void {
+    this.clearReconnectTimer();
     this.mode = "stream";
     this.fallbackIndex = 0;
-    
-    // Find station data by primary URL or fallback URL for resilience
-    this.currentStationData = RADIO_STATIONS.find(
+    this.retryCount = 0;
+
+    // Use provided station data, or find by URL
+    this.currentStationData = stationData || RADIO_STATIONS.find(
       s => s.url === stationUrl || s.fallbackUrls?.includes(stationUrl)
-    ) || null;
-    
+    ) || { name: "Unknown Station", url: stationUrl };
+
     // Use primary URL if found via fallback, otherwise use provided URL
     const primaryUrl = this.currentStationData?.url || stationUrl;
-    
-    this.emit("stationChange", { 
-      station: primaryUrl, 
-      stationName: this.currentStationData?.name 
+
+    this.emit("stationChange", {
+      station: primaryUrl,
+      stationName: this.currentStationData?.name
     });
     this.playStreamUrl(primaryUrl);
-    
+
     // Start metadata polling for stream mode
     this.startMetadataPolling();
   }
@@ -342,6 +375,7 @@ class RadioService {
 
   stop(): void {
     this.stopMetadataPolling();
+    this.clearReconnectTimer();
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
@@ -359,7 +393,15 @@ class RadioService {
     this.playlistName = "";
     this.currentStationData = null;
     this.fallbackIndex = 0;
+    this.retryCount = 0;
     this.emit("stateChange", this.getState());
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   pause(): void {

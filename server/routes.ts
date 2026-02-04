@@ -1024,91 +1024,267 @@ export async function registerRoutes(
     }
   });
 
-  // Radio stations health check - tests which stations are accessible
+  // Radio stations organized by category (countries + genres) with icons
   app.get("/api/radio/stations", async (_req: Request, res: Response) => {
-    const stationsByCountry: Record<string, Array<{ name: string; url: string; logo?: string }>> = {
-      "Bulgaria": [
-        { name: "BG Radio", url: "http://stream.radioreklama.bg/bgradio128" },
-        { name: "Radio Energy", url: "http://play.global.audio/nrj128" },
-        { name: "Magic FM", url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8" },
-        { name: "Avto Radio", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac" },
-        { name: "BNR Horizont", url: "http://stream.bnr.bg:8000/horizont.mp3" },
-        { name: "BNR Hristo Botev", url: "http://stream.bnr.bg:8012/hristo-botev.aac" },
-        { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3" },
-        { name: "bTV Radio", url: "https://cdn.bweb.bg/radio/btv-radio.mp3" },
-      ],
-      "Serbia": [
-        { name: "B92", url: "http://stream.b92.net:7999/radio-b92.mp3" },
-        { name: "Radio S", url: "http://stream.radios.rs:8002/radios128" },
-        { name: "Hit FM", url: "http://stream.hitfm.rs:8010/hitfm128" },
-        { name: "Play Radio", url: "http://91.221.134.252:8002/stream" },
-        { name: "Naxi Radio", url: "http://naxi128-naxinacional.streaming.rs:8030/stream" },
-        { name: "Radio 021", url: "https://centova.dukahosting.com/proxy/021kafe/stream" },
-      ],
-      "Greece": [
-        { name: "1055 Rock", url: "http://radio.1055rock.gr:30000/1055" },
-        { name: "Skai 100.3", url: "http://skai.live24.gr/skai1003" },
-        { name: "Athens DeeJay", url: "http://netradio.live24.gr/athensdeejay" },
-        { name: "En Lefko 87.7", url: "http://stream.radiojar.com/enlefko877" },
-        { name: "Galaxy 92", url: "http://galaxy.live24.gr/galaxy9292" },
-        { name: "Pepper 96.6", url: "http://netradio.live24.gr/pepper966" },
-      ],
-      "Russia": [
-        { name: "Europa Plus", url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3" },
-        { name: "Radio Record", url: "https://radiorecord.hostingradio.ru/rr_main96.aacp" },
-        { name: "Russian Gold", url: "https://radiorecord.hostingradio.ru/russiangold96.aacp" },
-        { name: "Retro FM", url: "http://retro256.hostingradio.ru:8052/retro256.mp3" },
-        { name: "Relax FM", url: "https://pub0201.101.ru/stream/trust/mp3/128/24" },
-        { name: "DFM", url: "http://dfm.hostingradio.ru/dfm96.aacp" },
-      ],
+    interface StationConfig {
+      name: string;
+      url: string;
+      fallbackUrls?: string[];
+      logo?: string;
+    }
+
+    interface CategoryConfig {
+      icon: string;
+      stations: StationConfig[];
+    }
+
+    const stationsByCategory: Record<string, CategoryConfig> = {
+      // Country categories
+      "Bulgaria": {
+        icon: "🇧🇬",
+        stations: [
+          {
+            name: "BG Radio",
+            url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
+            fallbackUrls: [
+              "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_L.aac",
+              "http://stream.radioreklama.bg/bgradio128",
+              "http://play.global.audio/bgradio.ogg",
+            ],
+          },
+          {
+            name: "Radio Energy",
+            url: "http://play.global.audio/nrj128",
+            fallbackUrls: ["http://stream.radioreklama.bg/nrj128"],
+          },
+          {
+            name: "Magic FM",
+            url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8",
+            fallbackUrls: ["http://stream.radioreklama.bg/magicfm128"],
+          },
+          {
+            name: "Avto Radio",
+            url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_H.aac",
+            fallbackUrls: [
+              "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac",
+            ],
+          },
+          {
+            name: "BNR Horizont",
+            url: "http://stream.bnr.bg:8000/horizont.mp3",
+            fallbackUrls: ["http://bnr.bg/listen?media=horizont"],
+          },
+          {
+            name: "BNR Hristo Botev",
+            url: "http://stream.bnr.bg:8012/hristo-botev.aac",
+            fallbackUrls: ["http://stream.bnr.bg:8012/hristo-botev.mp3"],
+          },
+          { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3" },
+          {
+            name: "bTV Radio",
+            url: "https://cdn.bweb.bg/radio/btv-radio.mp3",
+            fallbackUrls: ["http://stream.btvradio.bg/high.mp3"],
+          },
+        ],
+      },
+      "Serbia": {
+        icon: "🇷🇸",
+        stations: [
+          {
+            name: "B92",
+            url: "http://stream.b92.net:7999/radio-b92.mp3",
+            fallbackUrls: ["http://stream2.b92.net:7999/radio-b92.mp3"],
+          },
+          { name: "Radio S", url: "http://stream.radios.rs:8002/radios128" },
+          { name: "Hit FM", url: "http://stream.hitfm.rs:8010/hitfm128" },
+          { name: "Play Radio", url: "http://91.221.134.252:8002/stream" },
+          {
+            name: "Naxi Radio",
+            url: "http://naxi128-naxinacional.streaming.rs:8030/stream",
+            fallbackUrls: ["http://stream.naxi.rs:8030/stream"],
+          },
+          { name: "Radio 021", url: "https://centova.dukahosting.com/proxy/021kafe/stream" },
+        ],
+      },
+      "Greece": {
+        icon: "🇬🇷",
+        stations: [
+          { name: "1055 Rock", url: "http://radio.1055rock.gr:30000/1055" },
+          {
+            name: "Skai 100.3",
+            url: "http://skai.live24.gr/skai1003",
+            fallbackUrls: ["http://netradio.live24.gr/skai1003"],
+          },
+          { name: "Athens DeeJay", url: "http://netradio.live24.gr/athensdeejay" },
+          { name: "En Lefko 87.7", url: "http://stream.radiojar.com/enlefko877" },
+          { name: "Galaxy 92", url: "http://galaxy.live24.gr/galaxy9292" },
+          { name: "Pepper 96.6", url: "http://netradio.live24.gr/pepper966" },
+        ],
+      },
+      "Russia": {
+        icon: "🇷🇺",
+        stations: [
+          {
+            name: "Europa Plus",
+            url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3",
+            fallbackUrls: ["http://ep128.hostingradio.ru:8052/europaplus128.mp3"],
+          },
+          {
+            name: "Radio Record",
+            url: "https://radiorecord.hostingradio.ru/rr_main96.aacp",
+            fallbackUrls: ["http://air.radiorecord.ru:8102/rr_main96_aacp"],
+          },
+          { name: "Russian Gold", url: "https://radiorecord.hostingradio.ru/russiangold96.aacp" },
+          {
+            name: "Retro FM",
+            url: "http://retro256.hostingradio.ru:8052/retro256.mp3",
+            fallbackUrls: ["http://retro128.hostingradio.ru:8052/retro128.mp3"],
+          },
+          { name: "Relax FM", url: "https://pub0201.101.ru/stream/trust/mp3/128/24" },
+          { name: "DFM", url: "http://dfm.hostingradio.ru/dfm96.aacp" },
+        ],
+      },
+      // Genre categories - non-commercial free streams
+      "Jazz": {
+        icon: "🎷",
+        stations: [
+          { name: "KCSM Jazz", url: "https://ice7.securenetsystems.net/KCSM2" },
+          { name: "Jazz24", url: "https://live.amperwave.net/direct/ppm-jazz24aac256-ibc1" },
+          { name: "Smooth Jazz Florida", url: "http://us4.internet-radio.com:8266/stream" },
+          { name: "Radio Swiss Jazz", url: "http://stream.srg-ssr.ch/m/rsj/mp3_128" },
+          { name: "ABC Jazz", url: "https://live-radio01.mediahubaustralia.com/JAZW/mp3/" },
+          { name: "Bossa Nova Brazil", url: "http://centova.radios.pt:9478/stream" },
+        ],
+      },
+      "Classical": {
+        icon: "🎻",
+        stations: [
+          { name: "WQXR Classical", url: "https://stream.wqxr.org/wqxr" },
+          { name: "Radio Swiss Classic", url: "http://stream.srg-ssr.ch/m/rsc_de/mp3_128" },
+          { name: "ABC Classic", url: "https://live-radio01.mediahubaustralia.com/2FMW/mp3/" },
+          { name: "Venice Classic Radio", url: "http://109.123.116.202:8022/stream" },
+          { name: "Classic FM", url: "http://media-ice.musicradio.com/ClassicFMMP3" },
+          { name: "WCPE Classical", url: "http://audio-ogg.ibiblio.org:8000/wcpe.ogg" },
+        ],
+      },
+      "Metal": {
+        icon: "🤘",
+        stations: [
+          { name: "Metal Express Radio", url: "http://5.135.154.69:11590/stream" },
+          { name: "KNAC Pure Rock", url: "https://stream.knac.com/knac" },
+          { name: "HardRadio", url: "http://server1.inetify.pl:17030/stream" },
+          { name: "RockRadio1", url: "http://listen.rockradio.de/rockradio1.mp3" },
+          { name: "Rebel Radio", url: "http://158.69.228.195:8038/stream" },
+          { name: "Metal Rock Radio", url: "http://144.217.158.59:5566/stream" },
+        ],
+      },
+      "Ambient": {
+        icon: "🌙",
+        stations: [
+          { name: "SomaFM Drone Zone", url: "https://ice2.somafm.com/dronezone-128-mp3" },
+          { name: "SomaFM Space Station", url: "https://ice2.somafm.com/spacestation-128-mp3" },
+          { name: "SomaFM Deep Space One", url: "https://ice2.somafm.com/deepspaceone-128-mp3" },
+          { name: "Ambient Sleeping Pill", url: "http://radio.stereoscenic.com/asp-s" },
+          { name: "SomaFM Groove Salad", url: "https://ice2.somafm.com/groovesalad-128-mp3" },
+          { name: "Chillout Lounge", url: "http://air.radioart.com/fChillout.mp3" },
+        ],
+      },
+      "Electronic": {
+        icon: "🎧",
+        stations: [
+          { name: "SomaFM Secret Agent", url: "https://ice2.somafm.com/secretagent-128-mp3" },
+          { name: "SomaFM DEF CON", url: "https://ice2.somafm.com/defcon-128-mp3" },
+          { name: "Digitally Imported Trance", url: "http://prem1.di.fm:80/trance" },
+          { name: "Frisky Radio", url: "http://stream1.friskyradio.com/frisky_mp3_hi" },
+          { name: "SomaFM Beat Blender", url: "https://ice2.somafm.com/beatblender-128-mp3" },
+          { name: "Proton Radio", url: "http://protonradio.com:8000/proton" },
+        ],
+      },
     };
 
-    // Helper to check if a station is healthy
-    async function checkStation(station: { name: string; url: string; logo?: string }) {
+    // Helper to check if a URL is reachable
+    async function checkUrl(url: string): Promise<boolean> {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        
-        const response = await fetch(station.url, {
+        const timeout = setTimeout(() => controller.abort(), 4000);
+
+        // Try HEAD first
+        const response = await fetch(url, {
           method: "HEAD",
           signal: controller.signal,
           redirect: "follow",
         });
         clearTimeout(timeout);
-        
-        return response.status === 200 || response.status === 302 || response.status === 405;
-      } catch {
-        // Try GET for streams that don't support HEAD
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
-          
-          const response = await fetch(station.url, {
-            method: "GET",
-            signal: controller.signal,
-            redirect: "follow",
-          });
-          clearTimeout(timeout);
-          
-          return response.status === 200 || response.status === 302;
-        } catch {
-          return false;
+
+        if (response.status === 200 || response.status === 302 || response.status === 405) {
+          return true;
         }
+      } catch {
+        // HEAD failed, continue to GET
+      }
+
+      // Try GET for streams that don't support HEAD
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+
+        const response = await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          redirect: "follow",
+        });
+        clearTimeout(timeout);
+
+        return response.status === 200 || response.status === 302;
+      } catch {
+        return false;
       }
     }
 
-    // Test all stations in parallel and group by country
-    const result: Record<string, Array<{ name: string; url: string; logo?: string }>> = {};
-    
+    // Check station and find best working URL (primary or fallback)
+    async function checkStation(station: StationConfig): Promise<StationConfig | null> {
+      // Try primary URL first
+      if (await checkUrl(station.url)) {
+        return station;
+      }
+
+      // Try fallback URLs
+      if (station.fallbackUrls) {
+        for (const fallbackUrl of station.fallbackUrls) {
+          if (await checkUrl(fallbackUrl)) {
+            // Return station with working fallback as primary
+            return {
+              ...station,
+              url: fallbackUrl,
+              fallbackUrls: [station.url, ...station.fallbackUrls.filter(u => u !== fallbackUrl)],
+            };
+          }
+        }
+      }
+
+      // No working URLs found - still return station so user can try
+      // (stream might work even if health check fails)
+      return station;
+    }
+
+    // Response includes icon for each category
+    interface CategoryResponse {
+      icon: string;
+      stations: StationConfig[];
+    }
+
+    // Test all stations in parallel, grouped by category
+    const result: Record<string, CategoryResponse> = {};
+
     await Promise.all(
-      Object.entries(stationsByCountry).map(async ([country, stations]) => {
-        const healthyStations = await Promise.all(
-          stations.map(async (station) => {
-            const isHealthy = await checkStation(station);
-            return isHealthy ? station : null;
-          })
+      Object.entries(stationsByCategory).map(async ([category, config]) => {
+        const checkedStations = await Promise.all(
+          config.stations.map(async (station) => checkStation(station))
         );
-        result[country] = healthyStations.filter((s): s is typeof stations[0] => s !== null);
+        result[category] = {
+          icon: config.icon,
+          stations: checkedStations.filter((s): s is StationConfig => s !== null),
+        };
       })
     );
 
@@ -1907,6 +2083,7 @@ export async function registerRoutes(
   });
 
   // Get photos from user's persistent collection (refresh URLs from active session)
+  // Always returns consistent shape: { photos, storedCount, sessionActive, needsSessionRefresh }
   app.get("/api/photos", async (req: Request, res: Response) => {
     try {
       const userId = req.headers["x-clerk-user-id"] as string;
@@ -1921,16 +2098,28 @@ export async function registerRoutes(
 
       const userData = await getOrCreateUser(userId, username);
       const selectedPhotos = userData.settings?.selectedPhotos || [];
-      
+
       if (selectedPhotos.length === 0) {
         console.log("[Photos] No photos in persistent collection");
-        res.json([]);
+        res.json({
+          photos: [],
+          storedCount: 0,
+          sessionActive: false,
+          needsSessionRefresh: false,
+        });
         return;
       }
 
       const accessToken = await getValidGoogleToken(userData);
       if (!accessToken) {
-        res.status(401).json({ error: "Google Photos not connected" });
+        // Return stored count even when not connected, so UI can show appropriate message
+        res.json({
+          photos: [],
+          storedCount: selectedPhotos.length,
+          sessionActive: false,
+          needsSessionRefresh: true,
+          error: "Google Photos not connected",
+        });
         return;
       }
 
@@ -1938,22 +2127,29 @@ export async function registerRoutes(
       const sessionId = userData.settings?.pickerSessionId;
       let freshPhotos: GooglePhotoItem[] = [];
       let sessionActive = false;
-      
+      let sessionError: string | undefined;
+
       if (sessionId) {
         try {
           const session = await getPickerSession(accessToken, sessionId);
           if (session?.mediaItemsSet) {
             freshPhotos = await getPickedMediaItems(accessToken, sessionId);
             sessionActive = true;
+          } else if (session === null) {
+            // Session doesn't exist or is invalid
+            sessionError = "Session expired or invalid";
           }
         } catch (err) {
-          console.log("[Photos] Session fetch failed, may be expired");
+          console.log("[Photos] Session fetch failed, may be expired:", err);
+          sessionError = "Failed to fetch session";
         }
+      } else {
+        sessionError = "No session ID stored";
       }
 
       // Build a map of fresh URLs by photo ID
       const freshUrlMap = new Map(freshPhotos.map(p => [p.id, p]));
-      
+
       // Return ALL stored photos, with fresh URLs where available
       const now = Date.now();
       const photos: GooglePhotoItem[] = selectedPhotos.map(stored => {
@@ -1968,21 +2164,19 @@ export async function registerRoutes(
         };
       });
 
-      // Filter to only those with URLs for display, but log the total
+      // Filter to only those with URLs for display
       const displayablePhotos = photos.filter(p => p.baseUrl);
-      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored, session active:", sessionActive);
-      
-      // If no fresh URLs but we have stored photos, return empty with session status
-      if (displayablePhotos.length === 0 && selectedPhotos.length > 0) {
-        res.json({ 
-          photos: [], 
-          storedCount: selectedPhotos.length,
-          needsSessionRefresh: true 
-        });
-        return;
-      }
+      const needsSessionRefresh = displayablePhotos.length === 0 && selectedPhotos.length > 0;
 
-      res.json(displayablePhotos);
+      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored, session active:", sessionActive, sessionError ? `(${sessionError})` : "");
+
+      res.json({
+        photos: displayablePhotos,
+        storedCount: selectedPhotos.length,
+        sessionActive,
+        needsSessionRefresh,
+        ...(sessionError && { sessionError }),
+      });
     } catch (error) {
       console.error("[Photos] Error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -2872,7 +3066,7 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-      
+
       // Handle messages as either array or object
       let rawMessages: Message[] = [];
       if (Array.isArray(userData.messages)) {
@@ -2880,7 +3074,7 @@ export async function registerRoutes(
       } else if (userData.messages && typeof userData.messages === 'object') {
         rawMessages = Object.values(userData.messages);
       }
-      
+
       const messages = rawMessages.filter((m: Message) => m.id !== messageId);
 
       await updateUserData(userId, { messages });
@@ -2891,6 +3085,216 @@ export async function registerRoutes(
       res.status(500).json({ error: "Internal server error" });
     }
   });
+
+  // ============================================
+  // YOUTUBE VIDEO INFO ENDPOINTS
+  // ============================================
+
+  // Get YouTube video info (title, thumbnail) using oEmbed
+  app.get("/api/youtube/video/:videoId", asyncHandler(async (req: Request, res: Response) => {
+    const { videoId } = req.params;
+
+    if (!videoId || videoId.length !== 11) {
+      res.status(400).json({ error: "Invalid video ID" });
+      return;
+    }
+
+    try {
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+      const response = await fetch(oembedUrl);
+
+      if (!response.ok) {
+        res.status(404).json({ error: "Video not found" });
+        return;
+      }
+
+      const data = await response.json();
+      res.json({
+        videoId,
+        title: data.title,
+        thumbnail: data.thumbnail_url,
+        author: data.author_name,
+      });
+    } catch (error) {
+      console.error("YouTube video info error:", error);
+      res.status(500).json({ error: "Failed to fetch video info" });
+    }
+  }));
+
+  // Get multiple YouTube video infos at once
+  app.post("/api/youtube/videos", asyncHandler(async (req: Request, res: Response) => {
+    const { videoIds } = req.body;
+
+    if (!Array.isArray(videoIds) || videoIds.length === 0) {
+      res.status(400).json({ error: "videoIds array is required" });
+      return;
+    }
+
+    if (videoIds.length > 50) {
+      res.status(400).json({ error: "Maximum 50 videos per request" });
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      videoIds.map(async (videoId: string) => {
+        try {
+          const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+          const response = await fetch(oembedUrl);
+
+          if (!response.ok) {
+            return { videoId, title: `Track`, error: "not found" };
+          }
+
+          const data = await response.json();
+          return {
+            videoId,
+            title: data.title,
+            thumbnail: data.thumbnail_url,
+          };
+        } catch {
+          return { videoId, title: `Track`, error: "fetch failed" };
+        }
+      })
+    );
+
+    const videos = results.map((result, index) => {
+      if (result.status === "fulfilled") {
+        return result.value;
+      }
+      return { videoId: videoIds[index], title: `Track ${index + 1}`, error: "failed" };
+    });
+
+    res.json({ videos });
+  }));
+
+  // ============================================
+  // CUSTOM PLAYLISTS ENDPOINTS
+  // ============================================
+
+  // Get user's custom playlists
+  app.get("/api/playlists", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+    res.json(playlists);
+  }));
+
+  // Create a new custom playlist
+  app.post("/api/playlists", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { name, description, iconHint, colorTheme, videoIds } = req.body;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    if (!name || !videoIds || !Array.isArray(videoIds)) {
+      res.status(400).json({ error: "name and videoIds are required" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+
+    const newPlaylist = {
+      id: randomUUID(),
+      name,
+      description: description || "",
+      iconHint: iconHint || "music",
+      colorTheme: colorTheme || "#E91E63",
+      videoIds,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    playlists.push(newPlaylist);
+
+    await updateUserData(userId, {
+      settings: {
+        ...userData.settings,
+        customPlaylists: playlists,
+      },
+    });
+
+    res.json(newPlaylist);
+  }));
+
+  // Update a custom playlist
+  app.patch("/api/playlists/:playlistId", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { playlistId } = req.params;
+    const updates = req.body;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+
+    const index = playlists.findIndex((p: any) => p.id === playlistId);
+    if (index === -1) {
+      res.status(404).json({ error: "Playlist not found" });
+      return;
+    }
+
+    playlists[index] = {
+      ...playlists[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await updateUserData(userId, {
+      settings: {
+        ...userData.settings,
+        customPlaylists: playlists,
+      },
+    });
+
+    res.json(playlists[index]);
+  }));
+
+  // Delete a custom playlist
+  app.delete("/api/playlists/:playlistId", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { playlistId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+
+    const filtered = playlists.filter((p: any) => p.id !== playlistId);
+
+    if (filtered.length === playlists.length) {
+      res.status(404).json({ error: "Playlist not found" });
+      return;
+    }
+
+    await updateUserData(userId, {
+      settings: {
+        ...userData.settings,
+        customPlaylists: filtered,
+      },
+    });
+
+    res.json({ success: true });
+  }));
 
   return httpServer;
 }
