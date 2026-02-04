@@ -140,11 +140,11 @@ export function clearVideoCache(): void {
 export function getCacheStats(): { size: number; oldestEntry: number | null } {
   let oldestTimestamp: number | null = null;
 
-  for (const [, value] of videoInfoCache) {
+  videoInfoCache.forEach((value) => {
     if (oldestTimestamp === null || value.timestamp < oldestTimestamp) {
       oldestTimestamp = value.timestamp;
     }
-  }
+  });
 
   return {
     size: videoInfoCache.size,

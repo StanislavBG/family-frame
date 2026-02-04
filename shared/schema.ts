@@ -224,6 +224,9 @@ export const userSettingsSchema = z.object({
   // TV settings
   tvVolume: z.number().min(0).max(100).default(50),
   lastTvChannel: z.string().optional(), // URL of last played channel
+  // Baby Songs settings
+  babySongsFavorites: z.array(z.string()).default([]), // Track IDs or YouTube video IDs
+  babySongsShuffleEnabled: z.boolean().default(false),
 });
 
 export type UserSettings = z.infer<typeof userSettingsSchema>;
