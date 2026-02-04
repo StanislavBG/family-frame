@@ -20,13 +20,6 @@ interface QualityLevel {
   label: string;
 }
 
-const COUNTRY_FLAGS: Record<string, string> = {
-  "Bulgaria": "🇧🇬",
-  "Serbia": "🇷🇸",
-  "Greece": "🇬🇷",
-  "Russia": "🇷🇺",
-};
-
 const AUTO_HIDE_DELAY = 4000; // 4 seconds
 const RECONNECT_DELAYS = [2000, 4000, 8000, 16000]; // Exponential backoff
 
@@ -693,14 +686,14 @@ export default function TVPage() {
                 key={country}
                 onClick={() => setSelectedCountry(country)}
                 className={cn(
-                  "px-3 py-2 rounded-lg text-sm font-medium transition-colors touch-manipulation",
+                  "px-3 py-2 rounded-lg text-sm font-medium transition-colors touch-manipulation whitespace-nowrap",
                   selectedCountry === country
                     ? "bg-white/20 text-white"
                     : "text-white/60 hover:text-white hover:bg-white/10"
                 )}
-                data-testid={`tab-tv-country-${country.toLowerCase()}`}
+                data-testid={`tab-tv-country-${country.toLowerCase().replace(/[^a-z]/g, '-')}`}
               >
-                {COUNTRY_FLAGS[country] || ""} {country}
+                {country}
               </button>
             ))}
           </div>
