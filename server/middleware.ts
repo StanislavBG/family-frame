@@ -54,6 +54,19 @@ function getDefaultUserData(clerkId: string, username: string): UserData {
       babyAgeMonths: 12,
       customPlaylists: [],
       tvVolume: 50,
+      // Screensaver settings
+      screensaverEnabled: true,
+      screensaverDelay: 5,
+      screensaverMode: "cycle",
+      // Sleep mode settings
+      sleepModeEnabled: false,
+      sleepStartTime: "22:00",
+      sleepEndTime: "07:00",
+      sleepDimLevel: 20,
+      // Weather alerts
+      weatherAlertsEnabled: true,
+      // Dashboard settings
+      dashboardLayout: "default",
       babySongsFavorites: [],
       babySongsShuffleEnabled: false,
     },

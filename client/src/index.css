@@ -319,3 +319,77 @@
     padding-left: env(safe-area-inset-left, 0);
   }
 }
+
+/* ===== Screensaver Animations ===== */
+
+/* Ken Burns effect - slow pan and zoom animations */
+@keyframes ken-burns-1 {
+  0% {
+    transform: scale(1) translate(0, 0);
+  }
+  100% {
+    transform: scale(1.2) translate(-5%, -5%);
+  }
+}
+
+@keyframes ken-burns-2 {
+  0% {
+    transform: scale(1.1) translate(-3%, 0);
+  }
+  100% {
+    transform: scale(1) translate(3%, 5%);
+  }
+}
+
+@keyframes ken-burns-3 {
+  0% {
+    transform: scale(1) translate(2%, 2%);
+  }
+  100% {
+    transform: scale(1.15) translate(-2%, -3%);
+  }
+}
+
+.animate-ken-burns-1 {
+  animation: ken-burns-1 20s ease-in-out infinite alternate;
+}
+
+.animate-ken-burns-2 {
+  animation: ken-burns-2 18s ease-in-out infinite alternate;
+}
+
+.animate-ken-burns-3 {
+  animation: ken-burns-3 22s ease-in-out infinite alternate;
+}
+
+/* Fade animations for screensaver transitions */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out-delayed {
+  0%, 80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 1s ease-out forwards;
+}
+
+.animate-fade-out-delayed {
+  animation: fade-out-delayed 5s ease-out forwards;
+}
+
+/* Radial gradient for photo vignette effect */
+.bg-gradient-radial {
+  background: radial-gradient(circle, var(--tw-gradient-stops));
+}
