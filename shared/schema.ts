@@ -541,17 +541,22 @@ export const babyRadioStationSchema = z.object({
 
 export type BabyRadioStation = z.infer<typeof babyRadioStationSchema>;
 
-// Baby Radio Stations - Core stations with reliable content from Archive.org library
-// Additional occasions available via YouTube mood stations below
+// Baby Radio Stations - Archive.org library (ad-free, offline-capable)
+// All stations available - UI shows track count and disables empty ones for current age
 export const BABY_RADIO_STATIONS: BabyRadioStation[] = [
+  // Core stations with reliable content
   { id: "morning", name: "Sunshine Wake-Up", iconHint: "sun", colorTheme: "#FFEB3B", situation: Situation.MORNING, description: "Cheerful songs to start the day" },
   { id: "playtime", name: "Active Play & Dance", iconHint: "bee", colorTheme: "#FF9800", situation: Situation.PLAYTIME, description: "Energetic music for movement" },
   { id: "quiet", name: "Quiet Time", iconHint: "leaf", colorTheme: "#4CAF50", situation: Situation.QUIET, description: "Calming music for focus" },
   { id: "mealtime", name: "Mealtime Music", iconHint: "utensils", colorTheme: "#8BC34A", situation: Situation.MEALTIME, description: "Pleasant background for meals" },
   { id: "bedtime", name: "Bedtime Lullabies", iconHint: "moon", colorTheme: "#3F51B5", situation: Situation.BEDTIME, description: "Soothing sounds for sleep" },
-  // Stations with good coverage (8+ tracks)
+  // Extended occasions
   { id: "learning", name: "ABC & 123", iconHint: "book", colorTheme: "#E91E63", situation: Situation.LEARNING, description: "Educational songs" },
   { id: "carride", name: "Road Trip Tunes", iconHint: "car", colorTheme: "#9C27B0", situation: Situation.CARRIDE, description: "Songs for car journeys" },
+  { id: "bathtime", name: "Splish Splash", iconHint: "droplet", colorTheme: "#00BCD4", situation: Situation.BATHTIME, description: "Fun bath time tunes" },
+  { id: "naptime", name: "Dreamy Naps", iconHint: "cloud", colorTheme: "#607D8B", situation: Situation.NAPTIME, description: "Gentle nap time music" },
+  { id: "outdoor", name: "Nature Explorer", iconHint: "tree", colorTheme: "#795548", situation: Situation.OUTDOOR, description: "Outdoor adventure songs" },
+  { id: "celebration", name: "Party Time", iconHint: "party", colorTheme: "#F44336", situation: Situation.CELEBRATION, description: "Celebration & party music" },
 ];
 
 // YouTube-based track for mood stations
