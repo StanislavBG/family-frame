@@ -221,17 +221,17 @@ function LandingPage() {
       {/* Features Grid */}
       <section className="flex-1 px-4 md:px-6 pb-8">
         <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-5 md:grid-cols-10 gap-3 md:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-2 md:gap-3">
             {applications.map((app, index) => (
               <div
                 key={index}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-card border hover:shadow-md hover:border-primary/20 transition-all cursor-default"
+                className="flex flex-row md:flex-col items-center gap-3 md:gap-1.5 p-3 rounded-xl bg-card border hover:shadow-md hover:border-primary/20 transition-all cursor-default"
                 data-testid={`app-card-${index}`}
               >
-                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-lg ${app.bgColor} flex items-center justify-center`}>
+                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-lg ${app.bgColor} flex items-center justify-center flex-shrink-0`}>
                   <app.icon className={`h-5 w-5 md:h-6 md:w-6 ${app.color}`} />
                 </div>
-                <span className="text-xs font-medium text-center">{app.title}</span>
+                <span className="text-sm md:text-xs font-medium md:text-center">{app.title}</span>
               </div>
             ))}
           </div>
@@ -239,29 +239,35 @@ function LandingPage() {
       </section>
 
       {/* Benefits Section */}
-      <section className="px-4 md:px-6 py-8 bg-muted/40">
+      <section className="px-4 md:px-6 py-6 bg-muted/40">
         <div className="max-w-4xl mx-auto">
-          <div className="grid md:grid-cols-3 gap-4 md:gap-6">
-            <div className="text-center p-4">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4">
+            <div className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Home className="h-5 w-5 text-primary" />
               </div>
-              <h3 className="font-semibold mb-1">Multi-Generational</h3>
-              <p className="text-sm text-muted-foreground">Designed for all ages with large, clear interfaces</p>
+              <div>
+                <h3 className="font-semibold text-sm md:mb-1">Multi-Generational</h3>
+                <p className="text-xs text-muted-foreground">Designed for all ages with large, clear interfaces</p>
+              </div>
             </div>
-            <div className="text-center p-4">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
+            <div className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Cloud className="h-5 w-5 text-primary" />
               </div>
-              <h3 className="font-semibold mb-1">Always Connected</h3>
-              <p className="text-sm text-muted-foreground">Real-time weather, photos, and family updates</p>
+              <div>
+                <h3 className="font-semibold text-sm md:mb-1">Always Connected</h3>
+                <p className="text-xs text-muted-foreground">Real-time weather, photos, and family updates</p>
+              </div>
             </div>
-            <div className="text-center p-4">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
+            <div className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <MessageSquare className="h-5 w-5 text-primary" />
               </div>
-              <h3 className="font-semibold mb-1">Stay in Touch</h3>
-              <p className="text-sm text-muted-foreground">Share messages with loved ones instantly</p>
+              <div>
+                <h3 className="font-semibold text-sm md:mb-1">Stay in Touch</h3>
+                <p className="text-xs text-muted-foreground">Share messages with loved ones instantly</p>
+              </div>
             </div>
           </div>
         </div>
