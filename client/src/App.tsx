@@ -171,6 +171,65 @@ function AuthenticatedLayout() {
 
 function LandingPage() {
   const prefersReducedMotion = useReducedMotion();
+  const [activeFeature, setActiveFeature] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const features = useMemo(() => [
+    {
+      icon: Clock,
+      title: "Clock",
+      tagline: "Always Know the Time",
+      description: "A beautiful, large-format clock that's easy to read from across the room. Perfect for mounted displays.",
+      color: "text-blue-500",
+      bgColor: "bg-blue-500",
+      gradient: "from-blue-500/20 via-blue-400/10 to-transparent",
+    },
+    {
+      icon: Cloud,
+      title: "Weather",
+      tagline: "Stay Ahead of the Forecast",
+      description: "Real-time weather updates with hourly and weekly forecasts. See conditions for your home and connected households.",
+      color: "text-sky-500",
+      bgColor: "bg-sky-500",
+      gradient: "from-sky-500/20 via-sky-400/10 to-transparent",
+    },
+    {
+      icon: ImageIcon,
+      title: "Photos",
+      tagline: "Your Memories on Display",
+      description: "Turn your screen into a digital photo frame. Sync with Google Photos or browse beautiful stock imagery.",
+      color: "text-pink-500",
+      bgColor: "bg-pink-500",
+      gradient: "from-pink-500/20 via-pink-400/10 to-transparent",
+    },
+    {
+      icon: Calendar,
+      title: "Calendar",
+      tagline: "Never Miss a Moment",
+      description: "Track birthdays, anniversaries, and family events. Get gentle reminders for what matters most.",
+      color: "text-orange-500",
+      bgColor: "bg-orange-500",
+      gradient: "from-orange-500/20 via-orange-400/10 to-transparent",
+    },
+    {
+      icon: MessageSquare,
+      title: "Messages",
+      tagline: "Connect Across Homes",
+      description: "Send and receive messages between connected households. Perfect for quick notes to grandparents or kids.",
+      color: "text-violet-500",
+      bgColor: "bg-violet-500",
+      gradient: "from-violet-500/20 via-violet-400/10 to-transparent",
+    },
+    {
+      icon: Radio,
+      title: "Radio",
+      tagline: "Music for Every Mood",
+      description: "Stream radio stations from around the world. Background music that plays across all your Family Frame pages.",
+      color: "text-green-500",
+      bgColor: "bg-green-500",
+      gradient: "from-green-500/20 via-green-400/10 to-transparent",
+    },
+  ], []);
 
   const applications = useMemo(() => [
     { icon: Clock, title: "Clock", color: "text-blue-500", bgColor: "bg-blue-500/10", description: "Display current time" },
@@ -184,6 +243,15 @@ function LandingPage() {
     { icon: ShoppingCart, title: "Shopping", color: "text-emerald-500", bgColor: "bg-emerald-500/10", description: "Manage shopping lists" },
     { icon: BarChart3, title: "Stocks", color: "text-indigo-500", bgColor: "bg-indigo-500/10", description: "Track market updates" },
   ], []);
+
+  // Auto-rotate carousel
+  useEffect(() => {
+    if (isPaused || prefersReducedMotion) return;
+    const interval = setInterval(() => {
+      setActiveFeature((prev) => (prev + 1) % features.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isPaused, prefersReducedMotion, features.length]);
 
   const fadeInUp = prefersReducedMotion ? {} : {
     initial: { opacity: 0, y: 20 },
@@ -199,6 +267,8 @@ function LandingPage() {
     initial: { opacity: 0, y: 10 },
     animate: { opacity: 1, y: 0 }
   };
+
+  const currentFeature = features[activeFeature];
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-background via-background to-muted/30">
@@ -247,41 +317,117 @@ function LandingPage() {
           </div>
         </motion.section>
 
-        {/* Features Grid */}
-        <section className="flex-1 px-4 md:px-6 pb-8" aria-labelledby="features-heading">
-          <h2 id="features-heading" className="sr-only">Available Features</h2>
-          <motion.div
-            className="max-w-5xl mx-auto"
-            initial="initial"
-            animate="animate"
-            {...staggerContainer}
-          >
-            <ul
-              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-2 md:gap-3"
+        {/* Feature Showcase Carousel */}
+        <section
+          className="px-4 md:px-6 py-6 md:py-10"
+          aria-labelledby="showcase-heading"
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+        >
+          <h2 id="showcase-heading" className="sr-only">Feature Showcase</h2>
+          <div className="max-w-5xl mx-auto">
+            {/* Main Banner */}
+            <div className={`relative overflow-hidden rounded-2xl md:rounded-3xl bg-gradient-to-br ${currentFeature.gradient} border shadow-lg`}>
+              <div className="flex flex-col md:flex-row items-center gap-6 p-6 md:p-10">
+                {/* Icon Display */}
+                <motion.div
+                  key={`icon-${activeFeature}`}
+                  initial={prefersReducedMotion ? {} : { scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.4 }}
+                  className={`w-24 h-24 md:w-32 md:h-32 lg:w-40 lg:h-40 rounded-2xl md:rounded-3xl ${currentFeature.bgColor} flex items-center justify-center shadow-xl flex-shrink-0`}
+                >
+                  <currentFeature.icon className="w-12 h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 text-white" />
+                </motion.div>
+
+                {/* Content */}
+                <motion.div
+                  key={`content-${activeFeature}`}
+                  initial={prefersReducedMotion ? {} : { x: 20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ duration: 0.4, delay: 0.1 }}
+                  className="flex-1 text-center md:text-left"
+                >
+                  <p className={`text-sm font-semibold uppercase tracking-wider ${currentFeature.color} mb-1`}>
+                    {currentFeature.title}
+                  </p>
+                  <h3 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-3">
+                    {currentFeature.tagline}
+                  </h3>
+                  <p className="text-muted-foreground text-sm md:text-base max-w-lg">
+                    {currentFeature.description}
+                  </p>
+                </motion.div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/30">
+                <motion.div
+                  key={`progress-${activeFeature}`}
+                  className={`h-full ${currentFeature.bgColor}`}
+                  initial={{ width: "0%" }}
+                  animate={{ width: isPaused ? "0%" : "100%" }}
+                  transition={{ duration: isPaused ? 0 : 5, ease: "linear" }}
+                />
+              </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex justify-center gap-2 mt-4" role="tablist" aria-label="Feature tabs">
+              {features.map((feature, index) => (
+                <button
+                  key={feature.title}
+                  onClick={() => setActiveFeature(index)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-all min-h-10 ${
+                    index === activeFeature
+                      ? `${feature.bgColor} text-white shadow-md`
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  }`}
+                  role="tab"
+                  aria-selected={index === activeFeature}
+                  aria-controls={`feature-panel-${index}`}
+                  data-testid={`tab-feature-${feature.title.toLowerCase()}`}
+                >
+                  <feature.icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{feature.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* All Features Grid */}
+        <section className="px-4 md:px-6 pb-6" aria-labelledby="features-heading">
+          <div className="max-w-5xl mx-auto">
+            <h2 id="features-heading" className="text-center text-lg font-semibold text-muted-foreground mb-4">
+              All 10 Features Included
+            </h2>
+            <motion.ul
+              className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-10 gap-2"
               role="list"
               aria-label="Application features"
+              initial="initial"
+              animate="animate"
+              {...staggerContainer}
             >
               {applications.map((app, index) => (
                 <motion.li
                   key={app.title}
-                  className="flex flex-row md:flex-col items-center gap-3 md:gap-1.5 p-3 min-h-11 rounded-xl bg-card border hover:shadow-md hover:border-primary/20 transition-all"
+                  className="flex flex-col items-center gap-1.5 p-2 md:p-3 rounded-xl bg-card border hover:shadow-md hover:border-primary/20 transition-all"
                   data-testid={`app-card-${index}`}
                   {...fadeInItem}
                 >
                   <div
-                    className={`w-10 h-10 md:w-12 md:h-12 rounded-lg ${app.bgColor} flex items-center justify-center flex-shrink-0`}
+                    className={`w-8 h-8 md:w-10 md:h-10 rounded-lg ${app.bgColor} flex items-center justify-center`}
                     aria-hidden="true"
                   >
-                    <app.icon className={`h-5 w-5 md:h-6 md:w-6 ${app.color}`} />
+                    <app.icon className={`h-4 w-4 md:h-5 md:w-5 ${app.color}`} />
                   </div>
-                  <span className="text-sm md:text-xs font-medium md:text-center">
-                    {app.title}
-                    <span className="sr-only">: {app.description}</span>
-                  </span>
+                  <span className="text-xs font-medium text-center">{app.title}</span>
                 </motion.li>
               ))}
-            </ul>
-          </motion.div>
+            </motion.ul>
+          </div>
         </section>
 
         {/* Benefits Section */}
