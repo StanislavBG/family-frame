@@ -108,13 +108,13 @@ export default function MessagesPage() {
   }
 
   return (
-    <div ref={containerRef} className="h-full p-4 md:p-8 overflow-auto bg-background">
+    <div ref={containerRef} className="h-full p-4 md:p-6 overflow-auto bg-background">
       <FullscreenButton isFullscreen={isFullscreen} onToggle={toggleFullscreen} />
 
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-4xl font-semibold" data-testid="text-messages-title">Messages</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl md:text-4xl font-semibold" data-testid="text-messages-title">Messages</h1>
             {unreadCount > 0 && (
               <Badge variant="destructive" data-testid="badge-unread-count">
                 {unreadCount} unread
@@ -227,12 +227,12 @@ export default function MessagesPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
+          <Card className="flex-1">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 py-3">
               <CardTitle className="text-lg">Inbox</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <ScrollArea className="h-[calc(100vh-320px)]">
+              <ScrollArea className="h-[calc(100vh-240px)]">
                 <div className="divide-y">
                   {messages.map((message) => {
                     const isSent = message.fromUserId === user?.id;
