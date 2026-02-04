@@ -541,20 +541,17 @@ export const babyRadioStationSchema = z.object({
 
 export type BabyRadioStation = z.infer<typeof babyRadioStationSchema>;
 
-// Baby Radio Stations - Expanded with more occasions
+// Baby Radio Stations - Core stations with reliable content from Archive.org library
+// Additional occasions available via YouTube mood stations below
 export const BABY_RADIO_STATIONS: BabyRadioStation[] = [
   { id: "morning", name: "Sunshine Wake-Up", iconHint: "sun", colorTheme: "#FFEB3B", situation: Situation.MORNING, description: "Cheerful songs to start the day" },
   { id: "playtime", name: "Active Play & Dance", iconHint: "bee", colorTheme: "#FF9800", situation: Situation.PLAYTIME, description: "Energetic music for movement" },
   { id: "quiet", name: "Quiet Time", iconHint: "leaf", colorTheme: "#4CAF50", situation: Situation.QUIET, description: "Calming music for focus" },
   { id: "mealtime", name: "Mealtime Music", iconHint: "utensils", colorTheme: "#8BC34A", situation: Situation.MEALTIME, description: "Pleasant background for meals" },
   { id: "bedtime", name: "Bedtime Lullabies", iconHint: "moon", colorTheme: "#3F51B5", situation: Situation.BEDTIME, description: "Soothing sounds for sleep" },
-  // New stations for expanded occasions
-  { id: "bathtime", name: "Splish Splash", iconHint: "droplet", colorTheme: "#00BCD4", situation: Situation.BATHTIME, description: "Fun bath time tunes" },
-  { id: "carride", name: "Road Trip Tunes", iconHint: "car", colorTheme: "#9C27B0", situation: Situation.CARRIDE, description: "Songs for car journeys" },
+  // Stations with good coverage (8+ tracks)
   { id: "learning", name: "ABC & 123", iconHint: "book", colorTheme: "#E91E63", situation: Situation.LEARNING, description: "Educational songs" },
-  { id: "naptime", name: "Dreamy Naps", iconHint: "cloud", colorTheme: "#607D8B", situation: Situation.NAPTIME, description: "Gentle nap time music" },
-  { id: "outdoor", name: "Nature Explorer", iconHint: "tree", colorTheme: "#795548", situation: Situation.OUTDOOR, description: "Outdoor adventure songs" },
-  { id: "celebration", name: "Party Time", iconHint: "party", colorTheme: "#F44336", situation: Situation.CELEBRATION, description: "Celebration & party music" },
+  { id: "carride", name: "Road Trip Tunes", iconHint: "car", colorTheme: "#9C27B0", situation: Situation.CARRIDE, description: "Songs for car journeys" },
 ];
 
 // YouTube-based track for mood stations
@@ -607,6 +604,7 @@ export const KPOPDH_PLAYLIST: YouTubeTrack[] = [
 ];
 
 // Built-in mood stations (shown by default)
+// These YouTube stations provide unlimited content for various occasions
 export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
   {
     id: "kids-hits",
@@ -621,7 +619,7 @@ export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
   {
     id: "lullabies-yt",
     name: "Lullaby Dreams",
-    description: "Soothing lullabies for sleep",
+    description: "Soothing lullabies for sleep & naps",
     iconHint: "moon",
     colorTheme: "#5C6BC0",
     type: MoodStationType.YOUTUBE,
@@ -630,6 +628,7 @@ export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
       "TfHLp0tz1hY", // Lullaby for Babies
       "1ZYbU82GVz4", // Mozart for Babies
       "AF_nfazQaek", // Brahms Lullaby
+      "sEhMdyj6nqA", // Baby Sleep Lullaby
     ],
     isBuiltIn: true,
   },
@@ -645,6 +644,52 @@ export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
       "gRaznYdw8_0", // Bath Song
       "IoKfQsos-zY", // ABC Song
       "xIm2ydB8PVo", // The Wheels on the Bus
+    ],
+    isBuiltIn: true,
+  },
+  {
+    id: "bathtime-yt",
+    name: "Bath Time Fun",
+    description: "Splashy songs for bath time",
+    iconHint: "droplet",
+    colorTheme: "#00BCD4",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "gRaznYdw8_0", // Cocomelon Bath Song
+      "WRVsOCh907o", // Baby Shark Bath
+      "frN3nvhIHUk", // Bubble Bath Song
+      "eTtmJVE5tQc", // Splish Splash
+    ],
+    isBuiltIn: true,
+  },
+  {
+    id: "party-yt",
+    name: "Party Time",
+    description: "Fun songs for celebrations",
+    iconHint: "party",
+    colorTheme: "#F44336",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "l4WNrvVjiTw", // If You're Happy
+      "h4eueDYPTIg", // Head Shoulders Knees
+      "0wSllz_hmzs", // Freeze Dance
+      "CE8UiMo2mJg", // Happy Birthday
+      "tVlcKp3bWH8", // Cha Cha Slide Kids
+    ],
+    isBuiltIn: true,
+  },
+  {
+    id: "nature-yt",
+    name: "Nature Sounds",
+    description: "Relaxing outdoor & animal sounds",
+    iconHint: "tree",
+    colorTheme: "#795548",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "d0tU18Ybcvk", // Nature Sounds for Baby
+      "JYwm7CQIJKU", // Forest Sounds
+      "L9Bf8M6KUfk", // Bird Sounds for Kids
+      "1ZYbU82GVz4", // Mozart Nature
     ],
     isBuiltIn: true,
   },
