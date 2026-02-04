@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { radioService } from "@/lib/radio-service";
+import { useQuery } from "@tanstack/react-query";
 import type { KpopdhTrack } from "@shared/schema";
 import {
   Play,
@@ -13,6 +14,8 @@ import {
   Volume2,
   VolumeX,
   Square,
+  Heart,
+  Shuffle,
 } from "lucide-react";
 
 declare global {
@@ -55,22 +58,115 @@ interface YTPlayer {
   destroy: () => void;
 }
 
+interface YouTubeVideoInfo {
+  videoId: string;
+  title: string;
+  thumbnail?: string;
+}
+
 interface YouTubeAudioPlayerProps {
   playlist: KpopdhTrack[];
   isActive: boolean;
   onPlayStateChange?: (isPlaying: boolean) => void;
+  volume?: number;
+  onVolumeRef?: (fn: (volume: number) => void) => void;
+  onStopRef?: (fn: () => void) => void;
+  shuffleEnabled?: boolean;
 }
 
-export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: YouTubeAudioPlayerProps) {
+// Shuffle array using Fisher-Yates algorithm
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+export function YouTubeAudioPlayer({
+  playlist,
+  isActive,
+  onPlayStateChange,
+  volume: externalVolume,
+  onVolumeRef,
+  onStopRef,
+  shuffleEnabled = false,
+}: YouTubeAudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [volume, setVolume] = useState(50);
+  const [internalVolume, setInternalVolume] = useState(externalVolume ?? 50);
   const [isReady, setIsReady] = useState(false);
   const [currentTitle, setCurrentTitle] = useState<string>("");
   const playerRef = useRef<YTPlayer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentTrack = playlist[currentIndex];
+  // Apply shuffle if enabled
+  const orderedPlaylist = useMemo(() => {
+    return shuffleEnabled ? shuffleArray(playlist) : playlist;
+  }, [playlist, shuffleEnabled]);
+
+  const currentTrack = orderedPlaylist[currentIndex];
+
+  // Fetch video titles from API
+  const videoIds = useMemo(() => playlist.map(t => t.videoId), [playlist]);
+  const { data: videoInfos } = useQuery<YouTubeVideoInfo[]>({
+    queryKey: ["/api/youtube/videos", videoIds.join(",")],
+    queryFn: async () => {
+      const response = await fetch("/api/youtube/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoIds }),
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: videoIds.length > 0,
+    staleTime: 24 * 60 * 60 * 1000, // Cache for 24 hours
+  });
+
+  // Map video IDs to titles from API
+  const videoTitles = useMemo(() => {
+    const titleMap = new Map<string, string>();
+    if (videoInfos) {
+      videoInfos.forEach(info => {
+        titleMap.set(info.videoId, info.title);
+      });
+    }
+    return titleMap;
+  }, [videoInfos]);
+
+  // Sync with external volume
+  useEffect(() => {
+    if (externalVolume !== undefined && externalVolume !== internalVolume) {
+      setInternalVolume(externalVolume);
+      if (playerRef.current) {
+        playerRef.current.setVolume(externalVolume);
+      }
+    }
+  }, [externalVolume]);
+
+  // Expose volume control function to parent
+  useEffect(() => {
+    if (onVolumeRef) {
+      onVolumeRef((newVolume: number) => {
+        setInternalVolume(newVolume);
+        if (playerRef.current) {
+          playerRef.current.setVolume(newVolume);
+        }
+      });
+    }
+  }, [onVolumeRef]);
+
+  // Expose stop function to parent
+  useEffect(() => {
+    if (onStopRef) {
+      onStopRef(() => {
+        handleStop();
+      });
+    }
+  }, [onStopRef]);
 
   const loadYouTubeAPI = useCallback(() => {
     if (window.YT && window.YT.Player) {
@@ -114,7 +210,7 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
       events: {
         onReady: (event) => {
           setIsReady(true);
-          event.target.setVolume(volume);
+          event.target.setVolume(internalVolume);
           const videoData = event.target.getVideoData();
           if (videoData?.title) {
             setCurrentTitle(videoData.title);
@@ -141,7 +237,7 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
         },
       },
     });
-  }, [currentTrack?.videoId, volume, onPlayStateChange]);
+  }, [currentTrack?.videoId, internalVolume, onPlayStateChange]);
 
   useEffect(() => {
     loadYouTubeAPI();
@@ -178,10 +274,10 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
   };
 
   const handleNext = () => {
-    const nextIndex = (currentIndex + 1) % playlist.length;
+    const nextIndex = (currentIndex + 1) % orderedPlaylist.length;
     setCurrentIndex(nextIndex);
     if (playerRef.current && isReady) {
-      playerRef.current.loadVideoById(playlist[nextIndex].videoId);
+      playerRef.current.loadVideoById(orderedPlaylist[nextIndex].videoId);
       if (isPlaying) {
         playerRef.current.playVideo();
       }
@@ -189,10 +285,10 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
   };
 
   const handlePrevious = () => {
-    const prevIndex = (currentIndex - 1 + playlist.length) % playlist.length;
+    const prevIndex = (currentIndex - 1 + orderedPlaylist.length) % orderedPlaylist.length;
     setCurrentIndex(prevIndex);
     if (playerRef.current && isReady) {
-      playerRef.current.loadVideoById(playlist[prevIndex].videoId);
+      playerRef.current.loadVideoById(orderedPlaylist[prevIndex].videoId);
       if (isPlaying) {
         playerRef.current.playVideo();
       }
@@ -201,7 +297,7 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
-    setVolume(newVolume);
+    setInternalVolume(newVolume);
     if (playerRef.current) {
       playerRef.current.setVolume(newVolume);
     }
@@ -210,9 +306,17 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
   const handleTrackSelect = (index: number) => {
     setCurrentIndex(index);
     if (playerRef.current && isReady) {
-      playerRef.current.loadVideoById(playlist[index].videoId);
+      playerRef.current.loadVideoById(orderedPlaylist[index].videoId);
       playerRef.current.playVideo();
     }
+  };
+
+  // Get display title for a track (prefer API title, fallback to track title or generic)
+  const getDisplayTitle = (track: KpopdhTrack, index: number): string => {
+    const apiTitle = videoTitles.get(track.videoId);
+    if (apiTitle) return apiTitle;
+    if (track.title && track.title !== `Track ${index + 1}`) return track.title;
+    return `Track ${index + 1}`;
   };
 
   if (!isActive) return null;
@@ -265,7 +369,7 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
           <div className="flex items-center gap-2 ml-4">
             <VolumeX className="h-4 w-4 text-muted-foreground" />
             <Slider
-              value={[volume]}
+              value={[internalVolume]}
               onValueChange={handleVolumeChange}
               max={100}
               step={5}
@@ -277,18 +381,27 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
         </div>
         {currentTrack && (
           <p className="text-center text-sm text-muted-foreground mt-2">
-            Now playing: <span className="font-medium text-foreground">{currentTitle || `Track ${currentIndex + 1}`}</span>
-            {" "}({currentIndex + 1}/{playlist.length})
+            Now playing: <span className="font-medium text-foreground">
+              {currentTitle || getDisplayTitle(currentTrack, currentIndex)}
+            </span>
+            {" "}({currentIndex + 1}/{orderedPlaylist.length})
+            {shuffleEnabled && <span className="ml-2 text-xs">(Shuffled)</span>}
           </p>
         )}
       </div>
 
       <div className="flex-1 overflow-auto p-4">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-4">
-          Tracks ({playlist.length})
+          Tracks ({orderedPlaylist.length})
+          {shuffleEnabled && (
+            <Badge variant="outline" className="ml-2">
+              <Shuffle className="h-3 w-3 mr-1" />
+              Shuffled
+            </Badge>
+          )}
         </h3>
         <div className="space-y-1">
-          {playlist.map((track, index) => (
+          {orderedPlaylist.map((track, index) => (
             <div
               key={track.id}
               className={cn(
@@ -315,7 +428,9 @@ export function YouTubeAudioPlayer({ playlist, isActive, onPlayStateChange }: Yo
                   "block truncate",
                   index === currentIndex && "font-medium text-primary"
                 )}>
-                  {index === currentIndex && currentTitle ? currentTitle : track.title}
+                  {index === currentIndex && currentTitle
+                    ? currentTitle
+                    : getDisplayTitle(track, index)}
                 </span>
               </div>
               {index === currentIndex && isPlaying && (
