@@ -170,195 +170,129 @@ function AuthenticatedLayout() {
 
 function LandingPage() {
   const applications = [
-    {
-      icon: Clock,
-      title: "Clock",
-      description: "A simple clock to always know the time",
-      color: "text-blue-500",
-      bgColor: "bg-blue-500/10",
-    },
-    {
-      icon: Cloud,
-      title: "Weather",
-      description: "Check the weather for you and your family",
-      color: "text-sky-500",
-      bgColor: "bg-sky-500/10",
-    },
-    {
-      icon: ImageIcon,
-      title: "Picture Frame",
-      description: "See your favorite photos on screen",
-      color: "text-pink-500",
-      bgColor: "bg-pink-500/10",
-    },
-    {
-      icon: Calendar,
-      title: "Calendar",
-      description: "Keep track of birthdays and events",
-      color: "text-orange-500",
-      bgColor: "bg-orange-500/10",
-    },
-    {
-      icon: StickyNote,
-      title: "Notepad",
-      description: "Write notes and little reminders",
-      color: "text-yellow-600",
-      bgColor: "bg-yellow-500/10",
-    },
-    {
-      icon: MessageSquare,
-      title: "Messages",
-      description: "Send notes to your loved ones",
-      color: "text-violet-500",
-      bgColor: "bg-violet-500/10",
-    },
-    {
-      icon: Radio,
-      title: "Radio",
-      description: "Listen to Bulgarian radio stations",
-      color: "text-green-500",
-      bgColor: "bg-green-500/10",
-    },
-    {
-      icon: Tv,
-      title: "TV",
-      description: "Watch Bulgarian television channels",
-      color: "text-red-500",
-      bgColor: "bg-red-500/10",
-    },
-    {
-      icon: ShoppingCart,
-      title: "Shopping List",
-      description: "Remember what you need from the store",
-      color: "text-emerald-500",
-      bgColor: "bg-emerald-500/10",
-    },
-    {
-      icon: BarChart3,
-      title: "Stocks",
-      description: "See how the market is doing",
-      color: "text-indigo-500",
-      bgColor: "bg-indigo-500/10",
-    },
+    { icon: Clock, title: "Clock", color: "text-blue-500", bgColor: "bg-blue-500/10" },
+    { icon: Cloud, title: "Weather", color: "text-sky-500", bgColor: "bg-sky-500/10" },
+    { icon: ImageIcon, title: "Photos", color: "text-pink-500", bgColor: "bg-pink-500/10" },
+    { icon: Calendar, title: "Calendar", color: "text-orange-500", bgColor: "bg-orange-500/10" },
+    { icon: StickyNote, title: "Notepad", color: "text-yellow-600", bgColor: "bg-yellow-500/10" },
+    { icon: MessageSquare, title: "Messages", color: "text-violet-500", bgColor: "bg-violet-500/10" },
+    { icon: Radio, title: "Radio", color: "text-green-500", bgColor: "bg-green-500/10" },
+    { icon: Tv, title: "TV", color: "text-red-500", bgColor: "bg-red-500/10" },
+    { icon: ShoppingCart, title: "Shopping", color: "text-emerald-500", bgColor: "bg-emerald-500/10" },
+    { icon: BarChart3, title: "Stocks", color: "text-indigo-500", bgColor: "bg-indigo-500/10" },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Top Header with Sign In */}
-      <header className="flex items-center justify-between px-6 py-4 border-b">
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-background via-background to-muted/30">
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 md:px-6 py-3 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-            <Home className="h-5 w-5 text-primary-foreground" />
+          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
+            <Home className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-lg font-semibold">Family Frame</span>
+          <span className="font-semibold">Family Frame</span>
         </div>
         <SignInButton mode="modal">
-          <Button size="lg" data-testid="button-sign-in-header">
-            <LogIn className="h-5 w-5 mr-2" />
+          <Button data-testid="button-sign-in-header">
+            <LogIn className="h-4 w-4 mr-2" />
             Sign In
           </Button>
         </SignInButton>
       </header>
 
-      {/* Welcome Header */}
-      <section className="px-6 py-12 md:py-16 text-center">
-        <div className="max-w-4xl mx-auto">
-          <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-6">
-            <Home className="h-10 w-10 text-primary-foreground" />
-          </div>
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-3" data-testid="text-landing-title">
-            Welcome to Family Frame
+      {/* Hero Section */}
+      <section className="px-4 md:px-6 py-8 md:py-12">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-2" data-testid="text-landing-title">
+            The Window Between Homes
           </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground mb-2">
-            A friendly display for your home
+          <p className="text-muted-foreground text-base md:text-lg max-w-2xl mx-auto mb-6">
+            Transform any screen into a family-friendly display with weather, photos, messages, and more.
           </p>
-          <p className="text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
-            Everything you need, all in one easy place
-          </p>
+          <SignInButton mode="modal">
+            <Button size="lg" className="shadow-lg" data-testid="button-sign-in-hero">
+              <LogIn className="h-4 w-4 mr-2" />
+              Get Started Free
+            </Button>
+          </SignInButton>
         </div>
       </section>
 
-      {/* Applications Grid */}
-      <section className="flex-1 px-6 pb-12">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-semibold text-center mb-3">
-            Here is what you can do
-          </h2>
-          <p className="text-muted-foreground text-center mb-10 text-lg">
-            Tap any tile after signing in to explore
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+      {/* Features Grid */}
+      <section className="flex-1 px-4 md:px-6 pb-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-5 md:grid-cols-10 gap-3 md:gap-4">
             {applications.map((app, index) => (
-              <Card key={index} className="hover-elevate" data-testid={`app-card-${index}`}>
-                <CardContent className="flex flex-col items-center justify-center p-6 md:p-8 text-center">
-                  <div className={`w-14 h-14 md:w-16 md:h-16 rounded-xl ${app.bgColor} flex items-center justify-center mb-4`}>
-                    <app.icon className={`h-7 w-7 md:h-8 md:w-8 ${app.color}`} />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-1">{app.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {app.description}
-                  </p>
-                </CardContent>
-              </Card>
+              <div
+                key={index}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-card border hover:shadow-md hover:border-primary/20 transition-all cursor-default"
+                data-testid={`app-card-${index}`}
+              >
+                <div className={`w-10 h-10 md:w-12 md:h-12 rounded-lg ${app.bgColor} flex items-center justify-center`}>
+                  <app.icon className={`h-5 w-5 md:h-6 md:w-6 ${app.color}`} />
+                </div>
+                <span className="text-xs font-medium text-center">{app.title}</span>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Sign In Section */}
-      <section className="py-12 px-6 bg-muted/30">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-xl md:text-2xl font-semibold mb-3">
-            Ready to get started?
-          </h2>
-          <p className="text-muted-foreground mb-6">
-            Sign in to set up your own Family Frame
-          </p>
-          <SignInButton mode="modal">
-            <Button size="lg" className="text-lg px-8" data-testid="button-sign-in">
-              <LogIn className="h-5 w-5 mr-2" />
-              Sign In
-            </Button>
-          </SignInButton>
-          <p className="text-sm text-muted-foreground mt-4">
-            Free to use. No payment needed.
-          </p>
+      {/* Benefits Section */}
+      <section className="px-4 md:px-6 py-8 bg-muted/40">
+        <div className="max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-4 md:gap-6">
+            <div className="text-center p-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
+                <Home className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-1">Multi-Generational</h3>
+              <p className="text-sm text-muted-foreground">Designed for all ages with large, clear interfaces</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
+                <Cloud className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-1">Always Connected</h3>
+              <p className="text-sm text-muted-foreground">Real-time weather, photos, and family updates</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
+                <MessageSquare className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-1">Stay in Touch</h3>
+              <p className="text-sm text-muted-foreground">Share messages with loved ones instantly</p>
+            </div>
+          </div>
         </div>
       </section>
 
+      {/* CTA Section */}
+      <section className="px-4 md:px-6 py-8 text-center">
+        <h2 className="text-lg md:text-xl font-semibold mb-2">Ready to connect your home?</h2>
+        <p className="text-muted-foreground text-sm mb-4">Free to use. No credit card required.</p>
+        <SignInButton mode="modal">
+          <Button size="lg" data-testid="button-sign-in">
+            <LogIn className="h-4 w-4 mr-2" />
+            Sign In to Get Started
+          </Button>
+        </SignInButton>
+      </section>
+
       {/* Footer */}
-      <footer className="py-8 px-6 border-t">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Home className="h-4 w-4" />
-            <span>Family Frame</span>
+      <footer className="py-4 px-4 md:px-6 border-t mt-auto">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <Home className="h-3.5 w-3.5" />
+            <span>Family Frame {new Date().getFullYear()}</span>
           </div>
-          <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground">
-            <a 
-              href="/privacy" 
-              className="hover:text-foreground transition-colors" 
-              data-testid="link-privacy"
-            >
-              Privacy Policy
-            </a>
-            <a 
-              href="/terms" 
-              className="hover:text-foreground transition-colors" 
-              data-testid="link-terms"
-            >
-              Terms of Service
-            </a>
-            <a 
-              href="mailto:support@familyframe.app" 
-              className="hover:text-foreground transition-colors flex items-center gap-1" 
-              data-testid="link-support"
-            >
-              <Mail className="h-3.5 w-3.5" />
+          <div className="flex flex-wrap justify-center gap-4">
+            <a href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-privacy">Privacy</a>
+            <a href="/terms" className="hover:text-foreground transition-colors" data-testid="link-terms">Terms</a>
+            <a href="mailto:support@familyframe.app" className="hover:text-foreground transition-colors flex items-center gap-1" data-testid="link-support">
+              <Mail className="h-3 w-3" />
               Support
             </a>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {new Date().getFullYear()} Family Frame
           </div>
         </div>
       </footer>
