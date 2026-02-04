@@ -1024,7 +1024,7 @@ export async function registerRoutes(
     }
   });
 
-  // Radio stations with fallback URLs for resilience
+  // Radio stations organized by category (countries + genres) with icons
   app.get("/api/radio/stations", async (_req: Request, res: Response) => {
     interface StationConfig {
       name: string;
@@ -1033,99 +1033,173 @@ export async function registerRoutes(
       logo?: string;
     }
 
-    const stationsByCountry: Record<string, StationConfig[]> = {
-      "Bulgaria": [
-        {
-          name: "BG Radio",
-          url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
-          fallbackUrls: [
-            "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_L.aac",
-            "http://stream.radioreklama.bg/bgradio128",
-            "http://play.global.audio/bgradio.ogg",
-          ],
-        },
-        {
-          name: "Radio Energy",
-          url: "http://play.global.audio/nrj128",
-          fallbackUrls: ["http://stream.radioreklama.bg/nrj128"],
-        },
-        {
-          name: "Magic FM",
-          url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8",
-          fallbackUrls: ["http://stream.radioreklama.bg/magicfm128"],
-        },
-        {
-          name: "Avto Radio",
-          url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_H.aac",
-          fallbackUrls: [
-            "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac",
-          ],
-        },
-        {
-          name: "BNR Horizont",
-          url: "http://stream.bnr.bg:8000/horizont.mp3",
-          fallbackUrls: ["http://bnr.bg/listen?media=horizont"],
-        },
-        {
-          name: "BNR Hristo Botev",
-          url: "http://stream.bnr.bg:8012/hristo-botev.aac",
-          fallbackUrls: ["http://stream.bnr.bg:8012/hristo-botev.mp3"],
-        },
-        { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3" },
-        {
-          name: "bTV Radio",
-          url: "https://cdn.bweb.bg/radio/btv-radio.mp3",
-          fallbackUrls: ["http://stream.btvradio.bg/high.mp3"],
-        },
-      ],
-      "Serbia": [
-        {
-          name: "B92",
-          url: "http://stream.b92.net:7999/radio-b92.mp3",
-          fallbackUrls: ["http://stream2.b92.net:7999/radio-b92.mp3"],
-        },
-        { name: "Radio S", url: "http://stream.radios.rs:8002/radios128" },
-        { name: "Hit FM", url: "http://stream.hitfm.rs:8010/hitfm128" },
-        { name: "Play Radio", url: "http://91.221.134.252:8002/stream" },
-        {
-          name: "Naxi Radio",
-          url: "http://naxi128-naxinacional.streaming.rs:8030/stream",
-          fallbackUrls: ["http://stream.naxi.rs:8030/stream"],
-        },
-        { name: "Radio 021", url: "https://centova.dukahosting.com/proxy/021kafe/stream" },
-      ],
-      "Greece": [
-        { name: "1055 Rock", url: "http://radio.1055rock.gr:30000/1055" },
-        {
-          name: "Skai 100.3",
-          url: "http://skai.live24.gr/skai1003",
-          fallbackUrls: ["http://netradio.live24.gr/skai1003"],
-        },
-        { name: "Athens DeeJay", url: "http://netradio.live24.gr/athensdeejay" },
-        { name: "En Lefko 87.7", url: "http://stream.radiojar.com/enlefko877" },
-        { name: "Galaxy 92", url: "http://galaxy.live24.gr/galaxy9292" },
-        { name: "Pepper 96.6", url: "http://netradio.live24.gr/pepper966" },
-      ],
-      "Russia": [
-        {
-          name: "Europa Plus",
-          url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3",
-          fallbackUrls: ["http://ep128.hostingradio.ru:8052/europaplus128.mp3"],
-        },
-        {
-          name: "Radio Record",
-          url: "https://radiorecord.hostingradio.ru/rr_main96.aacp",
-          fallbackUrls: ["http://air.radiorecord.ru:8102/rr_main96_aacp"],
-        },
-        { name: "Russian Gold", url: "https://radiorecord.hostingradio.ru/russiangold96.aacp" },
-        {
-          name: "Retro FM",
-          url: "http://retro256.hostingradio.ru:8052/retro256.mp3",
-          fallbackUrls: ["http://retro128.hostingradio.ru:8052/retro128.mp3"],
-        },
-        { name: "Relax FM", url: "https://pub0201.101.ru/stream/trust/mp3/128/24" },
-        { name: "DFM", url: "http://dfm.hostingradio.ru/dfm96.aacp" },
-      ],
+    interface CategoryConfig {
+      icon: string;
+      stations: StationConfig[];
+    }
+
+    const stationsByCategory: Record<string, CategoryConfig> = {
+      // Country categories
+      "Bulgaria": {
+        icon: "🇧🇬",
+        stations: [
+          {
+            name: "BG Radio",
+            url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
+            fallbackUrls: [
+              "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_L.aac",
+              "http://stream.radioreklama.bg/bgradio128",
+              "http://play.global.audio/bgradio.ogg",
+            ],
+          },
+          {
+            name: "Radio Energy",
+            url: "http://play.global.audio/nrj128",
+            fallbackUrls: ["http://stream.radioreklama.bg/nrj128"],
+          },
+          {
+            name: "Magic FM",
+            url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8",
+            fallbackUrls: ["http://stream.radioreklama.bg/magicfm128"],
+          },
+          {
+            name: "Avto Radio",
+            url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_H.aac",
+            fallbackUrls: [
+              "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac",
+            ],
+          },
+          {
+            name: "BNR Horizont",
+            url: "http://stream.bnr.bg:8000/horizont.mp3",
+            fallbackUrls: ["http://bnr.bg/listen?media=horizont"],
+          },
+          {
+            name: "BNR Hristo Botev",
+            url: "http://stream.bnr.bg:8012/hristo-botev.aac",
+            fallbackUrls: ["http://stream.bnr.bg:8012/hristo-botev.mp3"],
+          },
+          { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3" },
+          {
+            name: "bTV Radio",
+            url: "https://cdn.bweb.bg/radio/btv-radio.mp3",
+            fallbackUrls: ["http://stream.btvradio.bg/high.mp3"],
+          },
+        ],
+      },
+      "Serbia": {
+        icon: "🇷🇸",
+        stations: [
+          {
+            name: "B92",
+            url: "http://stream.b92.net:7999/radio-b92.mp3",
+            fallbackUrls: ["http://stream2.b92.net:7999/radio-b92.mp3"],
+          },
+          { name: "Radio S", url: "http://stream.radios.rs:8002/radios128" },
+          { name: "Hit FM", url: "http://stream.hitfm.rs:8010/hitfm128" },
+          { name: "Play Radio", url: "http://91.221.134.252:8002/stream" },
+          {
+            name: "Naxi Radio",
+            url: "http://naxi128-naxinacional.streaming.rs:8030/stream",
+            fallbackUrls: ["http://stream.naxi.rs:8030/stream"],
+          },
+          { name: "Radio 021", url: "https://centova.dukahosting.com/proxy/021kafe/stream" },
+        ],
+      },
+      "Greece": {
+        icon: "🇬🇷",
+        stations: [
+          { name: "1055 Rock", url: "http://radio.1055rock.gr:30000/1055" },
+          {
+            name: "Skai 100.3",
+            url: "http://skai.live24.gr/skai1003",
+            fallbackUrls: ["http://netradio.live24.gr/skai1003"],
+          },
+          { name: "Athens DeeJay", url: "http://netradio.live24.gr/athensdeejay" },
+          { name: "En Lefko 87.7", url: "http://stream.radiojar.com/enlefko877" },
+          { name: "Galaxy 92", url: "http://galaxy.live24.gr/galaxy9292" },
+          { name: "Pepper 96.6", url: "http://netradio.live24.gr/pepper966" },
+        ],
+      },
+      "Russia": {
+        icon: "🇷🇺",
+        stations: [
+          {
+            name: "Europa Plus",
+            url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3",
+            fallbackUrls: ["http://ep128.hostingradio.ru:8052/europaplus128.mp3"],
+          },
+          {
+            name: "Radio Record",
+            url: "https://radiorecord.hostingradio.ru/rr_main96.aacp",
+            fallbackUrls: ["http://air.radiorecord.ru:8102/rr_main96_aacp"],
+          },
+          { name: "Russian Gold", url: "https://radiorecord.hostingradio.ru/russiangold96.aacp" },
+          {
+            name: "Retro FM",
+            url: "http://retro256.hostingradio.ru:8052/retro256.mp3",
+            fallbackUrls: ["http://retro128.hostingradio.ru:8052/retro128.mp3"],
+          },
+          { name: "Relax FM", url: "https://pub0201.101.ru/stream/trust/mp3/128/24" },
+          { name: "DFM", url: "http://dfm.hostingradio.ru/dfm96.aacp" },
+        ],
+      },
+      // Genre categories - non-commercial free streams
+      "Jazz": {
+        icon: "🎷",
+        stations: [
+          { name: "KCSM Jazz", url: "https://ice7.securenetsystems.net/KCSM2" },
+          { name: "Jazz24", url: "https://live.amperwave.net/direct/ppm-jazz24aac256-ibc1" },
+          { name: "Smooth Jazz Florida", url: "http://us4.internet-radio.com:8266/stream" },
+          { name: "Radio Swiss Jazz", url: "http://stream.srg-ssr.ch/m/rsj/mp3_128" },
+          { name: "ABC Jazz", url: "https://live-radio01.mediahubaustralia.com/JAZW/mp3/" },
+          { name: "Bossa Nova Brazil", url: "http://centova.radios.pt:9478/stream" },
+        ],
+      },
+      "Classical": {
+        icon: "🎻",
+        stations: [
+          { name: "WQXR Classical", url: "https://stream.wqxr.org/wqxr" },
+          { name: "Radio Swiss Classic", url: "http://stream.srg-ssr.ch/m/rsc_de/mp3_128" },
+          { name: "ABC Classic", url: "https://live-radio01.mediahubaustralia.com/2FMW/mp3/" },
+          { name: "Venice Classic Radio", url: "http://109.123.116.202:8022/stream" },
+          { name: "Classic FM", url: "http://media-ice.musicradio.com/ClassicFMMP3" },
+          { name: "WCPE Classical", url: "http://audio-ogg.ibiblio.org:8000/wcpe.ogg" },
+        ],
+      },
+      "Metal": {
+        icon: "🤘",
+        stations: [
+          { name: "Metal Express Radio", url: "http://5.135.154.69:11590/stream" },
+          { name: "KNAC Pure Rock", url: "https://stream.knac.com/knac" },
+          { name: "HardRadio", url: "http://server1.inetify.pl:17030/stream" },
+          { name: "RockRadio1", url: "http://listen.rockradio.de/rockradio1.mp3" },
+          { name: "Rebel Radio", url: "http://158.69.228.195:8038/stream" },
+          { name: "Metal Rock Radio", url: "http://144.217.158.59:5566/stream" },
+        ],
+      },
+      "Ambient": {
+        icon: "🌙",
+        stations: [
+          { name: "SomaFM Drone Zone", url: "https://ice2.somafm.com/dronezone-128-mp3" },
+          { name: "SomaFM Space Station", url: "https://ice2.somafm.com/spacestation-128-mp3" },
+          { name: "SomaFM Deep Space One", url: "https://ice2.somafm.com/deepspaceone-128-mp3" },
+          { name: "Ambient Sleeping Pill", url: "http://radio.stereoscenic.com/asp-s" },
+          { name: "SomaFM Groove Salad", url: "https://ice2.somafm.com/groovesalad-128-mp3" },
+          { name: "Chillout Lounge", url: "http://air.radioart.com/fChillout.mp3" },
+        ],
+      },
+      "Electronic": {
+        icon: "🎧",
+        stations: [
+          { name: "SomaFM Secret Agent", url: "https://ice2.somafm.com/secretagent-128-mp3" },
+          { name: "SomaFM DEF CON", url: "https://ice2.somafm.com/defcon-128-mp3" },
+          { name: "Digitally Imported Trance", url: "http://prem1.di.fm:80/trance" },
+          { name: "Frisky Radio", url: "http://stream1.friskyradio.com/frisky_mp3_hi" },
+          { name: "SomaFM Beat Blender", url: "https://ice2.somafm.com/beatblender-128-mp3" },
+          { name: "Proton Radio", url: "http://protonradio.com:8000/proton" },
+        ],
+      },
     };
 
     // Helper to check if a URL is reachable
@@ -1193,15 +1267,24 @@ export async function registerRoutes(
       return station;
     }
 
-    // Test all stations in parallel and group by country
-    const result: Record<string, StationConfig[]> = {};
+    // Response includes icon for each category
+    interface CategoryResponse {
+      icon: string;
+      stations: StationConfig[];
+    }
+
+    // Test all stations in parallel, grouped by category
+    const result: Record<string, CategoryResponse> = {};
 
     await Promise.all(
-      Object.entries(stationsByCountry).map(async ([country, stations]) => {
+      Object.entries(stationsByCategory).map(async ([category, config]) => {
         const checkedStations = await Promise.all(
-          stations.map(async (station) => checkStation(station))
+          config.stations.map(async (station) => checkStation(station))
         );
-        result[country] = checkedStations.filter((s): s is StationConfig => s !== null);
+        result[category] = {
+          icon: config.icon,
+          stations: checkedStations.filter((s): s is StationConfig => s !== null),
+        };
       })
     );
 

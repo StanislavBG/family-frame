@@ -11,24 +11,29 @@ import { useAppControls } from "@/components/app-controls";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-type StationsByCountry = Record<string, RadioStation[]>;
+// API response structure with categories
+interface CategoryData {
+  icon: string;
+  stations: RadioStation[];
+}
 
-const COUNTRY_ORDER = ["Bulgaria", "Serbia", "Greece", "Russia"];
+type StationsByCategory = Record<string, CategoryData>;
 
-const COUNTRY_FLAGS: Record<string, string> = {
-  "Bulgaria": "🇧🇬",
-  "Serbia": "🇷🇸",
-  "Greece": "🇬🇷",
-  "Russia": "🇷🇺",
-};
+// Category display order - countries first, then genres
+const CATEGORY_ORDER = [
+  // Countries
+  "Bulgaria", "Serbia", "Greece", "Russia",
+  // Genres
+  "Jazz", "Classical", "Metal", "Ambient", "Electronic",
+];
 
 export default function RadioPage() {
   const { data: settings, isLoading: settingsLoading } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
   });
 
-  // Fetch stations grouped by country
-  const { data: stationsByCountry = {}, isLoading: stationsLoading } = useQuery<StationsByCountry>({
+  // Fetch stations grouped by category
+  const { data: stationsByCategory = {}, isLoading: stationsLoading } = useQuery<StationsByCategory>({
     queryKey: ["/api/radio/stations"],
     staleTime: 60000,
   });
@@ -36,13 +41,13 @@ export default function RadioPage() {
   const isLoading = settingsLoading || stationsLoading;
   const { addDebugLog } = useAppControls();
 
-  // Sort countries in predefined order
-  const countries = useMemo(() => {
-    const available = Object.keys(stationsByCountry);
-    return COUNTRY_ORDER.filter(c => available.includes(c));
-  }, [stationsByCountry]);
-  const [selectedCountry, setSelectedCountry] = useState<string>("");
+  // Sort categories in predefined order
+  const categories = useMemo(() => {
+    const available = Object.keys(stationsByCategory);
+    return CATEGORY_ORDER.filter(c => available.includes(c));
+  }, [stationsByCategory]);
 
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [radioState, setRadioState] = useState(radioService.getState());
   const [localVolume, setLocalVolume] = useState(50);
   const [selectedStation, setSelectedStation] = useState("");
@@ -104,23 +109,24 @@ export default function RadioPage() {
     setSelectedStation(radioStation);
   }, [radioStation]);
 
-  // Set default country when data loads
+  // Set default category when data loads
   useEffect(() => {
-    if (countries.length > 0 && !selectedCountry) {
-      setSelectedCountry(countries[0]);
+    if (categories.length > 0 && !selectedCategory) {
+      setSelectedCategory(categories[0]);
     }
-  }, [countries, selectedCountry]);
+  }, [categories, selectedCategory]);
 
-  const currentStations = selectedCountry ? (stationsByCountry[selectedCountry] || []) : [];
+  const currentCategoryData = selectedCategory ? stationsByCategory[selectedCategory] : null;
+  const currentStations = currentCategoryData?.stations || [];
 
   // Find the current station data from the fetched stations
   const currentStation = useMemo(() => {
-    for (const stations of Object.values(stationsByCountry)) {
-      const found = stations.find(s => s.url === selectedStation);
+    for (const categoryData of Object.values(stationsByCategory)) {
+      const found = categoryData.stations.find(s => s.url === selectedStation);
       if (found) return found;
     }
     return radioService.getStationByUrl(selectedStation);
-  }, [stationsByCountry, selectedStation]);
+  }, [stationsByCategory, selectedStation]);
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
@@ -319,28 +325,43 @@ export default function RadioPage() {
 
       {/* Station Sidebar - Right */}
       <div className="w-80 lg:w-96 border-l bg-card/30 flex flex-col">
-        {/* Country Tabs */}
-        <div className="p-3 border-b bg-card/50">
-          <div className="flex gap-1">
-            {countries.map((country) => (
-              <Button
-                key={country}
-                variant={selectedCountry === country ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setSelectedCountry(country)}
-                className="flex-1 gap-1.5"
-                data-testid={`tab-country-${country.toLowerCase()}`}
-              >
-                <span>{COUNTRY_FLAGS[country]}</span>
-                <span className="hidden lg:inline">{country}</span>
-              </Button>
-            ))}
+        {/* Category List */}
+        <ScrollArea className="border-b" style={{ maxHeight: "200px" }}>
+          <div className="p-2 space-y-0.5">
+            {categories.map((category) => {
+              const categoryData = stationsByCategory[category];
+              const isSelected = selectedCategory === category;
+
+              return (
+                <button
+                  key={category}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left",
+                    "hover:bg-accent/50",
+                    isSelected && "bg-primary/15 text-primary font-medium"
+                  )}
+                  onClick={() => setSelectedCategory(category)}
+                  data-testid={`category-${category.toLowerCase()}`}
+                >
+                  <span className="text-xl">{categoryData?.icon}</span>
+                  <span className="flex-1">{category}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {categoryData?.stations.length || 0}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </ScrollArea>
 
         {/* Station Count */}
-        <div className="px-4 py-2 text-sm text-muted-foreground border-b">
-          {currentStations.length} station{currentStations.length !== 1 ? "s" : ""} available
+        <div className="px-4 py-2 text-sm text-muted-foreground border-b flex items-center gap-2">
+          {currentCategoryData?.icon && (
+            <span>{currentCategoryData.icon}</span>
+          )}
+          <span>
+            {currentStations.length} station{currentStations.length !== 1 ? "s" : ""}
+          </span>
         </div>
 
         {/* Station List */}
