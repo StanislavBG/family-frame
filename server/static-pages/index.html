@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="google-site-verification" content="sjljL38eCHGyDY8JotF-Fe2ztTSmBfIglK7xGpv6S_g" />
+  <title>Family Frame - The Window Between Homes</title>
+  <meta name="description" content="Transform your smart screen into a dedicated social network for households. Connect with family, share memories through Google Photos, and stay in sync across distances.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://family-frame.replit.app/">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #faf5f0 0%, #f5ebe0 100%); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; color: #1a1a1a; }
+    .card { background: white; border-radius: 1rem; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 40rem; width: 100%; padding: 3rem; text-align: center; }
+    .logo { width: 5rem; height: 5rem; background: #d4a574; border-radius: 1rem; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; }
+    .logo svg { width: 2.5rem; height: 2.5rem; color: white; }
+    h1 { font-size: 1.875rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .tagline { font-size: 1.125rem; color: #666; margin-bottom: 0.5rem; }
+    .description { color: #666; margin-bottom: 2rem; line-height: 1.6; }
+    .features { text-align: left; margin-bottom: 2rem; }
+    .features h2 { font-size: 1.125rem; margin-bottom: 1rem; }
+    .features ul { list-style: none; }
+    .features li { padding: 0.5rem 0; padding-left: 1.5rem; position: relative; color: #444; }
+    .features li::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 0.5rem; height: 0.5rem; background: #d4a574; border-radius: 50%; }
+    .cta { display: inline-block; background: #d4a574; color: white; padding: 0.875rem 2rem; border-radius: 0.5rem; text-decoration: none; font-weight: 600; transition: background 0.2s; }
+    .cta:hover { background: #c49464; }
+    .footer { margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; font-size: 0.875rem; color: #666; }
+    .footer a { color: #666; text-decoration: none; transition: color 0.2s; }
+    .footer a:hover { color: #1a1a1a; }
+    .data-use { background: #f8f4f0; border-radius: 0.5rem; padding: 1.25rem; margin-top: 1.5rem; text-align: left; font-size: 0.875rem; }
+    .data-use h3 { font-size: 1rem; margin-bottom: 0.75rem; color: #333; }
+    .data-use p { color: #555; line-height: 1.6; margin-bottom: 0.75rem; }
+    .data-use ul { margin: 0.75rem 0; padding-left: 1.25rem; }
+    .data-use li { color: #555; margin-bottom: 0.5rem; }
+    .contact { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee; font-size: 0.875rem; color: #666; }
+    .contact a { color: #d4a574; text-decoration: none; }
+    .contact a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+    </div>
+    <h1>Family Frame</h1>
+    <p class="tagline">The Window Between Homes</p>
+    <p class="description">
+      Transform your smart screen into a dedicated social network for households. 
+      Connect with family, share memories, and stay in sync across distances.
+    </p>
+    <div class="features">
+      <h2>Features</h2>
+      <ul>
+        <li>Display shared photo albums from Google Photos as a digital photo frame</li>
+        <li>View live weather information across all family member locations</li>
+        <li>Shared family calendar to keep everyone in sync</li>
+        <li>Connect multiple households together</li>
+        <li>Optimized for always-on smart screen displays</li>
+      </ul>
+    </div>
+    <a href="/app" class="cta" id="sign-in-btn">Sign In to Get Started</a>
+    <script>
+      document.getElementById('sign-in-btn').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.cookie = '__static_bypass=1;path=/;max-age=3600';
+        window.location.href = '/';
+      });
+    </script>
+    
+    <div class="data-use">
+      <h3>How We Use Your Google Data</h3>
+      <p>Family Frame integrates with Google Photos to display your cherished memories on your family frame display. Here's exactly what we do with your data:</p>
+      <ul>
+        <li><strong>Read-only access:</strong> We only request permission to view your Google Photos albums (photoslibrary.readonly scope)</li>
+        <li><strong>Your choice:</strong> You select which specific albums to display - we never access albums you haven't chosen</li>
+        <li><strong>No storage:</strong> Your photos are streamed directly from Google Photos and are NOT stored on our servers</li>
+        <li><strong>No sharing:</strong> We never share your Google data with third parties</li>
+        <li><strong>No advertising:</strong> Your data is never used for advertising purposes</li>
+        <li><strong>Revocable:</strong> You can disconnect Google Photos at any time from your account settings</li>
+      </ul>
+      <p>Our use of Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+    </div>
+    
+    <div class="contact">
+      <p>Questions or concerns? Contact us at <a href="mailto:support@family-frame.replit.app">support@family-frame.replit.app</a></p>
+    </div>
+  </div>
+  <div class="footer">
+    <a href="/privacy">Privacy Policy</a>
+    <span>|</span>
+    <a href="/terms">Terms of Service</a>
+    <span>|</span>
+    <a href="mailto:support@family-frame.replit.app">Contact</a>
+  </div>
+</body>
+</html>
