@@ -179,17 +179,17 @@ function LandingPage() {
       icon: Clock,
       title: "Clock",
       tagline: "Always Know the Time",
-      description: "A beautiful, large-format clock that's easy to read from across the room. Perfect for mounted displays.",
-      color: "text-blue-500",
-      bgColor: "bg-blue-500",
-      gradient: "from-blue-500/20 via-blue-400/10 to-transparent",
+      description: "A beautiful, large-format clock that's easy to read from across the room. Perfect for the kitchen or living room.",
+      color: "text-amber-600",
+      bgColor: "bg-amber-500",
+      gradient: "from-amber-500/20 via-amber-400/10 to-transparent",
     },
     {
       icon: Cloud,
       title: "Weather",
       tagline: "Stay Ahead of the Forecast",
-      description: "Real-time weather updates with hourly and weekly forecasts. See conditions for your home and connected households.",
-      color: "text-sky-500",
+      description: "Real-time weather updates so you always know whether to grab an umbrella or a sunhat before heading out.",
+      color: "text-sky-600",
       bgColor: "bg-sky-500",
       gradient: "from-sky-500/20 via-sky-400/10 to-transparent",
     },
@@ -197,51 +197,51 @@ function LandingPage() {
       icon: ImageIcon,
       title: "Photos",
       tagline: "Your Memories on Display",
-      description: "Turn your screen into a digital photo frame. Sync with Google Photos or browse beautiful stock imagery.",
-      color: "text-pink-500",
-      bgColor: "bg-pink-500",
-      gradient: "from-pink-500/20 via-pink-400/10 to-transparent",
+      description: "Turn your screen into a digital photo frame showing cherished family moments. Like having a window to your loved ones.",
+      color: "text-rose-500",
+      bgColor: "bg-rose-400",
+      gradient: "from-rose-400/20 via-rose-300/10 to-transparent",
     },
     {
       icon: Calendar,
       title: "Calendar",
-      tagline: "Never Miss a Moment",
-      description: "Track birthdays, anniversaries, and family events. Get gentle reminders for what matters most.",
-      color: "text-orange-500",
+      tagline: "Never Miss a Birthday",
+      description: "Keep track of birthdays, anniversaries, and family gatherings. Get gentle reminders for the moments that matter most.",
+      color: "text-orange-600",
       bgColor: "bg-orange-500",
       gradient: "from-orange-500/20 via-orange-400/10 to-transparent",
     },
     {
       icon: MessageSquare,
       title: "Messages",
-      tagline: "Connect Across Homes",
-      description: "Send and receive messages between connected households. Perfect for quick notes to grandparents or kids.",
+      tagline: "Stay Close, Even Far Away",
+      description: "Send and receive loving notes between homes. Perfect for quick hellos to grandchildren or checking in with parents.",
       color: "text-violet-500",
-      bgColor: "bg-violet-500",
-      gradient: "from-violet-500/20 via-violet-400/10 to-transparent",
+      bgColor: "bg-violet-400",
+      gradient: "from-violet-400/20 via-violet-300/10 to-transparent",
     },
     {
       icon: Radio,
       title: "Radio",
-      tagline: "Music for Every Mood",
-      description: "Stream radio stations from around the world. Background music that plays across all your Family Frame pages.",
-      color: "text-green-500",
-      bgColor: "bg-green-500",
-      gradient: "from-green-500/20 via-green-400/10 to-transparent",
+      tagline: "Music Fills the Home",
+      description: "Listen to your favorite radio stations while browsing photos or checking the weather. Background music for your day.",
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-500",
+      gradient: "from-emerald-500/20 via-emerald-400/10 to-transparent",
     },
   ], []);
 
   const applications = useMemo(() => [
-    { icon: Clock, title: "Clock", color: "text-blue-500", bgColor: "bg-blue-500/10", description: "Display current time" },
-    { icon: Cloud, title: "Weather", color: "text-sky-500", bgColor: "bg-sky-500/10", description: "Check weather forecasts" },
-    { icon: ImageIcon, title: "Photos", color: "text-pink-500", bgColor: "bg-pink-500/10", description: "View family photos" },
-    { icon: Calendar, title: "Calendar", color: "text-orange-500", bgColor: "bg-orange-500/10", description: "Track events and birthdays" },
+    { icon: Clock, title: "Clock", color: "text-amber-600", bgColor: "bg-amber-500/10", description: "Display current time" },
+    { icon: Cloud, title: "Weather", color: "text-sky-600", bgColor: "bg-sky-500/10", description: "Check weather forecasts" },
+    { icon: ImageIcon, title: "Photos", color: "text-rose-500", bgColor: "bg-rose-400/10", description: "View family photos" },
+    { icon: Calendar, title: "Calendar", color: "text-orange-600", bgColor: "bg-orange-500/10", description: "Track events and birthdays" },
     { icon: StickyNote, title: "Notepad", color: "text-yellow-600", bgColor: "bg-yellow-500/10", description: "Write notes and reminders" },
-    { icon: MessageSquare, title: "Messages", color: "text-violet-500", bgColor: "bg-violet-500/10", description: "Send family messages" },
-    { icon: Radio, title: "Radio", color: "text-green-500", bgColor: "bg-green-500/10", description: "Listen to radio stations" },
-    { icon: Tv, title: "TV", color: "text-red-500", bgColor: "bg-red-500/10", description: "Watch television channels" },
-    { icon: ShoppingCart, title: "Shopping", color: "text-emerald-500", bgColor: "bg-emerald-500/10", description: "Manage shopping lists" },
-    { icon: BarChart3, title: "Stocks", color: "text-indigo-500", bgColor: "bg-indigo-500/10", description: "Track market updates" },
+    { icon: MessageSquare, title: "Messages", color: "text-violet-500", bgColor: "bg-violet-400/10", description: "Send family messages" },
+    { icon: Radio, title: "Radio", color: "text-emerald-600", bgColor: "bg-emerald-500/10", description: "Listen to radio stations" },
+    { icon: Tv, title: "TV", color: "text-red-500", bgColor: "bg-red-400/10", description: "Watch television channels" },
+    { icon: ShoppingCart, title: "Shopping", color: "text-teal-600", bgColor: "bg-teal-500/10", description: "Manage shopping lists" },
+    { icon: BarChart3, title: "Stocks", color: "text-indigo-500", bgColor: "bg-indigo-400/10", description: "Track market updates" },
   ], []);
 
   // Auto-rotate carousel
@@ -298,20 +298,21 @@ function LandingPage() {
           {...fadeInUp}
         >
           <div className="max-w-4xl mx-auto text-center">
+            <p className="text-primary font-medium mb-2">Welcome to Family Frame</p>
             <h1
               id="hero-heading"
-              className="text-2xl md:text-3xl lg:text-4xl font-bold mb-2"
+              className="text-2xl md:text-3xl lg:text-4xl font-bold mb-3"
               data-testid="text-landing-title"
             >
-              The Window Between Homes
+              Bringing Families Together,<br className="hidden sm:inline" /> One Screen at a Time
             </h1>
             <p className="text-muted-foreground text-base md:text-lg max-w-2xl mx-auto mb-6">
-              Transform any screen into a family-friendly display with weather, photos, messages, and more.
+              A simple, beautiful display for your home. See the weather, share photos with grandchildren, and stay connected with loved ones.
             </p>
             <SignInButton mode="modal">
               <Button size="lg" className="shadow-lg min-h-12" data-testid="button-sign-in-hero">
                 <LogIn className="h-4 w-4 mr-2" aria-hidden="true" />
-                Get Started Free
+                Join Your Family
               </Button>
             </SignInButton>
           </div>
@@ -432,7 +433,7 @@ function LandingPage() {
 
         {/* Benefits Section */}
         <section className="px-4 md:px-6 py-6 bg-muted/40" aria-labelledby="benefits-heading">
-          <h2 id="benefits-heading" className="sr-only">Why Choose Family Frame</h2>
+          <h2 id="benefits-heading" className="sr-only">Why Families Love Family Frame</h2>
           <div className="max-w-4xl mx-auto">
             <ul className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4" role="list">
               <li className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4 min-h-11">
@@ -440,17 +441,17 @@ function LandingPage() {
                   <Home className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm md:mb-1">Multi-Generational</h3>
-                  <p className="text-xs text-muted-foreground">Designed for all ages with large, clear interfaces</p>
+                  <h3 className="font-semibold text-sm md:mb-1">Easy for Everyone</h3>
+                  <p className="text-xs text-muted-foreground">Large buttons and clear text that grandma will love</p>
                 </div>
               </li>
               <li className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4 min-h-11">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
-                  <Cloud className="h-5 w-5 text-primary" />
+                  <ImageIcon className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm md:mb-1">Always Connected</h3>
-                  <p className="text-xs text-muted-foreground">Real-time weather, photos, and family updates</p>
+                  <h3 className="font-semibold text-sm md:mb-1">Share Precious Moments</h3>
+                  <p className="text-xs text-muted-foreground">Photos of grandchildren update automatically</p>
                 </div>
               </li>
               <li className="flex md:flex-col items-center md:text-center gap-3 p-3 md:p-4 min-h-11">
@@ -458,8 +459,8 @@ function LandingPage() {
                   <MessageSquare className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm md:mb-1">Stay in Touch</h3>
-                  <p className="text-xs text-muted-foreground">Share messages with loved ones instantly</p>
+                  <h3 className="font-semibold text-sm md:mb-1">Feel Close, Always</h3>
+                  <p className="text-xs text-muted-foreground">Send love notes even when miles apart</p>
                 </div>
               </li>
             </ul>
@@ -468,12 +469,12 @@ function LandingPage() {
 
         {/* CTA Section */}
         <section className="px-4 md:px-6 py-8 text-center" aria-labelledby="cta-heading">
-          <h2 id="cta-heading" className="text-lg md:text-xl font-semibold mb-2">Ready to connect your home?</h2>
-          <p className="text-muted-foreground text-sm mb-4">Free to use. No credit card required.</p>
+          <h2 id="cta-heading" className="text-lg md:text-xl font-semibold mb-2">Ready to bring your family closer?</h2>
+          <p className="text-muted-foreground text-sm mb-4">Completely free. Set up in minutes.</p>
           <SignInButton mode="modal">
             <Button size="lg" className="min-h-12" data-testid="button-sign-in">
               <LogIn className="h-4 w-4 mr-2" aria-hidden="true" />
-              Sign In to Get Started
+              Get Started for Free
             </Button>
           </SignInButton>
         </section>
