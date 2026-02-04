@@ -8,6 +8,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import Hls from "hls.js";
 import { useAppControls } from "@/components/app-controls";
+import { useFullscreen } from "@/hooks/use-fullscreen";
 import type { TVChannel, UserSettings } from "@shared/schema";
 
 type ChannelsByCountry = Record<string, TVChannel[]>;
@@ -18,36 +19,6 @@ const COUNTRY_FLAGS: Record<string, string> = {
   "Greece": "GR",
   "Russia": "RU",
 };
-
-function useVideoFullscreen() {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!videoContainerRef.current) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        await videoContainerRef.current.requestFullscreen();
-      } else {
-        await document.exitFullscreen();
-      }
-    } catch (error) {
-      console.error("Fullscreen error:", error);
-    }
-  }, []);
-
-  return { isFullscreen, toggleFullscreen, videoContainerRef };
-}
 
 export default function TVPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -60,7 +31,7 @@ export default function TVPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState<string>("");
-  const { isFullscreen, toggleFullscreen, videoContainerRef } = useVideoFullscreen();
+  const { isFullscreen, toggleFullscreen, containerRef: videoContainerRef } = useFullscreen();
   const { addDebugLog } = useAppControls();
 
   const { data: settings, isLoading: settingsLoading } = useQuery<UserSettings>({

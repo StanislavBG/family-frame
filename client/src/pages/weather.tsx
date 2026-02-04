@@ -5,9 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WeatherIcon } from "@/components/weather-icon";
 import { formatTemperature, formatDay, getWeatherInfo } from "@/lib/weather-utils";
-import { MapPin, Settings, Maximize, Minimize, Droplets, Wind, ThermometerSun, ArrowUp, ArrowDown } from "lucide-react";
+import { MapPin, Settings, Droplets, Wind, ThermometerSun, ArrowUp, ArrowDown } from "lucide-react";
 import { Link } from "wouter";
-import { useFullscreen } from "@/hooks/use-fullscreen";
 import { useWeatherData } from "@/hooks/use-weather-data";
 import { queryClient } from "@/lib/queryClient";
 
@@ -23,13 +22,12 @@ function WeatherSkeleton() {
 }
 
 export default function WeatherPage() {
-  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen();
   const { weather, isLoading, temperatureUnit, hasLocation, requestLocation } = useWeatherData();
 
   const unit = temperatureUnit;
 
-  const ControlsOverlay = () => (
-    <div className="fixed top-4 right-4 z-50 flex items-center gap-4">
+  const TemperatureToggle = () => (
+    <div className="fixed top-4 right-4 z-50">
       <div className="flex items-center gap-2 bg-black/40 backdrop-blur rounded-lg px-4 py-2">
         <Label htmlFor="unit-toggle" className="text-sm font-semibold text-white/80">°C</Label>
         <Switch
@@ -48,22 +46,13 @@ export default function WeatherPage() {
         />
         <Label htmlFor="unit-toggle" className="text-sm font-semibold text-white/80">°F</Label>
       </div>
-      <Button
-        variant="secondary"
-        size="icon"
-        onClick={toggleFullscreen}
-        className="h-10 w-10"
-        data-testid="button-fullscreen"
-      >
-        {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
-      </Button>
     </div>
   );
 
   if (isLoading) {
     return (
-      <div ref={containerRef} className="h-full bg-background">
-        <ControlsOverlay />
+      <div className="h-full bg-background">
+        <TemperatureToggle />
         <WeatherSkeleton />
       </div>
     );
@@ -71,8 +60,8 @@ export default function WeatherPage() {
 
   if (!hasLocation) {
     return (
-      <div ref={containerRef} className="h-full flex items-center justify-center p-8 bg-background">
-        <ControlsOverlay />
+      <div className="h-full flex items-center justify-center p-8 bg-background">
+        <TemperatureToggle />
         <Card className="max-w-lg">
           <CardContent className="p-12 text-center">
             <div className="w-24 h-24 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-6">
@@ -102,8 +91,8 @@ export default function WeatherPage() {
 
   if (!weather) {
     return (
-      <div ref={containerRef} className="h-full bg-background">
-        <ControlsOverlay />
+      <div className="h-full bg-background">
+        <TemperatureToggle />
         <WeatherSkeleton />
       </div>
     );
@@ -115,10 +104,9 @@ export default function WeatherPage() {
 
   return (
     <div 
-      ref={containerRef} 
-      className="h-full bg-background overflow-y-auto md:overflow-hidden md:flex md:flex-col md:p-6 md:gap-4 snap-y snap-mandatory md:snap-none"
+            className="h-full bg-background overflow-y-auto md:overflow-hidden md:flex md:flex-col md:p-6 md:gap-4 snap-y snap-mandatory md:snap-none"
     >
-      <ControlsOverlay />
+      <TemperatureToggle />
       
       {/* Row 1: Current Weather Hero + Today's Details */}
       <div className="md:flex-1 md:grid md:grid-cols-2 md:gap-4 md:min-h-0">
