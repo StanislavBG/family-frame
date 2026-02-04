@@ -3027,7 +3027,7 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-      
+
       // Handle messages as either array or object
       let rawMessages: Message[] = [];
       if (Array.isArray(userData.messages)) {
@@ -3035,7 +3035,7 @@ export async function registerRoutes(
       } else if (userData.messages && typeof userData.messages === 'object') {
         rawMessages = Object.values(userData.messages);
       }
-      
+
       const messages = rawMessages.filter((m: Message) => m.id !== messageId);
 
       await updateUserData(userId, { messages });
@@ -3043,6 +3043,114 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       console.error("Delete message error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ===== CHORES ENDPOINTS =====
+
+  // Get all chores for the user
+  app.get("/api/chores", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const userData = await getOrCreateUser(userId, username);
+
+      // Handle chores as either array or object
+      let chores: any[] = [];
+      if (Array.isArray((userData as any).chores)) {
+        chores = (userData as any).chores;
+      } else if ((userData as any).chores && typeof (userData as any).chores === 'object') {
+        chores = Object.values((userData as any).chores);
+      }
+
+      // Filter out any invalid chores
+      chores = chores.filter((c: any) => c && c.id);
+
+      res.json(chores);
+    } catch (error) {
+      console.error("Get chores error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Save chores
+  app.post("/api/chores", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { chores } = req.body;
+      await getOrCreateUser(userId, username);
+      await updateUserData(userId, { chores });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Save chores error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ===== RECIPES ENDPOINTS =====
+
+  // Get all recipes for the user
+  app.get("/api/recipes", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const userData = await getOrCreateUser(userId, username);
+
+      // Handle recipes as either array or object
+      let recipes: any[] = [];
+      if (Array.isArray((userData as any).recipes)) {
+        recipes = (userData as any).recipes;
+      } else if ((userData as any).recipes && typeof (userData as any).recipes === 'object') {
+        recipes = Object.values((userData as any).recipes);
+      }
+
+      // Filter out any invalid recipes
+      recipes = recipes.filter((r: any) => r && r.id);
+
+      res.json(recipes);
+    } catch (error) {
+      console.error("Get recipes error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Save recipes
+  app.post("/api/recipes", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { recipes } = req.body;
+      await getOrCreateUser(userId, username);
+      await updateUserData(userId, { recipes });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Save recipes error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });

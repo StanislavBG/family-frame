@@ -24,6 +24,10 @@ import ClockPage from "@/pages/clock";
 import StocksPage from "@/pages/stocks";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
+import DashboardPage from "@/pages/dashboard";
+import ChoresPage from "@/pages/chores";
+import RecipesPage from "@/pages/recipes";
+import ScreensaverPage from "@/pages/screensaver";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, MessageSquare, Clock, Mail, StickyNote, Tv, BarChart3 } from "lucide-react";
@@ -108,10 +112,13 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={HomePage} />
+      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/clock" component={ClockPage} />
       <Route path="/weather" component={WeatherPage} />
       <Route path="/photos" component={PhotosPage} />
       <Route path="/calendar" component={CalendarPage} />
+      <Route path="/chores" component={ChoresPage} />
+      <Route path="/recipes" component={RecipesPage} />
       <Route path="/notepad" component={NotepadPage} />
       <Route path="/messages" component={MessagesPage} />
       <Route path="/radio" component={RadioPage} />
@@ -119,6 +126,7 @@ function Router() {
       <Route path="/tv" component={TVPage} />
       <Route path="/shopping" component={ShoppingPage} />
       <Route path="/stocks" component={StocksPage} />
+      <Route path="/screensaver" component={ScreensaverPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>

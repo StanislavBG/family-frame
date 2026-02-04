@@ -53,6 +53,19 @@ function getDefaultUserData(clerkId: string, username: string): UserData {
       trackedStocks: ["DJI", "BTC"],
       babyAgeMonths: 12,
       tvVolume: 50,
+      // Screensaver settings
+      screensaverEnabled: true,
+      screensaverDelay: 5,
+      screensaverMode: "cycle",
+      // Sleep mode settings
+      sleepModeEnabled: false,
+      sleepStartTime: "22:00",
+      sleepEndTime: "07:00",
+      sleepDimLevel: 20,
+      // Weather alerts
+      weatherAlertsEnabled: true,
+      // Dashboard settings
+      dashboardLayout: "default",
     },
     people: [],
     events: [],

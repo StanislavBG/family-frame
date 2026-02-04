@@ -169,17 +169,21 @@ export interface AppItem {
 export const defaultAppList: AppItem[] = [
   { id: "home", title: "Home", url: "/", fixed: true },
   { id: "settings", title: "Settings", url: "/settings", fixed: true },
+  { id: "dashboard", title: "Dashboard", url: "/dashboard" },
   { id: "clock", title: "Clock", url: "/clock" },
   { id: "weather", title: "Weather", url: "/weather" },
   { id: "photos", title: "Picture Frame", url: "/photos" },
   { id: "calendar", title: "Calendar", url: "/calendar" },
+  { id: "chores", title: "Chores", url: "/chores" },
+  { id: "recipes", title: "Recipes", url: "/recipes" },
   { id: "notepad", title: "Notepad", url: "/notepad" },
   { id: "messages", title: "Messages", url: "/messages" },
   { id: "radio", title: "BG Radio", url: "/radio" },
   { id: "baby-songs", title: "Baby Songs", url: "/baby-songs" },
-  { id: "tv", title: "BG TV", url: "/tv" },
+  { id: "tv", title: "World TV", url: "/tv" },
   { id: "shopping", title: "Shopping", url: "/shopping" },
   { id: "stocks", title: "Stocks", url: "/stocks" },
+  { id: "screensaver", title: "Screensaver", url: "/screensaver" },
 ];
 
 export type AppId = string;
@@ -208,6 +212,19 @@ export const userSettingsSchema = z.object({
   // TV settings
   tvVolume: z.number().min(0).max(100).default(50),
   lastTvChannel: z.string().optional(), // URL of last played channel
+  // Ambient/Screensaver settings
+  screensaverEnabled: z.boolean().default(true),
+  screensaverDelay: z.number().min(1).max(60).default(5), // Minutes of inactivity
+  screensaverMode: z.enum(["photos", "clock", "weather", "cycle"]).default("cycle"),
+  // Schedule/Sleep mode settings
+  sleepModeEnabled: z.boolean().default(false),
+  sleepStartTime: z.string().default("22:00"), // 24h format
+  sleepEndTime: z.string().default("07:00"),
+  sleepDimLevel: z.number().min(10).max(50).default(20), // Percentage brightness
+  // Weather alerts
+  weatherAlertsEnabled: z.boolean().default(true),
+  // Dashboard settings
+  dashboardLayout: z.enum(["default", "minimal", "detailed"]).default("default"),
 });
 
 export type UserSettings = z.infer<typeof userSettingsSchema>;
@@ -333,6 +350,64 @@ export const insertNoteSchema = noteSchema.omit({ id: true, createdAt: true, upd
 
 export type Note = z.infer<typeof noteSchema>;
 export type InsertNote = z.infer<typeof insertNoteSchema>;
+
+// Chore schema (for family task management)
+export const choreSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  assignedTo: z.string().optional(), // Person name or ID
+  dueDate: z.string().optional(),
+  recurring: z.enum(["none", "daily", "weekly", "monthly"]).default("none"),
+  completed: z.boolean().default(false),
+  completedAt: z.string().optional(),
+  completedBy: z.string().optional(),
+  createdAt: z.string(),
+  priority: z.enum(["low", "medium", "high"]).default("medium"),
+  category: z.string().optional(), // e.g., "cleaning", "kitchen", "yard"
+});
+
+export const insertChoreSchema = choreSchema.omit({ id: true, createdAt: true, completedAt: true, completedBy: true });
+
+export type Chore = z.infer<typeof choreSchema>;
+export type InsertChore = z.infer<typeof insertChoreSchema>;
+
+// Recipe schema (for cooking mode)
+export const recipeIngredientSchema = z.object({
+  name: z.string(),
+  amount: z.string(),
+  unit: z.string().optional(),
+});
+
+export const recipeStepSchema = z.object({
+  order: z.number(),
+  instruction: z.string(),
+  duration: z.number().optional(), // Minutes
+  timerLabel: z.string().optional(),
+});
+
+export const recipeSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  imageUrl: z.string().optional(),
+  servings: z.number().default(4),
+  prepTime: z.number().optional(), // Minutes
+  cookTime: z.number().optional(), // Minutes
+  ingredients: z.array(recipeIngredientSchema).default([]),
+  steps: z.array(recipeStepSchema).default([]),
+  tags: z.array(z.string()).default([]),
+  isFavorite: z.boolean().default(false),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const insertRecipeSchema = recipeSchema.omit({ id: true, createdAt: true, updatedAt: true });
+
+export type RecipeIngredient = z.infer<typeof recipeIngredientSchema>;
+export type RecipeStep = z.infer<typeof recipeStepSchema>;
+export type Recipe = z.infer<typeof recipeSchema>;
+export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
 
 // Message schema (for household messaging)
 export const messageSchema = z.object({
