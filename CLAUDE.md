@@ -57,15 +57,21 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       ├── components/
 │       │   ├── ui/             # shadcn components
 │       │   ├── app-sidebar.tsx # Navigation sidebar
+│       │   ├── empty-state.tsx # Reusable empty state component
+│       │   ├── fullscreen-button.tsx # Reusable fullscreen toggle
 │       │   └── [widgets].tsx   # Clock, Weather, Stock widgets
-│       ├── hooks/              # Custom React hooks
+│       ├── hooks/
+│       │   └── use-fullscreen.ts # Fullscreen hook with auto-enter support
 │       └── lib/
+│           ├── api.ts          # Query keys, mutation helpers
+│           ├── format.ts       # Formatting utilities (dates, temps)
 │           ├── queryClient.ts  # React Query setup + apiRequest helper
 │           ├── radio-service.ts # Singleton radio player service
 │           └── utils.ts        # cn() helper
 ├── server/                      # Express backend
 │   ├── index.ts                # Express app setup, middleware
 │   ├── routes.ts               # All API endpoints
+│   ├── middleware.ts           # Auth middleware, async handler, utilities
 │   ├── auth.ts                 # Clerk verification
 │   ├── firebase.ts             # Firebase initialization & helpers
 │   ├── weather.ts              # Open-Meteo integration
@@ -120,13 +126,59 @@ SESSION_SECRET                # OAuth state signing secret
 - `refetchOnWindowFocus: false`
 - `retry: false`
 
+### Query Keys (client/src/lib/api.ts)
+Use centralized query keys for consistency:
+```typescript
+import { queryKeys } from "@/lib/api";
+
+// Usage in useQuery
+const { data } = useQuery({ queryKey: queryKeys.messages.all() });
+const { data } = useQuery({ queryKey: queryKeys.calendar.events() });
+```
+
+### Mutation Helpers (client/src/lib/api.ts)
+Use typed mutation hooks for CRUD operations:
+```typescript
+import { useCreateMutation, useUpdateMutation, useDeleteMutation } from "@/lib/api";
+
+// Create with automatic invalidation and toast
+const createMutation = useCreateMutation("/api/resource", {
+  successMessage: "Created!",
+  invalidateKeys: [queryKeys.resource()],
+});
+
+// Update with dynamic endpoint
+const updateMutation = useUpdateMutation(
+  (id) => `/api/resource/${id}`,
+  { invalidateKeys: [queryKeys.resource()] }
+);
+```
+
+### Server Middleware (server/middleware.ts)
+Use `asyncHandler` to eliminate try-catch boilerplate:
+```typescript
+import { asyncHandler, getOrCreateUser, toArray } from "./middleware";
+
+app.get("/api/resource", asyncHandler(async (req, res) => {
+  const userId = req.headers["x-clerk-user-id"] as string;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const userData = await getOrCreateUser(userId, username);
+  res.json(toArray(userData.items)); // Normalizes Firebase arrays
+}));
+```
+
 ## Coding Conventions
 
 ### React
 - Functional components with hooks only
-- Custom hooks for reusable logic (useWeatherData, useWakeLock, useClock)
+- Custom hooks for reusable logic (useWeatherData, useWakeLock, useClock, useFullscreen)
 - Skeleton components for loading states
 - Error Boundary for top-level error handling
+
+### Reusable Components
+- `EmptyState` - Standard empty state with icon, title, description, action button
+- `FullscreenButton` - Fixed-position fullscreen toggle button
+- `useFullscreen({ autoEnter, onExit })` - Enhanced fullscreen hook with auto-enter and exit callback
 
 ### Styling
 - Tailwind CSS utility classes
@@ -138,6 +190,13 @@ SESSION_SECRET                # OAuth state signing secret
 - RESTful endpoints: `GET /api/resource`, `POST /api/resource/new`, `PATCH /api/resource/:id`
 - JSON request/response with Zod validation
 - Credentials included in all requests
+
+### Format Utilities (client/src/lib/format.ts)
+- `formatTemperature(temp, unit)` - Convert and format temperature
+- `formatRelativeTime(dateString)` - "5m ago", "2h ago", etc.
+- `formatDateDisplay(date)` - "2024/01/15" format
+- `parseLocalDate(dateStr)` - Parse YYYY-MM-DD without timezone issues
+- `getRelativeDayLabel(date)` - "Today", "Tomorrow", or formatted date
 
 ### Naming
 - Components: PascalCase (`HomePage`, `WeatherWidget`)
@@ -155,9 +214,14 @@ SESSION_SECRET                # OAuth state signing secret
 - `client/src/App.tsx` - Main app with Clerk auth and routing
 - `client/src/pages/home.tsx` - Dashboard with widget grid
 - `client/src/pages/settings.tsx` - Comprehensive settings panels
+- `client/src/lib/api.ts` - Query keys and mutation hook factories
+- `client/src/lib/format.ts` - Date/temperature formatting utilities
 - `client/src/lib/queryClient.ts` - React Query setup and API helpers
 - `client/src/lib/radio-service.ts` - Singleton audio player service
+- `client/src/components/empty-state.tsx` - Reusable empty state component
+- `client/src/hooks/use-fullscreen.ts` - Enhanced fullscreen hook
 - `server/routes.ts` - All API endpoints (~30+ routes)
+- `server/middleware.ts` - Auth middleware, async handler, utilities
 - `server/firebase.ts` - Firebase initialization and data helpers
 - `shared/schema.ts` - Zod schemas and TypeScript types
 - `tailwind.config.ts` - Custom color palette and theme

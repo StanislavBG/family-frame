@@ -6,55 +6,10 @@ import { Image, Settings, Play, Pause, SkipForward, Camera, Sparkles, Maximize, 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { useFullscreen } from "@/hooks/use-fullscreen";
+import { EmptyState } from "@/components/empty-state";
 import type { GooglePhotoItem, UserSettings, PixabayPhoto } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
-
-function usePhotoFrameFullscreen() {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [, setLocation] = useLocation();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const hasAutoEntered = useRef(false);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      const nowFullscreen = !!document.fullscreenElement;
-      const wasFullscreen = isFullscreen;
-      setIsFullscreen(nowFullscreen);
-      
-      if (wasFullscreen && !nowFullscreen && hasAutoEntered.current) {
-        setLocation("/");
-      }
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [isFullscreen, setLocation]);
-
-  useEffect(() => {
-    if (containerRef.current && !hasAutoEntered.current && !document.fullscreenElement) {
-      hasAutoEntered.current = true;
-      containerRef.current.requestFullscreen().catch((error) => {
-        console.log("Auto-fullscreen not allowed:", error);
-      });
-    }
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!containerRef.current) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        await containerRef.current.requestFullscreen();
-      } else {
-        await document.exitFullscreen();
-      }
-    } catch (error) {
-      console.error("Fullscreen error:", error);
-    }
-  }, []);
-
-  return { isFullscreen, toggleFullscreen, containerRef };
-}
 
 const URL_EXPIRY_MS = 50 * 60 * 1000;
 
@@ -62,31 +17,6 @@ function PhotosSkeleton() {
   return (
     <div className="h-full flex items-center justify-center">
       <Skeleton className="w-full h-full max-w-4xl max-h-[70vh] rounded-lg" />
-    </div>
-  );
-}
-
-function EmptyPhotosState() {
-  return (
-    <div className="h-full flex items-center justify-center p-8">
-      <Card className="max-w-lg">
-        <CardContent className="p-12 text-center">
-          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-            <Camera className="h-10 w-10 text-primary" />
-          </div>
-          <h2 className="text-2xl font-semibold mb-3">Connect Google Photos</h2>
-          <p className="text-muted-foreground mb-6 leading-relaxed">
-            Transform your screen into a beautiful digital photo frame. Connect your Google Photos 
-            account and select albums to display your cherished memories.
-          </p>
-          <Button asChild size="lg" data-testid="button-connect-google-photos">
-            <Link href="/settings?tab=photos">
-              <Settings className="h-5 w-5 mr-2" />
-              Go to Settings
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -103,15 +33,19 @@ function getProxiedPhotoUrl(baseUrl: string): string {
 }
 
 function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisplayProps) {
+  const [, setLocation] = useLocation();
   const [photos, setPhotos] = useState(initialPhotos);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState<string>(() => 
+  const [currentUrl, setCurrentUrl] = useState<string>(() =>
     initialPhotos[0]?.baseUrl ? getProxiedPhotoUrl(initialPhotos[0].baseUrl) : ""
   );
   const refreshingPhotosRef = useRef<Set<string>>(new Set());
-  const { isFullscreen, toggleFullscreen, containerRef } = usePhotoFrameFullscreen();
+  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({
+    autoEnter: true,
+    onExit: () => setLocation("/"),
+  });
 
   useEffect(() => {
     setPhotos(initialPhotos);
@@ -189,7 +123,15 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
   const currentPhoto = photos[currentIndex];
 
   if (!currentPhoto) {
-    return <EmptyPhotosState />;
+    return (
+      <EmptyState
+        icon={Camera}
+        title="No Photos Available"
+        description="No photos to display. Connect Google Photos and select albums in Settings."
+        actionLabel="Go to Settings"
+        onAction={() => window.location.href = "/settings?tab=photos"}
+      />
+    );
   }
 
   return (
@@ -266,13 +208,17 @@ interface PixabayPhotoDisplayProps {
 }
 
 function PixabayPhotoDisplay({ interval }: PixabayPhotoDisplayProps) {
+  const [, setLocation] = useLocation();
   const [photos, setPhotos] = useState<PixabayPhoto[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [currentTag, setCurrentTag] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
-  const { isFullscreen, toggleFullscreen, containerRef } = usePhotoFrameFullscreen();
+  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({
+    autoEnter: true,
+    onExit: () => setLocation("/"),
+  });
 
   const fetchPhotos = useCallback(async () => {
     try {
@@ -478,30 +424,26 @@ export default function PhotosPage() {
   }
 
   if (!settings?.googlePhotosConnected) {
-    return <EmptyPhotosState />;
+    return (
+      <EmptyState
+        icon={Camera}
+        title="Connect Google Photos"
+        description="Transform your screen into a beautiful digital photo frame. Connect your Google Photos account and select albums to display your cherished memories."
+        actionLabel="Go to Settings"
+        onAction={() => window.location.href = "/settings?tab=photos"}
+      />
+    );
   }
 
   if (!hasPhotosSelected) {
     return (
-      <div className="h-full flex items-center justify-center p-8">
-        <Card className="max-w-lg">
-          <CardContent className="p-12 text-center">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-              <Image className="h-10 w-10 text-primary" />
-            </div>
-            <h2 className="text-2xl font-semibold mb-3">Select Photos to Display</h2>
-            <p className="text-muted-foreground mb-6 leading-relaxed">
-              Your Google Photos is connected! Now select which photos you'd like to display in your picture frame slideshow.
-            </p>
-            <Button asChild size="lg" data-testid="button-select-photos">
-              <Link href="/settings?tab=photos">
-                <Settings className="h-5 w-5 mr-2" />
-                Select Photos
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={Image}
+        title="Select Photos to Display"
+        description="Your Google Photos is connected! Now select which photos you'd like to display in your picture frame slideshow."
+        actionLabel="Select Photos"
+        onAction={() => window.location.href = "/settings?tab=photos"}
+      />
     );
   }
 

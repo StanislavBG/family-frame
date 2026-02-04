@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@clerk/clerk-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,77 +8,68 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Send, Check, CheckCheck, Trash2, Mail, MailOpen, Users, Plus, ArrowUpRight, ArrowDownLeft, Maximize, Minimize, Reply } from "lucide-react";
+import { MessageSquare, Send, Check, CheckCheck, Trash2, Mail, MailOpen, Users, Plus, ArrowUpRight, Reply } from "lucide-react";
 import { useFullscreen } from "@/hooks/use-fullscreen";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { FullscreenButton } from "@/components/fullscreen-button";
+import { queryKeys, useCreateMutation, useUpdateMutation, useDeleteMutation } from "@/lib/api";
+import { formatRelativeTime } from "@/lib/format";
 import { Link } from "wouter";
 import type { Message, ConnectedUser } from "@shared/schema";
 
 export default function MessagesPage() {
   const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen();
   const { user } = useUser();
-  const { toast } = useToast();
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [selectedRecipient, setSelectedRecipient] = useState<string>("");
   const [messageContent, setMessageContent] = useState("");
 
   const { data: messages = [], isLoading } = useQuery<Message[]>({
-    queryKey: ["/api/messages"],
+    queryKey: queryKeys.messages.all(),
   });
 
   const { data: connections = [] } = useQuery<ConnectedUser[]>({
-    queryKey: ["/api/connections"],
+    queryKey: queryKeys.connections.all(),
   });
 
-  const sendMessageMutation = useMutation({
-    mutationFn: async (data: { toUserId: string; toUsername: string; content: string }) => {
-      return apiRequest("POST", "/api/messages", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
-      toast({ title: "Message sent" });
-      setNewMessageOpen(false);
-      setSelectedRecipient("");
-      setMessageContent("");
-    },
-    onError: () => {
-      toast({ title: "Failed to send message", variant: "destructive" });
-    },
-  });
+  const messageInvalidateKeys = [queryKeys.messages.all(), queryKeys.messages.unreadCount()];
 
-  const markReadMutation = useMutation({
-    mutationFn: async (messageId: string) => {
-      return apiRequest("PATCH", `/api/messages/${messageId}/read`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
-    },
-  });
+  const sendMessageMutation = useCreateMutation<unknown, { toUserId: string; toUsername: string; content: string }>(
+    "/api/messages",
+    {
+      successMessage: "Message sent",
+      errorMessage: "Failed to send message",
+      invalidateKeys: messageInvalidateKeys,
+      onSuccess: () => {
+        setNewMessageOpen(false);
+        setSelectedRecipient("");
+        setMessageContent("");
+      },
+    }
+  );
 
-  const markAllReadMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", "/api/messages/mark-all-read");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
-      toast({ title: "All messages marked as read" });
-    },
-  });
+  const markReadMutation = useUpdateMutation<unknown, string>(
+    (messageId) => `/api/messages/${messageId}/read`,
+    {
+      successMessage: "",
+      invalidateKeys: messageInvalidateKeys,
+    }
+  );
 
-  const deleteMessageMutation = useMutation({
-    mutationFn: async (messageId: string) => {
-      return apiRequest("DELETE", `/api/messages/${messageId}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
-      toast({ title: "Message deleted" });
-    },
-  });
+  const markAllReadMutation = useCreateMutation(
+    "/api/messages/mark-all-read",
+    {
+      successMessage: "All messages marked as read",
+      invalidateKeys: messageInvalidateKeys,
+    }
+  );
+
+  const deleteMessageMutation = useDeleteMutation(
+    (messageId) => `/api/messages/${messageId}`,
+    {
+      successMessage: "Message deleted",
+      invalidateKeys: messageInvalidateKeys,
+    }
+  );
 
   const handleSendMessage = () => {
     const recipient = connections.find(c => c.id === selectedRecipient);
@@ -89,21 +80,6 @@ export default function MessagesPage() {
       toUsername: recipient.username,
       content: messageContent.trim(),
     });
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString("en-CA");
   };
 
   const unreadCount = messages.filter(m => !m.isRead).length;
@@ -120,17 +96,7 @@ export default function MessagesPage() {
   if (isLoading) {
     return (
       <div ref={containerRef} className="h-full p-4 md:p-8 overflow-auto bg-background">
-        <div className="fixed top-4 right-4 z-50">
-          <Button
-            variant="secondary"
-            size="icon"
-            onClick={toggleFullscreen}
-            className="h-10 w-10"
-            data-testid="button-fullscreen"
-          >
-            {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
-          </Button>
-        </div>
+        <FullscreenButton isFullscreen={isFullscreen} onToggle={toggleFullscreen} />
         <div className="max-w-4xl mx-auto">
           <div className="animate-pulse space-y-4">
             <div className="h-8 w-48 bg-muted rounded" />
@@ -143,18 +109,7 @@ export default function MessagesPage() {
 
   return (
     <div ref={containerRef} className="h-full p-4 md:p-8 overflow-auto bg-background">
-      {/* Fixed Fullscreen Button */}
-      <div className="fixed top-4 right-4 z-50">
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={toggleFullscreen}
-          className="h-10 w-10"
-          data-testid="button-fullscreen"
-        >
-          {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
-        </Button>
-      </div>
+      <FullscreenButton isFullscreen={isFullscreen} onToggle={toggleFullscreen} />
 
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
@@ -170,7 +125,7 @@ export default function MessagesPage() {
             {unreadCount > 0 && (
               <Button
                 variant="outline"
-                onClick={() => markAllReadMutation.mutate()}
+                onClick={() => markAllReadMutation.mutate(undefined)}
                 disabled={markAllReadMutation.isPending}
                 data-testid="button-mark-all-read"
               >
@@ -318,7 +273,7 @@ export default function MessagesPage() {
                                 </>
                               )}
                               <span className="text-sm text-muted-foreground ml-auto">
-                                {formatDate(message.createdAt)}
+                                {formatRelativeTime(message.createdAt)}
                               </span>
                             </div>
                             <p className="text-base whitespace-pre-wrap" data-testid={`text-message-${message.id}`}>

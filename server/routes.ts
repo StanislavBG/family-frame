@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { initializeFirebase, getUserData, setUserData, updateUserData, getUserByUsername, setSharedNote, deleteSharedNote, getAllSharedNotes } from "./firebase";
+import { asyncHandler, getOrCreateUser, toArray, type UserData } from "./middleware";
 
 // Secret for signing OAuth state - use SESSION_SECRET or fallback
 const STATE_SECRET = process.env.SESSION_SECRET || "oauth-state-secret-fallback";
@@ -28,7 +29,7 @@ function verifyState(data: string, signature: string): boolean {
   }
 }
 import { getWeather, reverseGeocode, geocodeCity } from "./weather";
-import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPickerSession, getPickerSession, getPickedMediaItems, deletePickerSession, refreshPickerPhotoUrl, GooglePhotoItem } from "./google-photos";
+import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPickerSession, getPickerSession, getPickedMediaItems, deletePickerSession, refreshPickerPhotoUrl } from "./google-photos";
 import type {
   CalendarEvent,
   Person,
@@ -41,8 +42,10 @@ import type {
   InsertNote,
   Message,
   InsertMessage,
+  GooglePhotoItem,
+  StoredPhoto,
 } from "@shared/schema";
-import { insertCalendarEventSchema, insertPersonSchema, insertNoteSchema, insertMessageSchema, ConnectionStatus, PhotoSource } from "@shared/schema";
+import { insertCalendarEventSchema, insertPersonSchema, insertNoteSchema, insertMessageSchema, ConnectionStatus, PhotoSource, EventType } from "@shared/schema";
 
 // Detect if running in production deployment
 const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
@@ -63,54 +66,7 @@ function getClerkPublishableKey(): string {
 
 initializeFirebase();
 
-interface UserData {
-  clerkId: string;
-  username: string;
-  settings: UserSettings;
-  people: Person[];
-  events: CalendarEvent[];
-  connections: string[];
-  connectionRequests: ConnectionRequest[];
-  googleTokens?: {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-  };
-  notes: Note[];
-  messages: Message[];
-}
-
-function getDefaultUserData(clerkId: string, username: string): UserData {
-  return {
-    clerkId,
-    username,
-    settings: {
-      homeName: "",
-      location: { city: "", country: "" },
-      temperatureUnit: "celsius",
-      googlePhotosConnected: false,
-      selectedAlbums: [],
-      selectedPhotos: [],
-      photoSource: PhotoSource.GOOGLE_PHOTOS,
-      photoInterval: 10,
-    },
-    people: [],
-    events: [],
-    connections: [],
-    connectionRequests: [],
-    notes: [],
-    messages: [],
-  };
-}
-
-async function getOrCreateUser(clerkId: string, username: string): Promise<UserData> {
-  let userData = await getUserData(clerkId);
-  if (!userData) {
-    userData = getDefaultUserData(clerkId, username);
-    await setUserData(clerkId, userData);
-  }
-  return userData;
-}
+// UserData interface and getOrCreateUser moved to middleware.ts
 
 async function getValidGoogleToken(userData: UserData): Promise<string | null> {
   console.log("[Token] getValidGoogleToken called for user:", userData.clerkId?.substring(0, 15) + "...");
@@ -246,158 +202,128 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/settings", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+  app.get("/api/settings", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-
-      const userData = await getOrCreateUser(userId, username);
-      res.json(userData.settings);
-    } catch (error) {
-      console.error("Settings GET error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
 
-  app.patch("/api/settings", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+    const userData = await getOrCreateUser(userId, username);
+    res.json(userData.settings);
+  }));
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+  app.patch("/api/settings", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
 
-      const userData = await getOrCreateUser(userId, username);
-      const updatedSettings = { ...userData.settings, ...req.body };
-
-      await updateUserData(userId, { settings: updatedSettings });
-
-      res.json(updatedSettings);
-    } catch (error) {
-      console.error("Settings PATCH error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
 
-  app.get("/api/people/list", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+    const userData = await getOrCreateUser(userId, username);
+    const updatedSettings = { ...userData.settings, ...req.body };
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+    await updateUserData(userId, { settings: updatedSettings });
 
-      const userData = await getOrCreateUser(userId, username);
-      res.json(userData.people || []);
-    } catch (error) {
-      console.error("People list error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    res.json(updatedSettings);
+  }));
+
+  app.get("/api/people/list", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
 
-  app.post("/api/people/new", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+    const userData = await getOrCreateUser(userId, username);
+    res.json(userData.people || []);
+  }));
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+  app.post("/api/people/new", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
 
-      const parseResult = insertPersonSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        res.status(400).json({ error: "Invalid person data", details: parseResult.error.errors });
-        return;
-      }
-
-      const userData = await getOrCreateUser(userId, username);
-      const newPerson: Person = {
-        id: randomUUID(),
-        ...parseResult.data,
-      };
-
-      const updatedPeople = [...(userData.people || []), newPerson];
-      await updateUserData(userId, { people: updatedPeople });
-
-      res.json(newPerson);
-    } catch (error) {
-      console.error("People create error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
 
-  app.patch("/api/people/:personId", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
-      const { personId } = req.params;
-
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-
-      const { name, birthday } = req.body;
-      if (!name || typeof name !== "string") {
-        res.status(400).json({ error: "Name is required" });
-        return;
-      }
-
-      const userData = await getOrCreateUser(userId, username);
-      const updatedPeople = (userData.people || []).map((p) => {
-        if (p.id === personId) {
-          return { ...p, name, birthday: birthday || undefined };
-        }
-        return p;
-      });
-
-      await updateUserData(userId, { people: updatedPeople });
-
-      const updatedPerson = updatedPeople.find((p) => p.id === personId);
-      res.json(updatedPerson);
-    } catch (error) {
-      console.error("People update error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    const parseResult = insertPersonSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: "Invalid person data", details: parseResult.error.errors });
+      return;
     }
-  });
 
-  app.delete("/api/people/:personId", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
-      const { personId } = req.params;
+    const userData = await getOrCreateUser(userId, username);
+    const newPerson: Person = {
+      id: randomUUID(),
+      ...parseResult.data,
+    };
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+    const updatedPeople = [...(userData.people || []), newPerson];
+    await updateUserData(userId, { people: updatedPeople });
 
-      const userData = await getOrCreateUser(userId, username);
-      const updatedPeople = (userData.people || []).filter((p) => p.id !== personId);
+    res.json(newPerson);
+  }));
 
-      const updatedEvents = (userData.events || []).map((event) => ({
-        ...event,
-        people: event.people.filter((id) => id !== personId),
-      }));
+  app.patch("/api/people/:personId", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { personId } = req.params;
 
-      await updateUserData(userId, { people: updatedPeople, events: updatedEvents });
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error("People delete error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
+
+    const { name, birthday } = req.body;
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ error: "Name is required" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const updatedPeople = (userData.people || []).map((p) => {
+      if (p.id === personId) {
+        return { ...p, name, birthday: birthday || undefined };
+      }
+      return p;
+    });
+
+    await updateUserData(userId, { people: updatedPeople });
+
+    const updatedPerson = updatedPeople.find((p) => p.id === personId);
+    res.json(updatedPerson);
+  }));
+
+  app.delete("/api/people/:personId", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { personId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const updatedPeople = (userData.people || []).filter((p) => p.id !== personId);
+
+    const updatedEvents = (userData.events || []).map((event) => ({
+      ...event,
+      people: event.people.filter((id) => id !== personId),
+    }));
+
+    await updateUserData(userId, { people: updatedPeople, events: updatedEvents });
+
+    res.json({ success: true });
+  }));
 
   // Helper to normalize old event schema to current schema
   function normalizeEvent(event: any, defaultCreatorId?: string, defaultCreatorName?: string): CalendarEvent {
@@ -580,110 +506,80 @@ export async function registerRoutes(
   });
 
   // Get accepted connections only
-  app.get("/api/connections", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+  app.get("/api/connections", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-
-      const userData = await getOrCreateUser(userId, username);
-      const connections: ConnectedUser[] = [];
-
-      // Handle connections as either array or object (Firebase may convert arrays to objects)
-      let connectionIds: string[] = [];
-      if (Array.isArray(userData.connections)) {
-        connectionIds = userData.connections;
-      } else if (userData.connections && typeof userData.connections === 'object') {
-        connectionIds = Object.values(userData.connections);
-      }
-
-      for (const connectedUserId of connectionIds) {
-        const connectedUserData = await getUserData(connectedUserId);
-        if (connectedUserData) {
-          connections.push({
-            id: connectedUserId,
-            username: connectedUserData.username,
-            homeName: connectedUserData.settings?.homeName,
-            location: connectedUserData.settings?.location,
-            connectedAt: new Date().toISOString(),
-          });
-        }
-      }
-
-      res.json(connections);
-    } catch (error) {
-      console.error("Connections error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
+
+    const userData = await getOrCreateUser(userId, username);
+    const connections: ConnectedUser[] = [];
+
+    // Use toArray helper to normalize Firebase data
+    const connectionIds = toArray<string>(userData.connections);
+
+    for (const connectedUserId of connectionIds) {
+      const connectedUserData = await getUserData(connectedUserId);
+      if (connectedUserData) {
+        connections.push({
+          id: connectedUserId,
+          username: connectedUserData.username,
+          homeName: connectedUserData.settings?.homeName,
+          location: connectedUserData.settings?.location,
+          connectedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    res.json(connections);
+  }));
 
   // Get pending connection requests (incoming requests to current user)
-  app.get("/api/connections/requests", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+  app.get("/api/connections/requests", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-
-      const userData = await getOrCreateUser(userId, username);
-      
-      // Handle connectionRequests as either array or object
-      let connectionRequests: ConnectionRequest[] = [];
-      if (Array.isArray(userData.connectionRequests)) {
-        connectionRequests = userData.connectionRequests;
-      } else if (userData.connectionRequests && typeof userData.connectionRequests === 'object') {
-        connectionRequests = Object.values(userData.connectionRequests);
-      }
-      
-      const pendingRequests = connectionRequests.filter(
-        (r: ConnectionRequest) => r.toUserId === userId && r.status === ConnectionStatus.PENDING
-      );
-
-      res.json(pendingRequests);
-    } catch (error) {
-      console.error("Connection requests error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
+
+    const userData = await getOrCreateUser(userId, username);
+
+    // Use toArray helper to normalize Firebase data
+    const connectionRequests = toArray<ConnectionRequest>(userData.connectionRequests);
+
+    const pendingRequests = connectionRequests.filter(
+      (r: ConnectionRequest) => r.toUserId === userId && r.status === ConnectionStatus.PENDING
+    );
+
+    res.json(pendingRequests);
+  }));
 
   // Get sent connection requests (outgoing requests from current user)
-  app.get("/api/connections/sent", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+  app.get("/api/connections/sent", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-
-      const userData = await getOrCreateUser(userId, username);
-      
-      // Handle connectionRequests as either array or object
-      let connectionRequests: ConnectionRequest[] = [];
-      if (Array.isArray(userData.connectionRequests)) {
-        connectionRequests = userData.connectionRequests;
-      } else if (userData.connectionRequests && typeof userData.connectionRequests === 'object') {
-        connectionRequests = Object.values(userData.connectionRequests);
-      }
-      
-      const sentRequests = connectionRequests.filter(
-        (r: ConnectionRequest) => r.fromUserId === userId && r.status === ConnectionStatus.PENDING
-      );
-
-      res.json(sentRequests);
-    } catch (error) {
-      console.error("Sent requests error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-  });
+
+    const userData = await getOrCreateUser(userId, username);
+
+    // Use toArray helper to normalize Firebase data
+    const connectionRequests = toArray<ConnectionRequest>(userData.connectionRequests);
+
+    const sentRequests = connectionRequests.filter(
+      (r: ConnectionRequest) => r.fromUserId === userId && r.status === ConnectionStatus.PENDING
+    );
+
+    res.json(sentRequests);
+  }));
 
   // Send a connection request (creates pending request)
   app.post("/api/connections", async (req: Request, res: Response) => {
@@ -885,35 +781,30 @@ export async function registerRoutes(
   });
 
   // Get connections with weather data for home dashboard
-  app.get("/api/connections/weather", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
+  app.get("/api/connections/weather", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
 
-      if (!userId) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
-      const userData = await getOrCreateUser(userId, username);
-      const connectionsWithWeather: Array<{
-        id: string;
-        recipientId: string;
-        recipientName: string;
-        recipientHomeName?: string;
-        weather?: {
-          current: { temperature: number; weatherCode: number; isDay: boolean };
-          location: { city: string; country: string };
-        };
-        timezone?: string;
-      }> = [];
+    const userData = await getOrCreateUser(userId, username);
+    const connectionsWithWeather: Array<{
+      id: string;
+      recipientId: string;
+      recipientName: string;
+      recipientHomeName?: string;
+      weather?: {
+        current: { temperature: number; weatherCode: number; isDay: boolean };
+        location: { city: string; country: string };
+      };
+      timezone?: string;
+    }> = [];
 
-      let connectionIds: string[] = [];
-      if (Array.isArray(userData.connections)) {
-        connectionIds = userData.connections;
-      } else if (userData.connections && typeof userData.connections === 'object') {
-        connectionIds = Object.values(userData.connections);
-      }
+    // Use toArray helper to normalize Firebase data
+    const connectionIds = toArray<string>(userData.connections);
 
       for (const connectedUserId of connectionIds) {
         const connectedUserData = await getUserData(connectedUserId);
@@ -928,15 +819,27 @@ export async function registerRoutes(
           // Get weather for their location if set
           if (connectedUserData.settings?.location?.city && connectedUserData.settings?.location?.country) {
             try {
-              const weatherData = await getWeather(
+              // First geocode the city to get coordinates
+              const geoResult = await geocodeCity(
                 connectedUserData.settings.location.city,
                 connectedUserData.settings.location.country
               );
-              if (weatherData) {
-                entry.weather = weatherData;
-                // Derive timezone from location - use approximate timezone based on city
-                // For now, use a simple mapping or default to UTC
-                entry.timezone = "Europe/London"; // Default, could be enhanced with timezone lookup
+              if (geoResult) {
+                const weatherData = await getWeather(geoResult.latitude, geoResult.longitude);
+                if (weatherData) {
+                  entry.weather = {
+                    current: {
+                      temperature: weatherData.current.temperature,
+                      weatherCode: weatherData.current.weatherCode,
+                      isDay: weatherData.current.isDay,
+                    },
+                    location: {
+                      city: connectedUserData.settings.location.city,
+                      country: connectedUserData.settings.location.country,
+                    },
+                  };
+                  entry.timezone = "Europe/London"; // Default, could be enhanced with timezone lookup
+                }
               }
             } catch (e) {
               console.log(`Could not get weather for ${connectedUserData.username}`);
@@ -948,11 +851,7 @@ export async function registerRoutes(
       }
 
       res.json(connectionsWithWeather);
-    } catch (error) {
-      console.error("Connections weather error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  }));
 
   // Media stream proxy - proxies streams through server to bypass geo-restrictions
   // Handles both HLS manifests (.m3u8) and direct media streams
@@ -2144,9 +2043,9 @@ export async function registerRoutes(
       const userData = await getOrCreateUser(userId, username);
       const existingPhotos = userData.settings?.selectedPhotos || [];
 
-      let updatedPhotos;
+      let updatedPhotos: StoredPhoto[];
       if (photoId && photoId !== "all") {
-        updatedPhotos = existingPhotos.filter(p => p.id !== photoId);
+        updatedPhotos = existingPhotos.filter((p: StoredPhoto) => p.id !== photoId);
         console.log("[Photos] Removed photo", photoId, "- remaining:", updatedPhotos.length);
       } else {
         updatedPhotos = [];
