@@ -59,30 +59,40 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
     return Date.now() - photo.fetchedAt > URL_EXPIRY_MS;
   }, []);
 
-  const refreshPhotoUrlIfNeeded = useCallback(async (photo: GooglePhotoItem): Promise<string> => {
+  const refreshPhotoUrlIfNeeded = useCallback(async (photo: GooglePhotoItem): Promise<string | null> => {
     if (!isUrlExpired(photo)) {
       return getProxiedPhotoUrl(photo.baseUrl);
     }
 
     if (refreshingPhotosRef.current.has(photo.id)) {
-      return getProxiedPhotoUrl(photo.baseUrl);
+      // Already refreshing, return current URL if available
+      return photo.baseUrl ? getProxiedPhotoUrl(photo.baseUrl) : null;
     }
 
     refreshingPhotosRef.current.add(photo.id);
-    
+
     try {
       const result = await apiRequest("GET", `/api/photos/${photo.id}/refresh`) as { baseUrl: string; fetchedAt: number };
-      
-      setPhotos(prev => prev.map(p => 
-        p.id === photo.id 
+
+      if (!result.baseUrl) {
+        console.warn("Photo refresh returned empty URL for:", photo.id);
+        return null;
+      }
+
+      setPhotos(prev => prev.map(p =>
+        p.id === photo.id
           ? { ...p, baseUrl: result.baseUrl, fetchedAt: result.fetchedAt }
           : p
       ));
-      
+
       return getProxiedPhotoUrl(result.baseUrl);
     } catch (error) {
       console.error("Failed to refresh photo URL:", error);
-      return getProxiedPhotoUrl(photo.baseUrl);
+      // Return existing URL if still valid, null otherwise
+      if (photo.baseUrl && !isUrlExpired(photo)) {
+        return getProxiedPhotoUrl(photo.baseUrl);
+      }
+      return null;
     } finally {
       refreshingPhotosRef.current.delete(photo.id);
     }
@@ -92,11 +102,23 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
     const photo = photos[currentIndex];
     if (!photo) return;
 
-    setCurrentUrl(getProxiedPhotoUrl(photo.baseUrl));
-    
+    // Set initial URL if available
+    if (photo.baseUrl) {
+      setCurrentUrl(getProxiedPhotoUrl(photo.baseUrl));
+    }
+
+    // Refresh if expired
     if (isUrlExpired(photo)) {
       refreshPhotoUrlIfNeeded(photo).then(url => {
-        setCurrentUrl(url);
+        if (url) {
+          setCurrentUrl(url);
+        } else {
+          // URL refresh failed, skip to next photo if available
+          console.warn("Photo URL expired and refresh failed, skipping:", photo.id);
+          if (photos.length > 1) {
+            setCurrentIndex((prev) => (prev + 1) % photos.length);
+          }
+        }
       });
     }
   }, [currentIndex, photos, refreshPhotoUrlIfNeeded, isUrlExpired]);
@@ -380,10 +402,14 @@ interface PickerSessionStatus {
   };
 }
 
+// Consistent response shape from /api/photos
 interface PhotosResponse {
-  photos?: GooglePhotoItem[];
-  storedCount?: number;
-  needsSessionRefresh?: boolean;
+  photos: GooglePhotoItem[];
+  storedCount: number;
+  sessionActive: boolean;
+  needsSessionRefresh: boolean;
+  sessionError?: string;
+  error?: string;
 }
 
 export default function PhotosPage() {
@@ -401,19 +427,21 @@ export default function PhotosPage() {
   });
 
   const hasPhotosSelected = pickerStatus?.hasSession;
-  const storedPhotoCount = pickerStatus?.photoCount || 0;
 
-  const { data: photosData, isLoading: photosLoading } = useQuery<GooglePhotoItem[] | PhotosResponse>({
+  const { data: photosData, isLoading: photosLoading, error: photosError } = useQuery<PhotosResponse>({
     queryKey: ["/api/photos"],
-    enabled: photoSource === PhotoSource.GOOGLE_PHOTOS && 
-             settings?.googlePhotosConnected === true && 
+    enabled: photoSource === PhotoSource.GOOGLE_PHOTOS &&
+             settings?.googlePhotosConnected === true &&
              hasPhotosSelected === true,
     staleTime: 0,
+    retry: 2, // Retry failed requests
   });
-  
-  // Handle both array response and object response with needsSessionRefresh
-  const photos = Array.isArray(photosData) ? photosData : photosData?.photos || [];
-  const needsSessionRefresh = !Array.isArray(photosData) && photosData?.needsSessionRefresh;
+
+  // Extract data from consistent response shape
+  const photos = photosData?.photos || [];
+  const storedPhotoCount = photosData?.storedCount || pickerStatus?.photoCount || 0;
+  const needsSessionRefresh = photosData?.needsSessionRefresh || false;
+  const sessionError = photosData?.sessionError;
 
   if (settingsLoading) {
     return <PhotosSkeleton />;
@@ -451,7 +479,47 @@ export default function PhotosPage() {
     return <PhotosSkeleton />;
   }
 
+  // Handle API errors
+  if (photosError) {
+    return (
+      <div className="h-full flex items-center justify-center p-8">
+        <Card className="max-w-lg">
+          <CardContent className="p-12 text-center">
+            <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+              <Image className="h-10 w-10 text-destructive" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-3">Unable to Load Photos</h2>
+            <p className="text-muted-foreground mb-6 leading-relaxed">
+              There was a problem connecting to Google Photos. This may be a temporary issue.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Button onClick={() => window.location.reload()} variant="outline" data-testid="button-retry">
+                Try Again
+              </Button>
+              <Button asChild data-testid="button-settings">
+                <Link href="/settings?tab=photos">
+                  <Settings className="h-5 w-5 mr-2" />
+                  Settings
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!photos || photos.length === 0) {
+    const getErrorMessage = () => {
+      if (needsSessionRefresh && storedPhotoCount > 0) {
+        return `You have ${storedPhotoCount} photo${storedPhotoCount === 1 ? "" : "s"} saved. Open the photo picker to refresh access to them.`;
+      }
+      if (sessionError) {
+        return `Unable to access your photos: ${sessionError}. Please re-select your photos.`;
+      }
+      return "No photos were retrieved from your selection. Try selecting different photos.";
+    };
+
     return (
       <div className="h-full flex items-center justify-center p-8">
         <Card className="max-w-lg">
@@ -463,9 +531,7 @@ export default function PhotosPage() {
               {needsSessionRefresh && storedPhotoCount > 0 ? "Session Expired" : "No Photos Found"}
             </h2>
             <p className="text-muted-foreground mb-6 leading-relaxed">
-              {needsSessionRefresh && storedPhotoCount > 0
-                ? `You have ${storedPhotoCount} photo${storedPhotoCount === 1 ? "" : "s"} saved. Open the photo picker to refresh access to them.`
-                : "No photos were retrieved from your selection. Try selecting different photos."}
+              {getErrorMessage()}
             </p>
             <Button asChild variant="outline" data-testid="button-change-photos">
               <Link href="/settings?tab=photos">
