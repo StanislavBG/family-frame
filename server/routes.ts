@@ -1024,91 +1024,184 @@ export async function registerRoutes(
     }
   });
 
-  // Radio stations health check - tests which stations are accessible
+  // Radio stations with fallback URLs for resilience
   app.get("/api/radio/stations", async (_req: Request, res: Response) => {
-    const stationsByCountry: Record<string, Array<{ name: string; url: string; logo?: string }>> = {
+    interface StationConfig {
+      name: string;
+      url: string;
+      fallbackUrls?: string[];
+      logo?: string;
+    }
+
+    const stationsByCountry: Record<string, StationConfig[]> = {
       "Bulgaria": [
-        { name: "BG Radio", url: "http://stream.radioreklama.bg/bgradio128" },
-        { name: "Radio Energy", url: "http://play.global.audio/nrj128" },
-        { name: "Magic FM", url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8" },
-        { name: "Avto Radio", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac" },
-        { name: "BNR Horizont", url: "http://stream.bnr.bg:8000/horizont.mp3" },
-        { name: "BNR Hristo Botev", url: "http://stream.bnr.bg:8012/hristo-botev.aac" },
+        {
+          name: "BG Radio",
+          url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
+          fallbackUrls: [
+            "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_L.aac",
+            "http://stream.radioreklama.bg/bgradio128",
+            "http://play.global.audio/bgradio.ogg",
+          ],
+        },
+        {
+          name: "Radio Energy",
+          url: "http://play.global.audio/nrj128",
+          fallbackUrls: ["http://stream.radioreklama.bg/nrj128"],
+        },
+        {
+          name: "Magic FM",
+          url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8",
+          fallbackUrls: ["http://stream.radioreklama.bg/magicfm128"],
+        },
+        {
+          name: "Avto Radio",
+          url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_H.aac",
+          fallbackUrls: [
+            "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac",
+          ],
+        },
+        {
+          name: "BNR Horizont",
+          url: "http://stream.bnr.bg:8000/horizont.mp3",
+          fallbackUrls: ["http://bnr.bg/listen?media=horizont"],
+        },
+        {
+          name: "BNR Hristo Botev",
+          url: "http://stream.bnr.bg:8012/hristo-botev.aac",
+          fallbackUrls: ["http://stream.bnr.bg:8012/hristo-botev.mp3"],
+        },
         { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3" },
-        { name: "bTV Radio", url: "https://cdn.bweb.bg/radio/btv-radio.mp3" },
+        {
+          name: "bTV Radio",
+          url: "https://cdn.bweb.bg/radio/btv-radio.mp3",
+          fallbackUrls: ["http://stream.btvradio.bg/high.mp3"],
+        },
       ],
       "Serbia": [
-        { name: "B92", url: "http://stream.b92.net:7999/radio-b92.mp3" },
+        {
+          name: "B92",
+          url: "http://stream.b92.net:7999/radio-b92.mp3",
+          fallbackUrls: ["http://stream2.b92.net:7999/radio-b92.mp3"],
+        },
         { name: "Radio S", url: "http://stream.radios.rs:8002/radios128" },
         { name: "Hit FM", url: "http://stream.hitfm.rs:8010/hitfm128" },
         { name: "Play Radio", url: "http://91.221.134.252:8002/stream" },
-        { name: "Naxi Radio", url: "http://naxi128-naxinacional.streaming.rs:8030/stream" },
+        {
+          name: "Naxi Radio",
+          url: "http://naxi128-naxinacional.streaming.rs:8030/stream",
+          fallbackUrls: ["http://stream.naxi.rs:8030/stream"],
+        },
         { name: "Radio 021", url: "https://centova.dukahosting.com/proxy/021kafe/stream" },
       ],
       "Greece": [
         { name: "1055 Rock", url: "http://radio.1055rock.gr:30000/1055" },
-        { name: "Skai 100.3", url: "http://skai.live24.gr/skai1003" },
+        {
+          name: "Skai 100.3",
+          url: "http://skai.live24.gr/skai1003",
+          fallbackUrls: ["http://netradio.live24.gr/skai1003"],
+        },
         { name: "Athens DeeJay", url: "http://netradio.live24.gr/athensdeejay" },
         { name: "En Lefko 87.7", url: "http://stream.radiojar.com/enlefko877" },
         { name: "Galaxy 92", url: "http://galaxy.live24.gr/galaxy9292" },
         { name: "Pepper 96.6", url: "http://netradio.live24.gr/pepper966" },
       ],
       "Russia": [
-        { name: "Europa Plus", url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3" },
-        { name: "Radio Record", url: "https://radiorecord.hostingradio.ru/rr_main96.aacp" },
+        {
+          name: "Europa Plus",
+          url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3",
+          fallbackUrls: ["http://ep128.hostingradio.ru:8052/europaplus128.mp3"],
+        },
+        {
+          name: "Radio Record",
+          url: "https://radiorecord.hostingradio.ru/rr_main96.aacp",
+          fallbackUrls: ["http://air.radiorecord.ru:8102/rr_main96_aacp"],
+        },
         { name: "Russian Gold", url: "https://radiorecord.hostingradio.ru/russiangold96.aacp" },
-        { name: "Retro FM", url: "http://retro256.hostingradio.ru:8052/retro256.mp3" },
+        {
+          name: "Retro FM",
+          url: "http://retro256.hostingradio.ru:8052/retro256.mp3",
+          fallbackUrls: ["http://retro128.hostingradio.ru:8052/retro128.mp3"],
+        },
         { name: "Relax FM", url: "https://pub0201.101.ru/stream/trust/mp3/128/24" },
         { name: "DFM", url: "http://dfm.hostingradio.ru/dfm96.aacp" },
       ],
     };
 
-    // Helper to check if a station is healthy
-    async function checkStation(station: { name: string; url: string; logo?: string }) {
+    // Helper to check if a URL is reachable
+    async function checkUrl(url: string): Promise<boolean> {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        
-        const response = await fetch(station.url, {
+        const timeout = setTimeout(() => controller.abort(), 4000);
+
+        // Try HEAD first
+        const response = await fetch(url, {
           method: "HEAD",
           signal: controller.signal,
           redirect: "follow",
         });
         clearTimeout(timeout);
-        
-        return response.status === 200 || response.status === 302 || response.status === 405;
-      } catch {
-        // Try GET for streams that don't support HEAD
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
-          
-          const response = await fetch(station.url, {
-            method: "GET",
-            signal: controller.signal,
-            redirect: "follow",
-          });
-          clearTimeout(timeout);
-          
-          return response.status === 200 || response.status === 302;
-        } catch {
-          return false;
+
+        if (response.status === 200 || response.status === 302 || response.status === 405) {
+          return true;
         }
+      } catch {
+        // HEAD failed, continue to GET
+      }
+
+      // Try GET for streams that don't support HEAD
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+
+        const response = await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          redirect: "follow",
+        });
+        clearTimeout(timeout);
+
+        return response.status === 200 || response.status === 302;
+      } catch {
+        return false;
       }
     }
 
+    // Check station and find best working URL (primary or fallback)
+    async function checkStation(station: StationConfig): Promise<StationConfig | null> {
+      // Try primary URL first
+      if (await checkUrl(station.url)) {
+        return station;
+      }
+
+      // Try fallback URLs
+      if (station.fallbackUrls) {
+        for (const fallbackUrl of station.fallbackUrls) {
+          if (await checkUrl(fallbackUrl)) {
+            // Return station with working fallback as primary
+            return {
+              ...station,
+              url: fallbackUrl,
+              fallbackUrls: [station.url, ...station.fallbackUrls.filter(u => u !== fallbackUrl)],
+            };
+          }
+        }
+      }
+
+      // No working URLs found - still return station so user can try
+      // (stream might work even if health check fails)
+      return station;
+    }
+
     // Test all stations in parallel and group by country
-    const result: Record<string, Array<{ name: string; url: string; logo?: string }>> = {};
-    
+    const result: Record<string, StationConfig[]> = {};
+
     await Promise.all(
       Object.entries(stationsByCountry).map(async ([country, stations]) => {
-        const healthyStations = await Promise.all(
-          stations.map(async (station) => {
-            const isHealthy = await checkStation(station);
-            return isHealthy ? station : null;
-          })
+        const checkedStations = await Promise.all(
+          stations.map(async (station) => checkStation(station))
         );
-        result[country] = healthyStations.filter((s): s is typeof stations[0] => s !== null);
+        result[country] = checkedStations.filter((s): s is StationConfig => s !== null);
       })
     );
 
