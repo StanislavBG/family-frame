@@ -1907,6 +1907,7 @@ export async function registerRoutes(
   });
 
   // Get photos from user's persistent collection (refresh URLs from active session)
+  // Always returns consistent shape: { photos, storedCount, sessionActive, needsSessionRefresh }
   app.get("/api/photos", async (req: Request, res: Response) => {
     try {
       const userId = req.headers["x-clerk-user-id"] as string;
@@ -1921,16 +1922,28 @@ export async function registerRoutes(
 
       const userData = await getOrCreateUser(userId, username);
       const selectedPhotos = userData.settings?.selectedPhotos || [];
-      
+
       if (selectedPhotos.length === 0) {
         console.log("[Photos] No photos in persistent collection");
-        res.json([]);
+        res.json({
+          photos: [],
+          storedCount: 0,
+          sessionActive: false,
+          needsSessionRefresh: false,
+        });
         return;
       }
 
       const accessToken = await getValidGoogleToken(userData);
       if (!accessToken) {
-        res.status(401).json({ error: "Google Photos not connected" });
+        // Return stored count even when not connected, so UI can show appropriate message
+        res.json({
+          photos: [],
+          storedCount: selectedPhotos.length,
+          sessionActive: false,
+          needsSessionRefresh: true,
+          error: "Google Photos not connected",
+        });
         return;
       }
 
@@ -1938,22 +1951,29 @@ export async function registerRoutes(
       const sessionId = userData.settings?.pickerSessionId;
       let freshPhotos: GooglePhotoItem[] = [];
       let sessionActive = false;
-      
+      let sessionError: string | undefined;
+
       if (sessionId) {
         try {
           const session = await getPickerSession(accessToken, sessionId);
           if (session?.mediaItemsSet) {
             freshPhotos = await getPickedMediaItems(accessToken, sessionId);
             sessionActive = true;
+          } else if (session === null) {
+            // Session doesn't exist or is invalid
+            sessionError = "Session expired or invalid";
           }
         } catch (err) {
-          console.log("[Photos] Session fetch failed, may be expired");
+          console.log("[Photos] Session fetch failed, may be expired:", err);
+          sessionError = "Failed to fetch session";
         }
+      } else {
+        sessionError = "No session ID stored";
       }
 
       // Build a map of fresh URLs by photo ID
       const freshUrlMap = new Map(freshPhotos.map(p => [p.id, p]));
-      
+
       // Return ALL stored photos, with fresh URLs where available
       const now = Date.now();
       const photos: GooglePhotoItem[] = selectedPhotos.map(stored => {
@@ -1968,21 +1988,19 @@ export async function registerRoutes(
         };
       });
 
-      // Filter to only those with URLs for display, but log the total
+      // Filter to only those with URLs for display
       const displayablePhotos = photos.filter(p => p.baseUrl);
-      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored, session active:", sessionActive);
-      
-      // If no fresh URLs but we have stored photos, return empty with session status
-      if (displayablePhotos.length === 0 && selectedPhotos.length > 0) {
-        res.json({ 
-          photos: [], 
-          storedCount: selectedPhotos.length,
-          needsSessionRefresh: true 
-        });
-        return;
-      }
+      const needsSessionRefresh = displayablePhotos.length === 0 && selectedPhotos.length > 0;
 
-      res.json(displayablePhotos);
+      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored, session active:", sessionActive, sessionError ? `(${sessionError})` : "");
+
+      res.json({
+        photos: displayablePhotos,
+        storedCount: selectedPhotos.length,
+        sessionActive,
+        needsSessionRefresh,
+        ...(sessionError && { sessionError }),
+      });
     } catch (error) {
       console.error("[Photos] Error:", error);
       res.status(500).json({ error: "Internal server error" });
