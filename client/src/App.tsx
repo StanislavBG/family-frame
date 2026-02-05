@@ -29,7 +29,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, MessageSquare, Clock, Mail, StickyNote, Tv, BarChart3 } from "lucide-react";
 import { Component, ErrorInfo, ReactNode, useState, useEffect } from "react";
 import { useWakeLock } from "@/hooks/use-wake-lock";
-import { GlobalRadioPlayer } from "@/components/global-radio-player";
 import { AppControlsProvider, AppControlsWidget, HeaderControls } from "@/components/app-controls";
 
 interface ErrorBoundaryProps {
@@ -160,7 +159,6 @@ function AuthenticatedLayout() {
               <Router />
             </main>
           </div>
-          <GlobalRadioPlayer />
           <AppControlsWidget />
         </div>
       </SidebarProvider>
