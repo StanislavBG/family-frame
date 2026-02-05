@@ -1001,91 +1001,267 @@ export async function registerRoutes(
     }
   });
 
-  // Radio stations health check - tests which stations are accessible
+  // Radio stations organized by category (countries + genres) with icons
   app.get("/api/radio/stations", async (_req: Request, res: Response) => {
-    const stationsByCountry: Record<string, Array<{ name: string; url: string; logo?: string }>> = {
-      "Bulgaria": [
-        { name: "BG Radio", url: "http://stream.radioreklama.bg/bgradio128" },
-        { name: "Radio Energy", url: "http://play.global.audio/nrj128" },
-        { name: "Magic FM", url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8" },
-        { name: "Avto Radio", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac" },
-        { name: "BNR Horizont", url: "http://stream.bnr.bg:8000/horizont.mp3" },
-        { name: "BNR Hristo Botev", url: "http://stream.bnr.bg:8012/hristo-botev.aac" },
-        { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3" },
-        { name: "bTV Radio", url: "https://cdn.bweb.bg/radio/btv-radio.mp3" },
-      ],
-      "Serbia": [
-        { name: "B92", url: "http://stream.b92.net:7999/radio-b92.mp3" },
-        { name: "Radio S", url: "http://stream.radios.rs:8002/radios128" },
-        { name: "Hit FM", url: "http://stream.hitfm.rs:8010/hitfm128" },
-        { name: "Play Radio", url: "http://91.221.134.252:8002/stream" },
-        { name: "Naxi Radio", url: "http://naxi128-naxinacional.streaming.rs:8030/stream" },
-        { name: "Radio 021", url: "https://centova.dukahosting.com/proxy/021kafe/stream" },
-      ],
-      "Greece": [
-        { name: "1055 Rock", url: "http://radio.1055rock.gr:30000/1055" },
-        { name: "Skai 100.3", url: "http://skai.live24.gr/skai1003" },
-        { name: "Athens DeeJay", url: "http://netradio.live24.gr/athensdeejay" },
-        { name: "En Lefko 87.7", url: "http://stream.radiojar.com/enlefko877" },
-        { name: "Galaxy 92", url: "http://galaxy.live24.gr/galaxy9292" },
-        { name: "Pepper 96.6", url: "http://netradio.live24.gr/pepper966" },
-      ],
-      "Russia": [
-        { name: "Europa Plus", url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3" },
-        { name: "Radio Record", url: "https://radiorecord.hostingradio.ru/rr_main96.aacp" },
-        { name: "Russian Gold", url: "https://radiorecord.hostingradio.ru/russiangold96.aacp" },
-        { name: "Retro FM", url: "http://retro256.hostingradio.ru:8052/retro256.mp3" },
-        { name: "Relax FM", url: "https://pub0201.101.ru/stream/trust/mp3/128/24" },
-        { name: "DFM", url: "http://dfm.hostingradio.ru/dfm96.aacp" },
-      ],
+    interface StationConfig {
+      name: string;
+      url: string;
+      fallbackUrls?: string[];
+      logo?: string;
+    }
+
+    interface CategoryConfig {
+      icon: string;
+      stations: StationConfig[];
+    }
+
+    const stationsByCategory: Record<string, CategoryConfig> = {
+      // Country categories
+      "Bulgaria": {
+        icon: "🇧🇬",
+        stations: [
+          {
+            name: "BG Radio",
+            url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
+            fallbackUrls: [
+              "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_L.aac",
+              "http://stream.radioreklama.bg/bgradio128",
+              "http://play.global.audio/bgradio.ogg",
+            ],
+          },
+          {
+            name: "Radio Energy",
+            url: "http://play.global.audio/nrj128",
+            fallbackUrls: ["http://stream.radioreklama.bg/nrj128"],
+          },
+          {
+            name: "Magic FM",
+            url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8",
+            fallbackUrls: ["http://stream.radioreklama.bg/magicfm128"],
+          },
+          {
+            name: "Avto Radio",
+            url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_H.aac",
+            fallbackUrls: [
+              "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac",
+            ],
+          },
+          {
+            name: "BNR Horizont",
+            url: "http://stream.bnr.bg:8000/horizont.mp3",
+            fallbackUrls: ["http://bnr.bg/listen?media=horizont"],
+          },
+          {
+            name: "BNR Hristo Botev",
+            url: "http://stream.bnr.bg:8012/hristo-botev.aac",
+            fallbackUrls: ["http://stream.bnr.bg:8012/hristo-botev.mp3"],
+          },
+          { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3" },
+          {
+            name: "bTV Radio",
+            url: "https://cdn.bweb.bg/radio/btv-radio.mp3",
+            fallbackUrls: ["http://stream.btvradio.bg/high.mp3"],
+          },
+        ],
+      },
+      "Serbia": {
+        icon: "🇷🇸",
+        stations: [
+          {
+            name: "B92",
+            url: "http://stream.b92.net:7999/radio-b92.mp3",
+            fallbackUrls: ["http://stream2.b92.net:7999/radio-b92.mp3"],
+          },
+          { name: "Radio S", url: "http://stream.radios.rs:8002/radios128" },
+          { name: "Hit FM", url: "http://stream.hitfm.rs:8010/hitfm128" },
+          { name: "Play Radio", url: "http://91.221.134.252:8002/stream" },
+          {
+            name: "Naxi Radio",
+            url: "http://naxi128-naxinacional.streaming.rs:8030/stream",
+            fallbackUrls: ["http://stream.naxi.rs:8030/stream"],
+          },
+          { name: "Radio 021", url: "https://centova.dukahosting.com/proxy/021kafe/stream" },
+        ],
+      },
+      "Greece": {
+        icon: "🇬🇷",
+        stations: [
+          { name: "1055 Rock", url: "http://radio.1055rock.gr:30000/1055" },
+          {
+            name: "Skai 100.3",
+            url: "http://skai.live24.gr/skai1003",
+            fallbackUrls: ["http://netradio.live24.gr/skai1003"],
+          },
+          { name: "Athens DeeJay", url: "http://netradio.live24.gr/athensdeejay" },
+          { name: "En Lefko 87.7", url: "http://stream.radiojar.com/enlefko877" },
+          { name: "Galaxy 92", url: "http://galaxy.live24.gr/galaxy9292" },
+          { name: "Pepper 96.6", url: "http://netradio.live24.gr/pepper966" },
+        ],
+      },
+      "Russia": {
+        icon: "🇷🇺",
+        stations: [
+          {
+            name: "Europa Plus",
+            url: "http://ep256.hostingradio.ru:8052/europaplus256.mp3",
+            fallbackUrls: ["http://ep128.hostingradio.ru:8052/europaplus128.mp3"],
+          },
+          {
+            name: "Radio Record",
+            url: "https://radiorecord.hostingradio.ru/rr_main96.aacp",
+            fallbackUrls: ["http://air.radiorecord.ru:8102/rr_main96_aacp"],
+          },
+          { name: "Russian Gold", url: "https://radiorecord.hostingradio.ru/russiangold96.aacp" },
+          {
+            name: "Retro FM",
+            url: "http://retro256.hostingradio.ru:8052/retro256.mp3",
+            fallbackUrls: ["http://retro128.hostingradio.ru:8052/retro128.mp3"],
+          },
+          { name: "Relax FM", url: "https://pub0201.101.ru/stream/trust/mp3/128/24" },
+          { name: "DFM", url: "http://dfm.hostingradio.ru/dfm96.aacp" },
+        ],
+      },
+      // Genre categories - non-commercial free streams
+      "Jazz": {
+        icon: "🎷",
+        stations: [
+          { name: "KCSM Jazz", url: "https://ice7.securenetsystems.net/KCSM2" },
+          { name: "Jazz24", url: "https://live.amperwave.net/direct/ppm-jazz24aac256-ibc1" },
+          { name: "Smooth Jazz Florida", url: "http://us4.internet-radio.com:8266/stream" },
+          { name: "Radio Swiss Jazz", url: "http://stream.srg-ssr.ch/m/rsj/mp3_128" },
+          { name: "ABC Jazz", url: "https://live-radio01.mediahubaustralia.com/JAZW/mp3/" },
+          { name: "Bossa Nova Brazil", url: "http://centova.radios.pt:9478/stream" },
+        ],
+      },
+      "Classical": {
+        icon: "🎻",
+        stations: [
+          { name: "WQXR Classical", url: "https://stream.wqxr.org/wqxr" },
+          { name: "Radio Swiss Classic", url: "http://stream.srg-ssr.ch/m/rsc_de/mp3_128" },
+          { name: "ABC Classic", url: "https://live-radio01.mediahubaustralia.com/2FMW/mp3/" },
+          { name: "Venice Classic Radio", url: "http://109.123.116.202:8022/stream" },
+          { name: "Classic FM", url: "http://media-ice.musicradio.com/ClassicFMMP3" },
+          { name: "WCPE Classical", url: "http://audio-ogg.ibiblio.org:8000/wcpe.ogg" },
+        ],
+      },
+      "Metal": {
+        icon: "🤘",
+        stations: [
+          { name: "Metal Express Radio", url: "http://5.135.154.69:11590/stream" },
+          { name: "KNAC Pure Rock", url: "https://stream.knac.com/knac" },
+          { name: "HardRadio", url: "http://server1.inetify.pl:17030/stream" },
+          { name: "RockRadio1", url: "http://listen.rockradio.de/rockradio1.mp3" },
+          { name: "Rebel Radio", url: "http://158.69.228.195:8038/stream" },
+          { name: "Metal Rock Radio", url: "http://144.217.158.59:5566/stream" },
+        ],
+      },
+      "Ambient": {
+        icon: "🌙",
+        stations: [
+          { name: "SomaFM Drone Zone", url: "https://ice2.somafm.com/dronezone-128-mp3" },
+          { name: "SomaFM Space Station", url: "https://ice2.somafm.com/spacestation-128-mp3" },
+          { name: "SomaFM Deep Space One", url: "https://ice2.somafm.com/deepspaceone-128-mp3" },
+          { name: "Ambient Sleeping Pill", url: "http://radio.stereoscenic.com/asp-s" },
+          { name: "SomaFM Groove Salad", url: "https://ice2.somafm.com/groovesalad-128-mp3" },
+          { name: "Chillout Lounge", url: "http://air.radioart.com/fChillout.mp3" },
+        ],
+      },
+      "Electronic": {
+        icon: "🎧",
+        stations: [
+          { name: "SomaFM Secret Agent", url: "https://ice2.somafm.com/secretagent-128-mp3" },
+          { name: "SomaFM DEF CON", url: "https://ice2.somafm.com/defcon-128-mp3" },
+          { name: "Digitally Imported Trance", url: "http://prem1.di.fm:80/trance" },
+          { name: "Frisky Radio", url: "http://stream1.friskyradio.com/frisky_mp3_hi" },
+          { name: "SomaFM Beat Blender", url: "https://ice2.somafm.com/beatblender-128-mp3" },
+          { name: "Proton Radio", url: "http://protonradio.com:8000/proton" },
+        ],
+      },
     };
 
-    // Helper to check if a station is healthy
-    async function checkStation(station: { name: string; url: string; logo?: string }) {
+    // Helper to check if a URL is reachable
+    async function checkUrl(url: string): Promise<boolean> {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        
-        const response = await fetch(station.url, {
+        const timeout = setTimeout(() => controller.abort(), 4000);
+
+        // Try HEAD first
+        const response = await fetch(url, {
           method: "HEAD",
           signal: controller.signal,
           redirect: "follow",
         });
         clearTimeout(timeout);
-        
-        return response.status === 200 || response.status === 302 || response.status === 405;
-      } catch {
-        // Try GET for streams that don't support HEAD
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
-          
-          const response = await fetch(station.url, {
-            method: "GET",
-            signal: controller.signal,
-            redirect: "follow",
-          });
-          clearTimeout(timeout);
-          
-          return response.status === 200 || response.status === 302;
-        } catch {
-          return false;
+
+        if (response.status === 200 || response.status === 302 || response.status === 405) {
+          return true;
         }
+      } catch {
+        // HEAD failed, continue to GET
+      }
+
+      // Try GET for streams that don't support HEAD
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+
+        const response = await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          redirect: "follow",
+        });
+        clearTimeout(timeout);
+
+        return response.status === 200 || response.status === 302;
+      } catch {
+        return false;
       }
     }
 
-    // Test all stations in parallel and group by country
-    const result: Record<string, Array<{ name: string; url: string; logo?: string }>> = {};
-    
+    // Check station and find best working URL (primary or fallback)
+    async function checkStation(station: StationConfig): Promise<StationConfig | null> {
+      // Try primary URL first
+      if (await checkUrl(station.url)) {
+        return station;
+      }
+
+      // Try fallback URLs
+      if (station.fallbackUrls) {
+        for (const fallbackUrl of station.fallbackUrls) {
+          if (await checkUrl(fallbackUrl)) {
+            // Return station with working fallback as primary
+            return {
+              ...station,
+              url: fallbackUrl,
+              fallbackUrls: [station.url, ...station.fallbackUrls.filter(u => u !== fallbackUrl)],
+            };
+          }
+        }
+      }
+
+      // No working URLs found - still return station so user can try
+      // (stream might work even if health check fails)
+      return station;
+    }
+
+    // Response includes icon for each category
+    interface CategoryResponse {
+      icon: string;
+      stations: StationConfig[];
+    }
+
+    // Test all stations in parallel, grouped by category
+    const result: Record<string, CategoryResponse> = {};
+
     await Promise.all(
-      Object.entries(stationsByCountry).map(async ([country, stations]) => {
-        const healthyStations = await Promise.all(
-          stations.map(async (station) => {
-            const isHealthy = await checkStation(station);
-            return isHealthy ? station : null;
-          })
+      Object.entries(stationsByCategory).map(async ([category, config]) => {
+        const checkedStations = await Promise.all(
+          config.stations.map(async (station) => checkStation(station))
         );
-        result[country] = healthyStations.filter((s): s is typeof stations[0] => s !== null);
+        result[category] = {
+          icon: config.icon,
+          stations: checkedStations.filter((s): s is StationConfig => s !== null),
+        };
       })
     );
 
@@ -1093,36 +1269,191 @@ export async function registerRoutes(
   });
 
   // TV channels health check - tests which channels are accessible
+  // Organized by region with Bulgaria first, then World News, then alphabetically by region
   app.get("/api/tv/channels", async (_req: Request, res: Response) => {
-    const channelsByCountry: Record<string, Array<{ name: string; url: string; logo?: string }>> = {
-      "Bulgaria": [
-        { name: "The Voice TV", url: "https://bss1.neterra.tv/thevoice/thevoice.m3u8" },
-        { name: "Magic TV", url: "https://bss1.neterra.tv/magictv/magictv.m3u8" },
-        { name: "This is Bulgaria HD", url: "https://streamer103.neterra.tv/thisisbulgaria/live.m3u8" },
-        { name: "Tiankov Folk", url: "https://streamer103.neterra.tv/tiankov-folk/live.m3u8" },
-        { name: "Tiankov Orient Folk", url: "https://streamer103.neterra.tv/tiankov-orient/live.m3u8" },
-        { name: "Travel TV", url: "https://streamer103.neterra.tv/travel/live.m3u8" },
+    const channelsByCountry: Record<string, Array<{ name: string; url: string; logo?: string; group?: string }>> = {
+      // ============ BULGARIA (Primary) ============
+      "🇧🇬 Bulgaria": [
+        // Music Channels
+        { name: "The Voice TV", url: "https://bss1.neterra.tv/thevoice/thevoice.m3u8", group: "Music", logo: "https://i.imgur.com/OoJSmoj.png" },
+        { name: "Magic TV", url: "https://bss1.neterra.tv/magictv/magictv.m3u8", group: "Music", logo: "https://i.imgur.com/n7bcrrp.png" },
+        { name: "Tiankov Folk", url: "https://streamer103.neterra.tv/tiankov-folk/live.m3u8", group: "Music", logo: "https://i.imgur.com/VKY4q64.png" },
+        { name: "Tiankov Orient Folk", url: "https://streamer103.neterra.tv/tiankov-orient/live.m3u8", group: "Music", logo: "https://i.postimg.cc/KYNvL1ML/tiankovorientfolk.png" },
+        { name: "City TV", url: "https://tv.city.bg/play/tshls/citytv/index.m3u8", group: "Music", logo: "https://i.imgur.com/qJvMbNH.png" },
+        // Entertainment & Culture
+        { name: "This is Bulgaria HD", url: "https://streamer103.neterra.tv/thisisbulgaria/live.m3u8", group: "Entertainment", logo: "https://i.imgur.com/062jkXw.png" },
+        { name: "Travel TV", url: "https://streamer103.neterra.tv/travel/live.m3u8", group: "Travel", logo: "https://i.imgur.com/5xllfed.png" },
+        { name: "TV1", url: "https://tv1.cloudcdn.bg/tv1/livestream.m3u8", group: "Entertainment", logo: "https://i.imgur.com/LVHK1mW.png" },
+        { name: "Evrokom", url: "https://live.ecomservice.bg/hls/stream.m3u8", group: "Entertainment", logo: "https://i.imgur.com/8JvT9Yw.png" },
+        // News & Information
+        { name: "Bulgaria ON AIR", url: "https://edge1.cdn.bg:2006/fls/bonair.stream/playlist.m3u8", group: "News", logo: "https://i.imgur.com/YFZYJFN.png" },
+        { name: "Kanal 0", url: "https://old.rn-tv.com/k0/stream.m3u8", group: "News", logo: "https://i.imgur.com/0kqJhHz.png" },
+        // Regional
+        { name: "TV Zagora", url: "http://zagoratv.ddns.net:8080/tvzagora.m3u8", group: "Regional", logo: "https://i.imgur.com/JxLHvfM.png" },
+        { name: "DSTV", url: "http://46.249.95.140:8081/hls/data.m3u8", group: "Regional", logo: "https://i.imgur.com/bHWJZcY.png" },
+        // Religious & Educational
+        { name: "Hope Channel Bulgaria", url: "https://hc1.hopetv.bg/live/hopetv_all.smil/playlist.m3u8", group: "Religious", logo: "https://i.imgur.com/wvJ5PeX.png" },
+        { name: "Plovdivska Pravoslavna TV", url: "http://78.130.149.196:1935/live/pptv.stream/playlist.m3u8", group: "Religious", logo: "https://i.imgur.com/TCqMqpM.png" },
+        { name: "Light Channel", url: "https://streamer1.streamhost.org/salive/GMIlcbgM/playlist.m3u8", group: "Religious", logo: "https://i.imgur.com/pQlBXJc.png" },
+        // International (Bulgarian)
+        { name: "BNT 4 (World)", url: "https://viamotionhsi.netplus.ch/live/eds/bntworld/browser-HLS8/bntworld.m3u8", group: "International", logo: "https://i.imgur.com/LkXLDfm.png" },
+        // Specialty
+        { name: "Agro TV", url: "https://restr2.bgtv.bg/agro/hls/agro.m3u8", group: "Specialty", logo: "https://i.imgur.com/HVKjGjz.png" },
+        { name: "100% Auto Moto TV", url: "http://100automoto.tv:1935/bgtv1/autotv/playlist.m3u8", group: "Specialty", logo: "https://i.imgur.com/GfDvKHv.png" },
+        { name: "MM TV", url: "https://streamer103.neterra.tv/mmtv/mmtv.smil/playlist.m3u8", group: "Entertainment", logo: "https://i.imgur.com/QjYmVJf.png" },
+        { name: "RMTV", url: "https://transcoder1.bitcare.eu/streaming/rimextv/rmtv.m3u8", group: "Entertainment", logo: "https://i.imgur.com/yqKKMnf.png" },
+        { name: "Wness TV", url: "https://wness103.neterra.tv/wness/wness.smil/playlist.m3u8", group: "Lifestyle", logo: "https://i.imgur.com/kF5JNXN.png" },
       ],
-      "Serbia": [
-        { name: "RTS 1", url: "https://rts1.streaming.rs/rts1/rts1.m3u8" },
-        { name: "RTS 2", url: "https://rts2.streaming.rs/rts2/rts2.m3u8" },
-        { name: "Pink TV", url: "http://pink.streaming.rs/pink/pink.m3u8" },
-        { name: "B92", url: "http://b92.streaming.rs/b92/b92.m3u8" },
-        { name: "Happy TV", url: "http://happy.streaming.rs/happy/happy.m3u8" },
+
+      // ============ KIDS (Free Public Channels) ============
+      "👶 Kids": [
+        // USA
+        { name: "PBS Kids", url: "https://livestream.pbskids.org/out/v1/14507d931bbe48a69287e4850e53443c/est.m3u8", group: "USA", logo: "https://i.imgur.com/mWLt6wY.png" },
+        // Germany
+        { name: "KiKA", url: "https://viamotionhsi.netplus.ch/live/eds/kikahd/browser-HLS8/kikahd.m3u8", group: "Germany", logo: "https://i.imgur.com/zVJQNfX.png" },
+        { name: "Disney Channel DE", url: "https://viamotionhsi.netplus.ch/live/eds/disneychannelde/browser-HLS8/disneychannelde.m3u8", group: "Germany", logo: "https://i.imgur.com/tZLDXPq.png" },
+        // Italy
+        { name: "Rai Yoyo", url: "https://mediapolis.rai.it/relinker/relinkerServlet.htm?cont=746899", group: "Italy", logo: "https://i.imgur.com/NV8nqGU.png" },
+        { name: "Rai Gulp", url: "https://viamotionhsi.netplus.ch/live/eds/raigulp/browser-HLS8/raigulp.m3u8", group: "Italy", logo: "https://i.imgur.com/TkKXzMa.png" },
+        { name: "BeJoy Kids", url: "https://64b16f23efbee.streamlock.net/bejoy/bejoy/playlist.m3u8", group: "Italy", logo: "https://i.imgur.com/KQLnKcJ.png" },
+        // Spain
+        { name: "Clan TVE", url: "https://dum8zv1rbdjj2.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-x6uutpgph4tpt/ClanES.m3u8", group: "Spain", logo: "https://i.imgur.com/nBZrqvM.png" },
+        // South Korea
+        { name: "EBS Kids", url: "https://ebsonair.ebs.co.kr/ebs1familypc/familypc1m/playlist.m3u8", group: "Korea", logo: "https://i.imgur.com/5xGbMWt.png" },
       ],
-      "Greece": [
-        { name: "ERT 1", url: "https://ert-live-bcbs15228.siliconweb.com/media/ert1/ert1.m3u8" },
-        { name: "ERT 2", url: "https://ert-live-bcbs15228.siliconweb.com/media/ert2/ert2.m3u8" },
-        { name: "ERT 3", url: "https://ert-live-bcbs15228.siliconweb.com/media/ert3/ert3.m3u8" },
-        { name: "ERT Sports", url: "https://ert-live-bcbs15228.siliconweb.com/media/ertsports/ertsports.m3u8" },
-        { name: "ERT World", url: "https://ert-live-bcbs15228.siliconweb.com/media/ertworld/ertworld.m3u8" },
+
+      // ============ WORLD NEWS (International) ============
+      "🌍 World News": [
+        { name: "Al Jazeera English", url: "https://live-hls-web-aje.getaj.net/AJE/index.m3u8", group: "News", logo: "https://i.imgur.com/GJmLFzF.png" },
+        { name: "France 24 English", url: "https://live.france24.com/hls/live/2037218/F24_EN_HI_HLS/master_5000.m3u8", group: "News", logo: "https://i.imgur.com/nTp4h4h.png" },
+        { name: "France 24 French", url: "https://live.france24.com/hls/live/2037179/F24_FR_HI_HLS/master_5000.m3u8", group: "News", logo: "https://i.imgur.com/nTp4h4h.png" },
+        { name: "DW English", url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/master.m3u8", group: "News", logo: "https://i.imgur.com/A1xzjOI.png" },
+        { name: "DW Deutsch", url: "https://dwamdstream104.akamaized.net/hls/live/2015530/dwstream104/master.m3u8", group: "News", logo: "https://i.imgur.com/A1xzjOI.png" },
+        { name: "Euronews English", url: "https://viamotionhsi.netplus.ch/live/eds/euronews/browser-HLS8/euronews.m3u8", group: "News", logo: "https://i.imgur.com/7MBmUgR.png" },
+        { name: "RT News", url: "https://rt-glb.rttv.com/live/rtnews/playlist.m3u8", group: "News", logo: "https://i.imgur.com/8gWDnIw.png" },
+        { name: "NHK World Japan", url: "https://nhkworld.webcdn.stream.ne.jp/www11/nhkworld-tv/domestic/263942/live.m3u8", group: "News", logo: "https://i.imgur.com/z0TbRUV.png" },
+        { name: "Arirang TV Korea", url: "http://amdlive-ch01.ctnd.com.edgesuite.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8", group: "News", logo: "https://i.imgur.com/fLvHpCL.png" },
+        { name: "CGTN", url: "https://news.cgtn.com/resource/live/english/cgtn-news.m3u8", group: "News", logo: "https://i.imgur.com/T5xds9w.png" },
       ],
-      "Russia": [
-        { name: "Channel One", url: "https://edge1.1internet.tv/live-cdn/pervyi/tracks-v1a1/mono.m3u8" },
-        { name: "Russia 1", url: "https://edge1.1internet.tv/live-cdn/russia1/tracks-v1a1/mono.m3u8" },
-        { name: "NTV", url: "https://edge1.1internet.tv/live-cdn/ntv/tracks-v1a1/mono.m3u8" },
-        { name: "RT", url: "https://rt-glb.rttv.com/live/rtnews/playlist.m3u8" },
-        { name: "Zvezda", url: "https://live-cdn.zvezda.ru/live/zvezda/tracks-v1a1/mono.m3u8" },
+
+      // ============ EUROPE ============
+      "🇩🇪 Germany": [
+        { name: "Das Erste", url: "https://daserste-live.ard-mcdn.de/daserste/live/hls/int/master.m3u8", group: "Public", logo: "https://i.imgur.com/rJgRxnA.png" },
+        { name: "ZDF", url: "https://viamotionhsi.netplus.ch/live/eds/zdfhd/browser-HLS8/zdfhd.m3u8", group: "Public", logo: "https://i.imgur.com/9sVBnvH.png" },
+        { name: "Tagesschau 24", url: "https://tagesschau.akamaized.net/hls/live/2020115/tagesschau/tagesschau_1/master.m3u8", group: "News", logo: "https://i.imgur.com/5CMVoTy.png" },
+        { name: "Phoenix", url: "https://viamotionhsi.netplus.ch/live/eds/phoenixhd/browser-HLS8/phoenixhd.m3u8", group: "News", logo: "https://i.imgur.com/xYyNDQT.png" },
+        { name: "ARD-alpha", url: "https://mcdn.br.de/br/fs/ard_alpha/hls/de/master.m3u8", group: "Education", logo: "https://i.imgur.com/WprNwGJ.png" },
+        { name: "hr-fernsehen", url: "https://hrhls.akamaized.net/hls/live/2024525/hrhls/index.m3u8", group: "Regional", logo: "https://i.imgur.com/6vYkRqY.png" },
+        { name: "WDR", url: "https://wdr-live.ard-mcdn.de/wdr/live/hls/de/master.m3u8", group: "Regional", logo: "https://i.imgur.com/KqPLUeX.png" },
+        { name: "NDR Hamburg", url: "https://mcdn.ndr.de/ndr/hls/ndr_fs/ndr_hh/master.m3u8", group: "Regional", logo: "https://i.imgur.com/xdYNzKX.png" },
+      ],
+      "🇫🇷 France": [
+        { name: "France 2", url: "https://viamotionhsi.netplus.ch/live/eds/france2hd/browser-HLS8/france2hd.m3u8", group: "Public", logo: "https://i.imgur.com/pbmqYmV.png" },
+        { name: "France 3", url: "https://viamotionhsi.netplus.ch/live/eds/france3hd/browser-HLS8/france3hd.m3u8", group: "Public", logo: "https://i.imgur.com/XWNcqMP.png" },
+        { name: "France 5", url: "https://viamotionhsi.netplus.ch/live/eds/france5hd/browser-HLS8/france5hd.m3u8", group: "Public", logo: "https://i.imgur.com/wBnXOUn.png" },
+        { name: "Arte", url: "https://viamotionhsi.netplus.ch/live/eds/artehd/browser-HLS8/artehd.m3u8", group: "Culture", logo: "https://i.imgur.com/9KI9VvS.png" },
+        { name: "TF1", url: "https://viamotionhsi.netplus.ch/live/eds/tf1hd/browser-HLS8/tf1hd.m3u8", group: "Entertainment", logo: "https://i.imgur.com/Gm4XYmT.png" },
+        { name: "Franceinfo", url: "https://viamotionhsi.netplus.ch/live/eds/franceinfo/browser-HLS8/franceinfo.m3u8", group: "News", logo: "https://i.imgur.com/cC5IK6q.png" },
+        { name: "BFM TV", url: "https://viamotionhsi.netplus.ch/live/eds/bfmtv/browser-HLS8/bfmtv.m3u8", group: "News", logo: "https://i.imgur.com/fZ8OhBr.png" },
+        { name: "TV5Monde", url: "https://viamotionhsi.netplus.ch/live/eds/tv5mondefbs/browser-HLS8/tv5mondefbs.m3u8", group: "International", logo: "https://i.imgur.com/6j1Bsxu.png" },
+      ],
+      "🇮🇹 Italy": [
+        { name: "Rai 1", url: "https://viamotionhsi.netplus.ch/live/eds/rai1/browser-HLS8/rai1.m3u8", group: "Public", logo: "https://i.imgur.com/GnVGqxP.png" },
+        { name: "Rai 2", url: "https://viamotionhsi.netplus.ch/live/eds/rai2/browser-HLS8/rai2.m3u8", group: "Public", logo: "https://i.imgur.com/nzP6Qe1.png" },
+        { name: "Rai 3", url: "https://viamotionhsi.netplus.ch/live/eds/rai3/browser-HLS8/rai3.m3u8", group: "Public", logo: "https://i.imgur.com/6rRFwQE.png" },
+        { name: "Rai News 24", url: "https://viamotionhsi.netplus.ch/live/eds/rainews/browser-HLS8/rainews.m3u8", group: "News", logo: "https://i.imgur.com/NQZBcvJ.png" },
+        { name: "La7", url: "https://viamotionhsi.netplus.ch/live/eds/la7/browser-HLS8/la7.m3u8", group: "Entertainment", logo: "https://i.imgur.com/Gj8mHVu.png" },
+        { name: "Canale 5", url: "https://viamotionhsi.netplus.ch/live/eds/canale5/browser-HLS8/canale5.m3u8", group: "Entertainment", logo: "https://i.imgur.com/qxlZXpT.png" },
+        { name: "Rai Gulp", url: "https://viamotionhsi.netplus.ch/live/eds/raigulp/browser-HLS8/raigulp.m3u8", group: "Kids", logo: "https://i.imgur.com/TkKXzMa.png" },
+        { name: "Rai Scuola", url: "https://viamotionhsi.netplus.ch/live/eds/raiscuola/browser-HLS8/raiscuola.m3u8", group: "Education", logo: "https://i.imgur.com/JqLPnEj.png" },
+      ],
+      "🇪🇸 Spain": [
+        { name: "La 1 (TVE)", url: "https://ztnr.rtve.es/ztnr/1688877.m3u8", group: "Public", logo: "https://i.imgur.com/QJvbpnL.png" },
+        { name: "La 2 (TVE)", url: "https://ztnr.rtve.es/ztnr/1688885.m3u8", group: "Public", logo: "https://i.imgur.com/z0BQxWH.png" },
+        { name: "Canal 24 Horas", url: "https://ztnr.rtve.es/ztnr/1694255.m3u8", group: "News", logo: "https://i.imgur.com/Zcy2kM3.png" },
+        { name: "Telemadrid", url: "https://telemadrid-23-secure2.akamaized.net/master.m3u8", group: "Regional", logo: "https://i.imgur.com/xVZ6iYL.png" },
+      ],
+      "🇬🇷 Greece": [
+        { name: "ERT 1", url: "https://ert-live-bcbs15228.siliconweb.com/media/ert1/ert1.m3u8", group: "Public", logo: "https://i.imgur.com/Z8rZZVn.png" },
+        { name: "ERT 2", url: "https://ert-live-bcbs15228.siliconweb.com/media/ert2/ert2.m3u8", group: "Public", logo: "https://i.imgur.com/Z8rZZVn.png" },
+        { name: "ERT 3", url: "https://ert-live-bcbs15228.siliconweb.com/media/ert3/ert3.m3u8", group: "Regional", logo: "https://i.imgur.com/Z8rZZVn.png" },
+        { name: "ERT Sports", url: "https://ert-live-bcbs15228.siliconweb.com/media/ertsports/ertsports.m3u8", group: "Sports", logo: "https://i.imgur.com/Z8rZZVn.png" },
+        { name: "ERT World", url: "https://ert-live-bcbs15228.siliconweb.com/media/ertworld/ertworld.m3u8", group: "International", logo: "https://i.imgur.com/Z8rZZVn.png" },
+      ],
+      "🇷🇸 Serbia": [
+        { name: "RTS 1", url: "https://rts1.streaming.rs/rts1/rts1.m3u8", group: "Public", logo: "https://i.imgur.com/4K1rQXZ.png" },
+        { name: "RTS 2", url: "https://rts2.streaming.rs/rts2/rts2.m3u8", group: "Public", logo: "https://i.imgur.com/4K1rQXZ.png" },
+        { name: "Pink TV", url: "http://pink.streaming.rs/pink/pink.m3u8", group: "Entertainment", logo: "https://i.imgur.com/aDNqJ1Y.png" },
+        { name: "B92", url: "http://b92.streaming.rs/b92/b92.m3u8", group: "Entertainment", logo: "https://i.imgur.com/4rPQCMF.png" },
+        { name: "Happy TV", url: "http://happy.streaming.rs/happy/happy.m3u8", group: "Entertainment", logo: "https://i.imgur.com/5jKQ5pM.png" },
+      ],
+      "🇵🇱 Poland": [
+        { name: "TVP World", url: "https://dash2.antik.sk/live/test_tvp_world/playlist.m3u8", group: "International", logo: "https://i.imgur.com/vRTnMXA.png" },
+        { name: "TVP Polonia", url: "https://viamotionhsi.netplus.ch/live/eds/tvpolonia/browser-HLS8/tvpolonia.m3u8", group: "International", logo: "https://i.imgur.com/vRTnMXA.png" },
+        { name: "TVP Info", url: "https://dash4.antik.sk/live/test_tvp_info/playlist.m3u8", group: "News", logo: "https://i.imgur.com/vRTnMXA.png" },
+        { name: "TV Biznesowa", url: "https://s-pl-01.mediatool.tv/playout/tbpl-abr/index.m3u8", group: "Business", logo: "https://i.imgur.com/JBKiMVx.png" },
+      ],
+      "🇹🇷 Turkey": [
+        { name: "TRT 1", url: "https://trt.daioncdn.net/trt-1/master.m3u8?app=web", group: "Public", logo: "https://i.imgur.com/XNQHX1A.png" },
+        { name: "TRT 2", url: "https://tv-trt2.medya.trt.com.tr/master.m3u8", group: "Culture", logo: "https://i.imgur.com/XNQHX1A.png" },
+        { name: "TRT Haber", url: "https://tv-trthaber.medya.trt.com.tr/master.m3u8", group: "News", logo: "https://i.imgur.com/XNQHX1A.png" },
+        { name: "Habertürk", url: "https://ciner-live.daioncdn.net/haberturktv/haberturktv.m3u8", group: "News", logo: "https://i.imgur.com/vYKlJmS.png" },
+        { name: "NTV Turkey", url: "https://dogus-live.daioncdn.net/ntv/ntv.m3u8", group: "News", logo: "https://i.imgur.com/dSLQCLJ.png" },
+        { name: "Kanal D", url: "https://demiroren.daioncdn.net/kanald/kanald.m3u8?app=kanald_web&ce=3", group: "Entertainment", logo: "https://i.imgur.com/yVJXpcZ.png" },
+        { name: "Halk TV", url: "https://halktv-live.daioncdn.net/halktv/halktv.m3u8", group: "News", logo: "https://i.imgur.com/xN4P4VJ.png" },
+        { name: "Tele 1", url: "https://tele1-live.ercdn.net/tele1/tele1.m3u8", group: "News", logo: "https://i.imgur.com/TxVSJDG.png" },
+      ],
+      "🇷🇺 Russia": [
+        { name: "Channel One", url: "https://edge1.1internet.tv/live-cdn/pervyi/tracks-v1a1/mono.m3u8", group: "Public", logo: "https://i.imgur.com/cZUxvlM.png" },
+        { name: "Russia 1", url: "https://edge1.1internet.tv/live-cdn/russia1/tracks-v1a1/mono.m3u8", group: "Public", logo: "https://i.imgur.com/2P7xvYb.png" },
+        { name: "NTV Russia", url: "https://edge1.1internet.tv/live-cdn/ntv/tracks-v1a1/mono.m3u8", group: "Entertainment", logo: "https://i.imgur.com/dYk8WCx.png" },
+        { name: "Zvezda", url: "https://live-cdn.zvezda.ru/live/zvezda/tracks-v1a1/mono.m3u8", group: "News", logo: "https://i.imgur.com/6qLLc8H.png" },
+      ],
+
+      // ============ AMERICAS ============
+      "🇺🇸 USA": [
+        { name: "ABC News", url: "https://content.uplynk.com/channel/3324f2467c414329b3b0cc5cd987b6be.m3u8", group: "News", logo: "https://i.imgur.com/5kLLe2G.png" },
+        { name: "NBC News NOW", url: "https://d1bl6tskrpq9ze.cloudfront.net/hls/master.m3u8", group: "News", logo: "https://i.imgur.com/m8G7RBj.png" },
+        { name: "Newsmax", url: "https://nmx1ota.akamaized.net/hls/live/2107010/Live_1/index.m3u8", group: "News", logo: "https://i.imgur.com/bBMVw6r.png" },
+        { name: "Bloomberg US", url: "https://bloomberg.com/media-manifest/streams/us.m3u8", group: "Business", logo: "https://i.imgur.com/DqKlQPr.png" },
+        { name: "Cheddar News", url: "https://cheddar-us.samsung.wurl.tv/playlist.m3u8", group: "Business", logo: "https://i.imgur.com/x9QFVMX.png" },
+        { name: "Fox Weather", url: "https://247wlive.foxweather.com/stream/index.m3u8", group: "Weather", logo: "https://i.imgur.com/HvpLYEv.png" },
+        { name: "Court TV", url: "https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg01438-ewscrippscompan-courttv-tablo/playlist.m3u8", group: "Legal", logo: "https://i.imgur.com/YIIlnVY.png" },
+        { name: "Scripps News", url: "https://content.uplynk.com/channel/4bb4901b934c4e029fd4c1abfc766c37.m3u8", group: "News", logo: "https://i.imgur.com/7xKL9vF.png" },
+      ],
+      "🇧🇷 Brazil": [
+        { name: "TV Brasil", url: "https://tvbrasil-stream.ebc.com.br/index.m3u8", group: "Public", logo: "https://i.imgur.com/KG6CQZl.png" },
+        { name: "Record News", url: "https://rnw-rn.otteravision.com/rnw/rn/rnw_rn.m3u8", group: "News", logo: "https://i.imgur.com/1vXbsMM.png" },
+        { name: "TV Cultura", url: "https://player-tvcultura.stream.uol.com.br/live/tvcultura.m3u8", group: "Culture", logo: "https://i.imgur.com/y6LHQl8.png" },
+        { name: "TV Câmara", url: "https://stream3.camara.gov.br/tv1/manifest.m3u8", group: "Government", logo: "https://i.imgur.com/6TfL5Ua.png" },
+        { name: "Canal Educação", url: "https://canaleducacao-stream.ebc.com.br/index.m3u8", group: "Education", logo: "https://i.imgur.com/cR7PJGQ.png" },
+        { name: "Jovem Pan News", url: "https://d6yfbj4xxtrod.cloudfront.net/out/v1/7836eb391ec24452b149f3dc6df15bbd/index.m3u8", group: "News", logo: "https://i.imgur.com/6pXMnqs.png" },
+      ],
+      "🇦🇷 Argentina": [
+        { name: "El Trece", url: "https://live-01-02-eltrece.vodgc.net/eltrecetv/index.m3u8", group: "Entertainment", logo: "https://i.imgur.com/dVaU6LQ.png" },
+        { name: "Canal 26", url: "https://stream-gtlc.telecentro.net.ar/hls/canal26hls/main.m3u8", group: "News", logo: "https://i.imgur.com/xF9hLgN.png" },
+        { name: "America TV", url: "https://prepublish.f.qaotic.net/a07/americahls-100056/playlist_720p.m3u8", group: "Entertainment", logo: "https://i.imgur.com/xfN4p9F.png" },
+        { name: "Canal E", url: "https://unlimited1-us.dps.live/perfiltv/perfiltv.smil/playlist.m3u8", group: "Business", logo: "https://i.imgur.com/7wD2vhT.png" },
+      ],
+
+      // ============ ASIA ============
+      "🇯🇵 Japan": [
+        { name: "NHK World", url: "https://nhkworld.webcdn.stream.ne.jp/www11/nhkworld-tv/domestic/263942/live.m3u8", group: "Public", logo: "https://i.imgur.com/z0TbRUV.png" },
+        { name: "Weathernews", url: "https://weather-live-hls01e.akamaized.net/ade36978-4ad3-48de-91ab-7d6edd0b6388/11ed8ed8ca.ism/manifest(format=m3u8-aapl-v3,audio-only=false).m3u8", group: "Weather", logo: "https://i.imgur.com/8NWYKQx.png" },
+        { name: "QVC Japan", url: "https://cdn-live1.qvc.jp/iPhone/1501/1501.m3u8", group: "Shopping", logo: "https://i.imgur.com/nnc4Kgh.png" },
+      ],
+      "🇰🇷 South Korea": [
+        { name: "KTV Korea", url: "https://hlive.ktv.go.kr/live/klive_h.stream/playlist.m3u8", group: "Government", logo: "https://i.imgur.com/cPqfGKz.png" },
+        { name: "Arirang TV", url: "http://amdlive-ch01.ctnd.com.edgesuite.net/arirang_1ch/smil:arirang_1ch.smil/playlist.m3u8", group: "International", logo: "https://i.imgur.com/fLvHpCL.png" },
+        { name: "TBS Seoul", url: "https://cdntv.tbs.seoul.kr/tbs/tbs_tv_web.smil/playlist.m3u8", group: "Regional", logo: "https://i.imgur.com/VxQMk5x.png" },
+        { name: "EBS 1", url: "https://ebsonair.ebs.co.kr/ebs1familypc/familypc1m/playlist.m3u8", group: "Education", logo: "https://i.imgur.com/5xGbMWt.png" },
+      ],
+      "🇮🇳 India": [
+        { name: "NDTV 24x7", url: "https://ndtv24x7elemarchana.akamaized.net/hls/live/2003678/ndtv24x7/master.m3u8", group: "News", logo: "https://i.imgur.com/QQBbZxO.png" },
+        { name: "India TV", url: "https://pl-indiatvnews.akamaized.net/out/v1/db79179b608641ceaa5a4d0dd0dca8da/index.m3u8", group: "News", logo: "https://i.imgur.com/F9Y5Txy.png" },
+        { name: "ABP News", url: "https://d2l4ar6y3mrs4k.cloudfront.net/live-streaming/abpnews-livetv/master.m3u8", group: "News", logo: "https://i.imgur.com/2XbCzxF.png" },
+        { name: "CNBC TV18", url: "https://n18syndication.akamaized.net/bpk-tv/CNBC_TV18_NW18_MOB/output01/index.m3u8", group: "Business", logo: "https://i.imgur.com/dKNwSxq.png" },
+        { name: "Sansad TV", url: "https://playhls.media.nic.in/hls/live/lstv/lstv.m3u8", group: "Government", logo: "https://i.imgur.com/xm7WYoV.png" },
       ],
     };
 
@@ -1840,6 +2171,7 @@ export async function registerRoutes(
   });
 
   // Get photos from user's persistent collection (refresh URLs from active session)
+  // Always returns consistent shape: { photos, storedCount, sessionActive, needsSessionRefresh }
   app.get("/api/photos", async (req: Request, res: Response) => {
     try {
       const userId = req.headers["x-clerk-user-id"] as string;
@@ -1860,7 +2192,14 @@ export async function registerRoutes(
 
       const accessToken = await getValidGoogleToken(userData);
       if (!accessToken) {
-        res.status(401).json({ error: "Google Photos not connected" });
+        // Return stored count even when not connected, so UI can show appropriate message
+        res.json({
+          photos: [],
+          storedCount: selectedPhotos.length,
+          sessionActive: false,
+          needsSessionRefresh: true,
+          error: "Google Photos not connected",
+        });
         return;
       }
 
@@ -1877,6 +2216,8 @@ export async function registerRoutes(
         } catch {
           // Session may be expired
         }
+      } else {
+        sessionError = "No session ID stored";
       }
 
       // Build a map of fresh URLs by photo ID
@@ -1909,7 +2250,15 @@ export async function registerRoutes(
         return;
       }
 
-      res.json(displayablePhotos);
+      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored, session active:", sessionActive, sessionError ? `(${sessionError})` : "");
+
+      res.json({
+        photos: displayablePhotos,
+        storedCount: selectedPhotos.length,
+        sessionActive,
+        needsSessionRefresh,
+        ...(sessionError && { sessionError }),
+      });
     } catch (error) {
       console.error("[Photos] Error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -2783,7 +3132,7 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-      
+
       // Handle messages as either array or object
       let rawMessages: Message[] = [];
       if (Array.isArray(userData.messages)) {
@@ -2791,7 +3140,7 @@ export async function registerRoutes(
       } else if (userData.messages && typeof userData.messages === 'object') {
         rawMessages = Object.values(userData.messages);
       }
-      
+
       const messages = rawMessages.filter((m: Message) => m.id !== messageId);
 
       await updateUserData(userId, { messages });
@@ -2802,6 +3151,323 @@ export async function registerRoutes(
       res.status(500).json({ error: "Internal server error" });
     }
   });
+
+  // ===== CHORES ENDPOINTS =====
+
+  // Get all chores for the user
+  app.get("/api/chores", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const userData = await getOrCreateUser(userId, username);
+
+      // Handle chores as either array or object
+      let chores: any[] = [];
+      if (Array.isArray((userData as any).chores)) {
+        chores = (userData as any).chores;
+      } else if ((userData as any).chores && typeof (userData as any).chores === 'object') {
+        chores = Object.values((userData as any).chores);
+      }
+
+      // Filter out any invalid chores
+      chores = chores.filter((c: any) => c && c.id);
+
+      res.json(chores);
+    } catch (error) {
+      console.error("Get chores error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Save chores
+  app.post("/api/chores", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { chores } = req.body;
+      await getOrCreateUser(userId, username);
+      await updateUserData(userId, { chores });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Save chores error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ===== RECIPES ENDPOINTS =====
+
+  // Get all recipes for the user
+  app.get("/api/recipes", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const userData = await getOrCreateUser(userId, username);
+
+      // Handle recipes as either array or object
+      let recipes: any[] = [];
+      if (Array.isArray((userData as any).recipes)) {
+        recipes = (userData as any).recipes;
+      } else if ((userData as any).recipes && typeof (userData as any).recipes === 'object') {
+        recipes = Object.values((userData as any).recipes);
+      }
+
+      // Filter out any invalid recipes
+      recipes = recipes.filter((r: any) => r && r.id);
+
+      res.json(recipes);
+    } catch (error) {
+      console.error("Get recipes error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Save recipes
+  app.post("/api/recipes", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      const username = req.headers["x-clerk-username"] as string || "user";
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { recipes } = req.body;
+      await getOrCreateUser(userId, username);
+      await updateUserData(userId, { recipes });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Save recipes error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  // ============================================
+  // YOUTUBE VIDEO INFO ENDPOINTS
+  // ============================================
+
+  // Get YouTube video info (title, thumbnail) using oEmbed
+  app.get("/api/youtube/video/:videoId", asyncHandler(async (req: Request, res: Response) => {
+    const { videoId } = req.params;
+
+    if (!videoId || videoId.length !== 11) {
+      res.status(400).json({ error: "Invalid video ID" });
+      return;
+    }
+
+    try {
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+      const response = await fetch(oembedUrl);
+
+      if (!response.ok) {
+        res.status(404).json({ error: "Video not found" });
+        return;
+      }
+
+      const data = await response.json();
+      res.json({
+        videoId,
+        title: data.title,
+        thumbnail: data.thumbnail_url,
+        author: data.author_name,
+      });
+    } catch (error) {
+      console.error("YouTube video info error:", error);
+      res.status(500).json({ error: "Failed to fetch video info" });
+    }
+  }));
+
+  // Get multiple YouTube video infos at once
+  app.post("/api/youtube/videos", asyncHandler(async (req: Request, res: Response) => {
+    const { videoIds } = req.body;
+
+    if (!Array.isArray(videoIds) || videoIds.length === 0) {
+      res.status(400).json({ error: "videoIds array is required" });
+      return;
+    }
+
+    if (videoIds.length > 50) {
+      res.status(400).json({ error: "Maximum 50 videos per request" });
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      videoIds.map(async (videoId: string) => {
+        try {
+          const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+          const response = await fetch(oembedUrl);
+
+          if (!response.ok) {
+            return { videoId, title: `Track`, error: "not found" };
+          }
+
+          const data = await response.json();
+          return {
+            videoId,
+            title: data.title,
+            thumbnail: data.thumbnail_url,
+          };
+        } catch {
+          return { videoId, title: `Track`, error: "fetch failed" };
+        }
+      })
+    );
+
+    const videos = results.map((result, index) => {
+      if (result.status === "fulfilled") {
+        return result.value;
+      }
+      return { videoId: videoIds[index], title: `Track ${index + 1}`, error: "failed" };
+    });
+
+    res.json({ videos });
+  }));
+
+  // ============================================
+  // CUSTOM PLAYLISTS ENDPOINTS
+  // ============================================
+
+  // Get user's custom playlists
+  app.get("/api/playlists", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+    res.json(playlists);
+  }));
+
+  // Create a new custom playlist
+  app.post("/api/playlists", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { name, description, iconHint, colorTheme, videoIds } = req.body;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    if (!name || !videoIds || !Array.isArray(videoIds)) {
+      res.status(400).json({ error: "name and videoIds are required" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+
+    const newPlaylist = {
+      id: randomUUID(),
+      name,
+      description: description || "",
+      iconHint: iconHint || "music",
+      colorTheme: colorTheme || "#E91E63",
+      videoIds,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    playlists.push(newPlaylist);
+
+    await updateUserData(userId, {
+      settings: {
+        ...userData.settings,
+        customPlaylists: playlists,
+      },
+    });
+
+    res.json(newPlaylist);
+  }));
+
+  // Update a custom playlist
+  app.patch("/api/playlists/:playlistId", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { playlistId } = req.params;
+    const updates = req.body;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+
+    const index = playlists.findIndex((p: any) => p.id === playlistId);
+    if (index === -1) {
+      res.status(404).json({ error: "Playlist not found" });
+      return;
+    }
+
+    playlists[index] = {
+      ...playlists[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await updateUserData(userId, {
+      settings: {
+        ...userData.settings,
+        customPlaylists: playlists,
+      },
+    });
+
+    res.json(playlists[index]);
+  }));
+
+  // Delete a custom playlist
+  app.delete("/api/playlists/:playlistId", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = req.headers["x-clerk-username"] as string || "user";
+    const { playlistId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const userData = await getOrCreateUser(userId, username);
+    const playlists = toArray(userData.settings?.customPlaylists || []);
+
+    const filtered = playlists.filter((p: any) => p.id !== playlistId);
+
+    if (filtered.length === playlists.length) {
+      res.status(404).json({ error: "Playlist not found" });
+      return;
+    }
+
+    await updateUserData(userId, {
+      settings: {
+        ...userData.settings,
+        customPlaylists: filtered,
+      },
+    });
+
+    res.json({ success: true });
+  }));
 
   return httpServer;
 }

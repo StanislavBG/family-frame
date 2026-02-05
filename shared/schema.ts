@@ -169,20 +169,38 @@ export interface AppItem {
 export const defaultAppList: AppItem[] = [
   { id: "home", title: "Home", url: "/", fixed: true },
   { id: "settings", title: "Settings", url: "/settings", fixed: true },
+  { id: "dashboard", title: "Dashboard", url: "/dashboard" },
   { id: "clock", title: "Clock", url: "/clock" },
   { id: "weather", title: "Weather", url: "/weather" },
   { id: "photos", title: "Picture Frame", url: "/photos" },
   { id: "calendar", title: "Calendar", url: "/calendar" },
+  { id: "chores", title: "Chores", url: "/chores" },
+  { id: "recipes", title: "Recipes", url: "/recipes" },
   { id: "notepad", title: "Notepad", url: "/notepad" },
   { id: "messages", title: "Messages", url: "/messages" },
   { id: "radio", title: "BG Radio", url: "/radio" },
   { id: "baby-songs", title: "Baby Songs", url: "/baby-songs" },
-  { id: "tv", title: "BG TV", url: "/tv" },
+  { id: "tv", title: "World TV", url: "/tv" },
   { id: "shopping", title: "Shopping", url: "/shopping" },
   { id: "stocks", title: "Stocks", url: "/stocks" },
+  { id: "screensaver", title: "Screensaver", url: "/screensaver" },
 ];
 
 export type AppId = string;
+
+// Custom YouTube Playlist schema - user-defined playlists (moved here for reference in userSettingsSchema)
+export const customPlaylistSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  iconHint: z.string().default("music"),
+  colorTheme: z.string().default("#E91E63"),
+  videoIds: z.array(z.string()), // YouTube video IDs
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type CustomPlaylist = z.infer<typeof customPlaylistSchema>;
 
 // User settings schema
 export const userSettingsSchema = z.object({
@@ -205,9 +223,27 @@ export const userSettingsSchema = z.object({
   appOrder: z.array(z.string()).optional(), // Custom app order (excludes fixed apps)
   // Baby Radio settings
   babyAgeMonths: z.number().min(0).max(72).default(12), // Baby age in months (0-72 = 0-6 years)
+  // Custom playlists for Baby Songs (user-defined YouTube playlists)
+  customPlaylists: z.array(customPlaylistSchema).default([]),
   // TV settings
   tvVolume: z.number().min(0).max(100).default(50),
   lastTvChannel: z.string().optional(), // URL of last played channel
+  // Ambient/Screensaver settings
+  screensaverEnabled: z.boolean().default(true),
+  screensaverDelay: z.number().min(1).max(60).default(5), // Minutes of inactivity
+  screensaverMode: z.enum(["photos", "clock", "weather", "cycle"]).default("cycle"),
+  // Schedule/Sleep mode settings
+  sleepModeEnabled: z.boolean().default(false),
+  sleepStartTime: z.string().default("22:00"), // 24h format
+  sleepEndTime: z.string().default("07:00"),
+  sleepDimLevel: z.number().min(10).max(50).default(20), // Percentage brightness
+  // Weather alerts
+  weatherAlertsEnabled: z.boolean().default(true),
+  // Dashboard settings
+  dashboardLayout: z.enum(["default", "minimal", "detailed"]).default("default"),
+  // Baby Songs settings
+  babySongsFavorites: z.array(z.string()).default([]), // Track IDs or YouTube video IDs
+  babySongsShuffleEnabled: z.boolean().default(false),
 });
 
 export type UserSettings = z.infer<typeof userSettingsSchema>;
@@ -220,14 +256,37 @@ export interface TVChannel {
   group?: string;
 }
 
-// Verified Bulgarian TV channels
+// Verified Bulgarian TV channels (expanded list with 22 channels)
 export const TV_CHANNELS: TVChannel[] = [
+  // Music Channels
   { name: "The Voice TV", url: "https://bss1.neterra.tv/thevoice/thevoice.m3u8", group: "Music", logo: "https://i.imgur.com/OoJSmoj.png" },
   { name: "Magic TV", url: "https://bss1.neterra.tv/magictv/magictv.m3u8", group: "Music", logo: "https://i.imgur.com/n7bcrrp.png" },
-  { name: "This is Bulgaria HD", url: "https://streamer103.neterra.tv/thisisbulgaria/live.m3u8", group: "Entertainment", logo: "https://i.imgur.com/062jkXw.png" },
   { name: "Tiankov Folk", url: "https://streamer103.neterra.tv/tiankov-folk/live.m3u8", group: "Music", logo: "https://i.imgur.com/VKY4q64.png" },
   { name: "Tiankov Orient Folk", url: "https://streamer103.neterra.tv/tiankov-orient/live.m3u8", group: "Music", logo: "https://i.postimg.cc/KYNvL1ML/tiankovorientfolk.png" },
+  { name: "City TV", url: "https://tv.city.bg/play/tshls/citytv/index.m3u8", group: "Music", logo: "https://i.imgur.com/qJvMbNH.png" },
+  // Entertainment & Culture
+  { name: "This is Bulgaria HD", url: "https://streamer103.neterra.tv/thisisbulgaria/live.m3u8", group: "Entertainment", logo: "https://i.imgur.com/062jkXw.png" },
   { name: "Travel TV", url: "https://streamer103.neterra.tv/travel/live.m3u8", group: "Travel", logo: "https://i.imgur.com/5xllfed.png" },
+  { name: "TV1", url: "https://tv1.cloudcdn.bg/tv1/livestream.m3u8", group: "Entertainment", logo: "https://i.imgur.com/LVHK1mW.png" },
+  { name: "Evrokom", url: "https://live.ecomservice.bg/hls/stream.m3u8", group: "Entertainment", logo: "https://i.imgur.com/8JvT9Yw.png" },
+  // News & Information
+  { name: "Bulgaria ON AIR", url: "https://edge1.cdn.bg:2006/fls/bonair.stream/playlist.m3u8", group: "News", logo: "https://i.imgur.com/YFZYJFN.png" },
+  { name: "Kanal 0", url: "https://old.rn-tv.com/k0/stream.m3u8", group: "News", logo: "https://i.imgur.com/0kqJhHz.png" },
+  // Regional
+  { name: "TV Zagora", url: "http://zagoratv.ddns.net:8080/tvzagora.m3u8", group: "Regional", logo: "https://i.imgur.com/JxLHvfM.png" },
+  { name: "DSTV", url: "http://46.249.95.140:8081/hls/data.m3u8", group: "Regional", logo: "https://i.imgur.com/bHWJZcY.png" },
+  // Religious & Educational
+  { name: "Hope Channel Bulgaria", url: "https://hc1.hopetv.bg/live/hopetv_all.smil/playlist.m3u8", group: "Religious", logo: "https://i.imgur.com/wvJ5PeX.png" },
+  { name: "Plovdivska Pravoslavna TV", url: "http://78.130.149.196:1935/live/pptv.stream/playlist.m3u8", group: "Religious", logo: "https://i.imgur.com/TCqMqpM.png" },
+  { name: "Light Channel", url: "https://streamer1.streamhost.org/salive/GMIlcbgM/playlist.m3u8", group: "Religious", logo: "https://i.imgur.com/pQlBXJc.png" },
+  // International (Bulgarian)
+  { name: "BNT 4 (World)", url: "https://viamotionhsi.netplus.ch/live/eds/bntworld/browser-HLS8/bntworld.m3u8", group: "International", logo: "https://i.imgur.com/LkXLDfm.png" },
+  // Specialty
+  { name: "Agro TV", url: "https://restr2.bgtv.bg/agro/hls/agro.m3u8", group: "Specialty", logo: "https://i.imgur.com/HVKjGjz.png" },
+  { name: "100% Auto Moto TV", url: "http://100automoto.tv:1935/bgtv1/autotv/playlist.m3u8", group: "Specialty", logo: "https://i.imgur.com/GfDvKHv.png" },
+  { name: "MM TV", url: "https://streamer103.neterra.tv/mmtv/mmtv.smil/playlist.m3u8", group: "Entertainment", logo: "https://i.imgur.com/QjYmVJf.png" },
+  { name: "RMTV", url: "https://transcoder1.bitcare.eu/streaming/rimextv/rmtv.m3u8", group: "Entertainment", logo: "https://i.imgur.com/yqKKMnf.png" },
+  { name: "Wness TV", url: "https://wness103.neterra.tv/wness/wness.smil/playlist.m3u8", group: "Lifestyle", logo: "https://i.imgur.com/kF5JNXN.png" },
 ];
 
 // Connection status enum
@@ -310,6 +369,64 @@ export const insertNoteSchema = noteSchema.omit({ id: true, createdAt: true, upd
 
 export type Note = z.infer<typeof noteSchema>;
 export type InsertNote = z.infer<typeof insertNoteSchema>;
+
+// Chore schema (for family task management)
+export const choreSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  assignedTo: z.string().optional(), // Person name or ID
+  dueDate: z.string().optional(),
+  recurring: z.enum(["none", "daily", "weekly", "monthly"]).default("none"),
+  completed: z.boolean().default(false),
+  completedAt: z.string().optional(),
+  completedBy: z.string().optional(),
+  createdAt: z.string(),
+  priority: z.enum(["low", "medium", "high"]).default("medium"),
+  category: z.string().optional(), // e.g., "cleaning", "kitchen", "yard"
+});
+
+export const insertChoreSchema = choreSchema.omit({ id: true, createdAt: true, completedAt: true, completedBy: true });
+
+export type Chore = z.infer<typeof choreSchema>;
+export type InsertChore = z.infer<typeof insertChoreSchema>;
+
+// Recipe schema (for cooking mode)
+export const recipeIngredientSchema = z.object({
+  name: z.string(),
+  amount: z.string(),
+  unit: z.string().optional(),
+});
+
+export const recipeStepSchema = z.object({
+  order: z.number(),
+  instruction: z.string(),
+  duration: z.number().optional(), // Minutes
+  timerLabel: z.string().optional(),
+});
+
+export const recipeSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  imageUrl: z.string().optional(),
+  servings: z.number().default(4),
+  prepTime: z.number().optional(), // Minutes
+  cookTime: z.number().optional(), // Minutes
+  ingredients: z.array(recipeIngredientSchema).default([]),
+  steps: z.array(recipeStepSchema).default([]),
+  tags: z.array(z.string()).default([]),
+  isFavorite: z.boolean().default(false),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const insertRecipeSchema = recipeSchema.omit({ id: true, createdAt: true, updatedAt: true });
+
+export type RecipeIngredient = z.infer<typeof recipeIngredientSchema>;
+export type RecipeStep = z.infer<typeof recipeStepSchema>;
+export type Recipe = z.infer<typeof recipeSchema>;
+export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
 
 // Message schema (for household messaging)
 export const messageSchema = z.object({
@@ -464,7 +581,7 @@ export const CONTENT_TYPE_LABELS: Record<ContentTypeValue, string> = {
   [ContentType.ANIMAL_SOUNDS]: "Animal Sounds",
 };
 
-// Baby Radio Situations (multi-tag support)
+// Baby Radio Situations (multi-tag support) - Expanded for more occasions
 export const Situation = {
   MORNING: "morning",
   PLAYTIME: "playtime",
@@ -472,6 +589,13 @@ export const Situation = {
   MEALTIME: "mealtime",
   BEDTIME: "bedtime",
   ANYTIME: "anytime",
+  // New occasions
+  BATHTIME: "bathtime",
+  CARRIDE: "carride",
+  LEARNING: "learning",
+  NAPTIME: "naptime",
+  OUTDOOR: "outdoor",
+  CELEBRATION: "celebration",
 } as const;
 
 export type SituationValue = (typeof Situation)[keyof typeof Situation];
@@ -483,6 +607,12 @@ export const SITUATION_LABELS: Record<SituationValue, string> = {
   [Situation.MEALTIME]: "Mealtime",
   [Situation.BEDTIME]: "Bedtime",
   [Situation.ANYTIME]: "Anytime",
+  [Situation.BATHTIME]: "Bath Time",
+  [Situation.CARRIDE]: "Car Ride",
+  [Situation.LEARNING]: "Learning Time",
+  [Situation.NAPTIME]: "Nap Time",
+  [Situation.OUTDOOR]: "Outdoor Play",
+  [Situation.CELEBRATION]: "Party & Celebration",
 };
 
 // Baby Radio Track schema with multi-tag support
@@ -512,75 +642,218 @@ export const babyRadioStationSchema = z.object({
 
 export type BabyRadioStation = z.infer<typeof babyRadioStationSchema>;
 
-// Baby Radio Stations
+// Baby Radio Stations - Archive.org library (ad-free, offline-capable)
+// All stations available - UI shows track count and disables empty ones for current age
 export const BABY_RADIO_STATIONS: BabyRadioStation[] = [
+  // Core stations with reliable content
   { id: "morning", name: "Sunshine Wake-Up", iconHint: "sun", colorTheme: "#FFEB3B", situation: Situation.MORNING, description: "Cheerful songs to start the day" },
   { id: "playtime", name: "Active Play & Dance", iconHint: "bee", colorTheme: "#FF9800", situation: Situation.PLAYTIME, description: "Energetic music for movement" },
   { id: "quiet", name: "Quiet Time", iconHint: "leaf", colorTheme: "#4CAF50", situation: Situation.QUIET, description: "Calming music for focus" },
   { id: "mealtime", name: "Mealtime Music", iconHint: "utensils", colorTheme: "#8BC34A", situation: Situation.MEALTIME, description: "Pleasant background for meals" },
   { id: "bedtime", name: "Bedtime Lullabies", iconHint: "moon", colorTheme: "#3F51B5", situation: Situation.BEDTIME, description: "Soothing sounds for sleep" },
+  // Extended occasions
+  { id: "learning", name: "ABC & 123", iconHint: "book", colorTheme: "#E91E63", situation: Situation.LEARNING, description: "Educational songs" },
+  { id: "carride", name: "Road Trip Tunes", iconHint: "car", colorTheme: "#9C27B0", situation: Situation.CARRIDE, description: "Songs for car journeys" },
+  { id: "bathtime", name: "Splish Splash", iconHint: "droplet", colorTheme: "#00BCD4", situation: Situation.BATHTIME, description: "Fun bath time tunes" },
+  { id: "naptime", name: "Dreamy Naps", iconHint: "cloud", colorTheme: "#607D8B", situation: Situation.NAPTIME, description: "Gentle nap time music" },
+  { id: "outdoor", name: "Nature Explorer", iconHint: "tree", colorTheme: "#795548", situation: Situation.OUTDOOR, description: "Outdoor adventure songs" },
+  { id: "celebration", name: "Party Time", iconHint: "party", colorTheme: "#F44336", situation: Situation.CELEBRATION, description: "Celebration & party music" },
 ];
 
-// KPOPDH Mood Station - Special YouTube-based playlist
-export interface KpopdhTrack {
+// YouTube-based track for mood stations
+export interface YouTubeTrack {
   id: string;
   title: string;
   videoId: string; // YouTube video ID
+  thumbnail?: string;
+  duration?: number;
 }
 
-export const KPOPDH_PLAYLIST: KpopdhTrack[] = [
-  { id: "kpop1", title: "Track 1", videoId: "-3WxYln6NWk" },
-  { id: "kpop2", title: "Track 2", videoId: "vf1kWWqJKus" },
-  { id: "kpop3", title: "Track 3", videoId: "hk76xpOgnxc" },
-  { id: "kpop4", title: "Track 4", videoId: "A1L9co4_MTk" },
-  { id: "kpop5", title: "Track 5", videoId: "utcPEbt9okE" },
-  { id: "kpop6", title: "Track 6", videoId: "2OGX3w44mqg" },
-  { id: "kpop7", title: "Track 7", videoId: "M7ffgcliK34" },
+// Legacy alias for backward compatibility
+export type KpopdhTrack = YouTubeTrack;
+
+// Mood station types
+export const MoodStationType = {
+  YOUTUBE: "youtube",
+  CUSTOM: "custom",
+} as const;
+
+export type MoodStationTypeValue = (typeof MoodStationType)[keyof typeof MoodStationType];
+
+// Mood station schema - supports both built-in and custom playlists
+export const moodStationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  iconHint: z.string(),
+  colorTheme: z.string(),
+  type: z.enum([MoodStationType.YOUTUBE, MoodStationType.CUSTOM]),
+  videoIds: z.array(z.string()), // YouTube video IDs
+  isBuiltIn: z.boolean().default(false),
+});
+
+export type MoodStation = z.infer<typeof moodStationSchema>;
+
+// KPOPDH Mood Station - Built-in YouTube playlist with curated children's songs
+// These are popular kids' music videos that work well for family entertainment
+export const KPOPDH_PLAYLIST: YouTubeTrack[] = [
+  { id: "kpop1", title: "Baby Shark Dance", videoId: "XqZsoesa55w" },
+  { id: "kpop2", title: "Wheels on the Bus", videoId: "e_04ZrNroTo" },
+  { id: "kpop3", title: "Johny Johny Yes Papa", videoId: "F4tHL8reNCs" },
+  { id: "kpop4", title: "Five Little Ducks", videoId: "pZw9veQ76fo" },
+  { id: "kpop5", title: "Old MacDonald Had A Farm", videoId: "5oYKonYBujg" },
+  { id: "kpop6", title: "Head Shoulders Knees & Toes", videoId: "h4eueDYPTIg" },
+  { id: "kpop7", title: "If You're Happy and You Know It", videoId: "l4WNrvVjiTw" },
+  { id: "kpop8", title: "Twinkle Twinkle Little Star", videoId: "yCjJyiqpAuU" },
+  { id: "kpop9", title: "The Itsy Bitsy Spider", videoId: "w_lCi8U49mY" },
+  { id: "kpop10", title: "Rain Rain Go Away", videoId: "LFrKYjrIDs8" },
 ];
+
+// Built-in mood stations (shown by default)
+// These YouTube stations provide unlimited content for various occasions
+export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
+  {
+    id: "kids-hits",
+    name: "Kids Hits",
+    description: "Popular children's music videos",
+    iconHint: "music",
+    colorTheme: "#E91E63",
+    type: MoodStationType.YOUTUBE,
+    videoIds: KPOPDH_PLAYLIST.map(t => t.videoId),
+    isBuiltIn: true,
+  },
+  {
+    id: "lullabies-yt",
+    name: "Lullaby Dreams",
+    description: "Soothing lullabies for sleep & naps",
+    iconHint: "moon",
+    colorTheme: "#5C6BC0",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "VKsMfubWBHM", // Baby Sleep Music
+      "TfHLp0tz1hY", // Lullaby for Babies
+      "1ZYbU82GVz4", // Mozart for Babies
+      "AF_nfazQaek", // Brahms Lullaby
+      "sEhMdyj6nqA", // Baby Sleep Lullaby
+    ],
+    isBuiltIn: true,
+  },
+  {
+    id: "cocomelon",
+    name: "Cocomelon Fun",
+    description: "Educational songs from Cocomelon",
+    iconHint: "video",
+    colorTheme: "#4CAF50",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "75NQK-Sm1YY", // Yes Yes Vegetables
+      "gRaznYdw8_0", // Bath Song
+      "IoKfQsos-zY", // ABC Song
+      "xIm2ydB8PVo", // The Wheels on the Bus
+    ],
+    isBuiltIn: true,
+  },
+  {
+    id: "bathtime-yt",
+    name: "Bath Time Fun",
+    description: "Splashy songs for bath time",
+    iconHint: "droplet",
+    colorTheme: "#00BCD4",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "gRaznYdw8_0", // Cocomelon Bath Song
+      "WRVsOCh907o", // Baby Shark Bath
+      "frN3nvhIHUk", // Bubble Bath Song
+      "eTtmJVE5tQc", // Splish Splash
+    ],
+    isBuiltIn: true,
+  },
+  {
+    id: "party-yt",
+    name: "Party Time",
+    description: "Fun songs for celebrations",
+    iconHint: "party",
+    colorTheme: "#F44336",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "l4WNrvVjiTw", // If You're Happy
+      "h4eueDYPTIg", // Head Shoulders Knees
+      "0wSllz_hmzs", // Freeze Dance
+      "CE8UiMo2mJg", // Happy Birthday
+      "tVlcKp3bWH8", // Cha Cha Slide Kids
+    ],
+    isBuiltIn: true,
+  },
+  {
+    id: "nature-yt",
+    name: "Nature Sounds",
+    description: "Relaxing outdoor & animal sounds",
+    iconHint: "tree",
+    colorTheme: "#795548",
+    type: MoodStationType.YOUTUBE,
+    videoIds: [
+      "d0tU18Ybcvk", // Nature Sounds for Baby
+      "JYwm7CQIJKU", // Forest Sounds
+      "L9Bf8M6KUfk", // Bird Sounds for Kids
+      "1ZYbU82GVz4", // Mozart Nature
+    ],
+    isBuiltIn: true,
+  },
+];
+
+// Helper function to convert mood station to playlist tracks
+export function moodStationToTracks(station: MoodStation): YouTubeTrack[] {
+  return station.videoIds.map((videoId, index) => ({
+    id: `${station.id}-${index}`,
+    title: `Track ${index + 1}`, // Will be fetched dynamically
+    videoId,
+  }));
+}
 
 // ============================================
 // BABY RADIO TRACK LIBRARY (Verified working tracks)
 // Sources: Archive.org public domain content
+// Updated with expanded occasion tags
 // ============================================
 export const BABY_RADIO_LIBRARY: BabyRadioTrack[] = [
   // ========== NURSERY RHYMES (from TheBestNurseryRhymes4 - verified working) ==========
-  { id: "nr001", title: "Alphabet Song (ABC)", url: "https://archive.org/download/TheBestNurseryRhymes4/1-01%20Alphabet%20Song%20(A%20B%20C).mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "nr002", title: "Alphabet Song (You're Adorable)", url: "https://archive.org/download/TheBestNurseryRhymes4/1-02%20Alphabet%20Song%20(A%20Your%20Adorable).mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.PLAYTIME], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
-  { id: "nr003", title: "I Have Two Hands", url: "https://archive.org/download/TheBestNurseryRhymes4/1-03%20I%20Have%20Two%20Hands.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
-  { id: "nr004", title: "One Two Buckle My Shoe", url: "https://archive.org/download/TheBestNurseryRhymes4/1-04%20One%2C%20Two%2C%20Buckle%20My%20Shoe.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.MORNING], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "nr005", title: "Ten Little Indians", url: "https://archive.org/download/TheBestNurseryRhymes4/1-05%20Ten%20Little%20Indians.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
-  { id: "nr006", title: "Ten Little Farmer Boys", url: "https://archive.org/download/TheBestNurseryRhymes4/1-06%20Ten%20Little%20Farmers%20Boys.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 60, source: "Archive.org" },
-  { id: "nr007", title: "Where Is Thumbkin", url: "https://archive.org/download/TheBestNurseryRhymes4/1-07%20Where%20Is%20Thumbkin.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 48, source: "Archive.org" },
-  { id: "nr008", title: "My Toes My Knees My Shoulders My Head", url: "https://archive.org/download/TheBestNurseryRhymes4/1-08%20My%20Toes%2C%20My%20Knees%2C%20My%20Shoulder%2C%20My%20Head.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.MORNING], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
-  { id: "nr009", title: "Little Sunny Water", url: "https://archive.org/download/TheBestNurseryRhymes4/1-09%20Little%20Sunny%20Water.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.QUIET], minAgeMonths: 0, maxAgeMonths: 36, source: "Archive.org" },
-  { id: "nr010", title: "B-I-N-G-O", url: "https://archive.org/download/TheBestNurseryRhymes4/1-10%20B%20I%20N%20G%20O.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "nr011", title: "Here We Go Around the Mulberry Bush", url: "https://archive.org/download/TheBestNurseryRhymes4/1-11%20Here%20We%20Go%20Around%20the%20Mulberry%20Bush.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.MORNING], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "nr012", title: "Ring Around the Rosy", url: "https://archive.org/download/TheBestNurseryRhymes4/1-12%20Ring%20Around%20the%20Rosy.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME], minAgeMonths: 12, maxAgeMonths: 48, source: "Archive.org" },
-  { id: "nr013", title: "Old MacDonald Had a Farm", url: "https://archive.org/download/TheBestNurseryRhymes4/1-13%20Old%20McDonald%20Had%20a%20Farm.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.MORNING], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "nr014", title: "The Hokey Pokey", url: "https://archive.org/download/TheBestNurseryRhymes4/1-14%20The%20Hockey%20Pockey.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME], minAgeMonths: 18, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "nr015", title: "Happy Talk", url: "https://archive.org/download/TheBestNurseryRhymes4/1-15%20Happy%20Talk.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 60, source: "Archive.org" },
-  { id: "nr016", title: "Strawberry Jam", url: "https://archive.org/download/TheBestNurseryRhymes4/1-16%20Strawberry%20Jam.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.MEALTIME], minAgeMonths: 6, maxAgeMonths: 60, source: "Archive.org" },
-  
+  { id: "nr001", title: "Alphabet Song (ABC)", url: "https://archive.org/download/TheBestNurseryRhymes4/1-01%20Alphabet%20Song%20(A%20B%20C).mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.LEARNING, Situation.CARRIDE, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "nr002", title: "Alphabet Song (You're Adorable)", url: "https://archive.org/download/TheBestNurseryRhymes4/1-02%20Alphabet%20Song%20(A%20Your%20Adorable).mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.PLAYTIME, Situation.LEARNING], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
+  { id: "nr003", title: "I Have Two Hands", url: "https://archive.org/download/TheBestNurseryRhymes4/1-03%20I%20Have%20Two%20Hands.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.BATHTIME, Situation.LEARNING, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
+  { id: "nr004", title: "One Two Buckle My Shoe", url: "https://archive.org/download/TheBestNurseryRhymes4/1-04%20One%2C%20Two%2C%20Buckle%20My%20Shoe.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.MORNING, Situation.LEARNING, Situation.CARRIDE], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "nr005", title: "Ten Little Indians", url: "https://archive.org/download/TheBestNurseryRhymes4/1-05%20Ten%20Little%20Indians.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.CARRIDE, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
+  { id: "nr006", title: "Ten Little Farmer Boys", url: "https://archive.org/download/TheBestNurseryRhymes4/1-06%20Ten%20Little%20Farmers%20Boys.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 60, source: "Archive.org" },
+  { id: "nr007", title: "Where Is Thumbkin", url: "https://archive.org/download/TheBestNurseryRhymes4/1-07%20Where%20Is%20Thumbkin.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.CARRIDE, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 48, source: "Archive.org" },
+  { id: "nr008", title: "My Toes My Knees My Shoulders My Head", url: "https://archive.org/download/TheBestNurseryRhymes4/1-08%20My%20Toes%2C%20My%20Knees%2C%20My%20Shoulder%2C%20My%20Head.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.MORNING, Situation.BATHTIME, Situation.LEARNING], minAgeMonths: 6, maxAgeMonths: 48, source: "Archive.org" },
+  { id: "nr009", title: "Little Sunny Water", url: "https://archive.org/download/TheBestNurseryRhymes4/1-09%20Little%20Sunny%20Water.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.QUIET, Situation.BATHTIME], minAgeMonths: 0, maxAgeMonths: 36, source: "Archive.org" },
+  { id: "nr010", title: "B-I-N-G-O", url: "https://archive.org/download/TheBestNurseryRhymes4/1-10%20B%20I%20N%20G%20O.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.CARRIDE, Situation.CELEBRATION, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "nr011", title: "Here We Go Around the Mulberry Bush", url: "https://archive.org/download/TheBestNurseryRhymes4/1-11%20Here%20We%20Go%20Around%20the%20Mulberry%20Bush.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.MORNING, Situation.OUTDOOR, Situation.CELEBRATION], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "nr012", title: "Ring Around the Rosy", url: "https://archive.org/download/TheBestNurseryRhymes4/1-12%20Ring%20Around%20the%20Rosy.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.OUTDOOR, Situation.CELEBRATION], minAgeMonths: 12, maxAgeMonths: 48, source: "Archive.org" },
+  { id: "nr013", title: "Old MacDonald Had a Farm", url: "https://archive.org/download/TheBestNurseryRhymes4/1-13%20Old%20McDonald%20Had%20a%20Farm.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.MORNING, Situation.CARRIDE, Situation.OUTDOOR, Situation.LEARNING], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "nr014", title: "The Hokey Pokey", url: "https://archive.org/download/TheBestNurseryRhymes4/1-14%20The%20Hockey%20Pockey.mp3", contentType: ContentType.ACTION_SONG, situations: [Situation.PLAYTIME, Situation.CELEBRATION, Situation.OUTDOOR], minAgeMonths: 18, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "nr015", title: "Happy Talk", url: "https://archive.org/download/TheBestNurseryRhymes4/1-15%20Happy%20Talk.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.MORNING, Situation.CELEBRATION, Situation.CARRIDE, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 60, source: "Archive.org" },
+  { id: "nr016", title: "Strawberry Jam", url: "https://archive.org/download/TheBestNurseryRhymes4/1-16%20Strawberry%20Jam.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.MEALTIME, Situation.CELEBRATION], minAgeMonths: 6, maxAgeMonths: 60, source: "Archive.org" },
+
   // ========== CLASSIC SONGS (from TheBestNurseryRhymes4 disc 2) ==========
-  { id: "cs001", title: "Dear Mr. Jesus", url: "https://archive.org/download/TheBestNurseryRhymes4/2-01%20Dear%20Mr.%20Jesus.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME], minAgeMonths: 24, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "cs002", title: "Mama", url: "https://archive.org/download/TheBestNurseryRhymes4/2-02%20Mama.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME], minAgeMonths: 0, maxAgeMonths: 48, source: "Archive.org" },
-  { id: "cs003", title: "Somewhere Over the Rainbow", url: "https://archive.org/download/TheBestNurseryRhymes4/2-03%20Somewhere%20Over%20the%20Rainbow.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "cs004", title: "It's a Small World", url: "https://archive.org/download/TheBestNurseryRhymes4/2-04%20It%27s%20a%20Small%20World.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "cs005", title: "Climb Every Mountain", url: "https://archive.org/download/TheBestNurseryRhymes4/2-05%20Climb%20Every%20Mountain.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.ANYTIME], minAgeMonths: 24, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "cs006", title: "You Didn't Have to Be So Nice", url: "https://archive.org/download/TheBestNurseryRhymes4/2-06%20You%20Didn%27t%20Have%20to%20Be%20So%20Nice.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.ANYTIME], minAgeMonths: 24, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "cs007", title: "Que Sera Sera", url: "https://archive.org/download/TheBestNurseryRhymes4/2-07%20Que%20Sera%2C%20Sera.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
-  
+  { id: "cs001", title: "Dear Mr. Jesus", url: "https://archive.org/download/TheBestNurseryRhymes4/2-01%20Dear%20Mr.%20Jesus.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME, Situation.NAPTIME], minAgeMonths: 24, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "cs002", title: "Mama", url: "https://archive.org/download/TheBestNurseryRhymes4/2-02%20Mama.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME, Situation.NAPTIME], minAgeMonths: 0, maxAgeMonths: 48, source: "Archive.org" },
+  { id: "cs003", title: "Somewhere Over the Rainbow", url: "https://archive.org/download/TheBestNurseryRhymes4/2-03%20Somewhere%20Over%20the%20Rainbow.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME, Situation.NAPTIME, Situation.CARRIDE], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "cs004", title: "It's a Small World", url: "https://archive.org/download/TheBestNurseryRhymes4/2-04%20It%27s%20a%20Small%20World.mp3", contentType: ContentType.NURSERY_RHYME, situations: [Situation.PLAYTIME, Situation.CARRIDE, Situation.CELEBRATION, Situation.ANYTIME], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "cs005", title: "Climb Every Mountain", url: "https://archive.org/download/TheBestNurseryRhymes4/2-05%20Climb%20Every%20Mountain.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 24, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "cs006", title: "You Didn't Have to Be So Nice", url: "https://archive.org/download/TheBestNurseryRhymes4/2-06%20You%20Didn%27t%20Have%20to%20Be%20So%20Nice.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.NAPTIME, Situation.ANYTIME], minAgeMonths: 24, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "cs007", title: "Que Sera Sera", url: "https://archive.org/download/TheBestNurseryRhymes4/2-07%20Que%20Sera%2C%20Sera.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME, Situation.NAPTIME, Situation.CARRIDE], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
+
   // ========== ANIMAL SOUNDS (SSE Library - verified working) ==========
-  { id: "as001", title: "Lion Roar", url: "https://archive.org/download/SSE_Library_ANIMALS/CAT%20WILD/ANMLWcat_Lion%20roaring%20with%20light%20jungle%20background_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 0, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as002", title: "Elephant Sounds", url: "https://archive.org/download/SSE_Library_ANIMALS/WILD/ANMLWild_Elephant%20running%20by%20in%20dirt_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 0, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as003", title: "Dog Barking", url: "https://archive.org/download/SSE_Library_ANIMALS/DOG/ANMLDog_Dog%20barking%20medium%20sized_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as004", title: "Cat Meowing", url: "https://archive.org/download/SSE_Library_ANIMALS/CAT%20DOMESTIC/ANMLCat_Cat%20meowing%20several%20times_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as005", title: "Cow Mooing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Cow%20mooing%20single_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as006", title: "Rooster Crowing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Rooster%20crowing_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.MORNING, Situation.PLAYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as007", title: "Horse Neighing", url: "https://archive.org/download/SSE_Library_ANIMALS/HORSE/ANMLHorse_Horse%20whinny_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as008", title: "Pig Oinking", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Pig%20oinking_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as009", title: "Sheep Baaing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Sheep%20baaing_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as010", title: "Duck Quacking", url: "https://archive.org/download/SSE_Library_ANIMALS/BIRD/ANMLBird_Ducks%20quacking_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as001", title: "Lion Roar", url: "https://archive.org/download/SSE_Library_ANIMALS/CAT%20WILD/ANMLWcat_Lion%20roaring%20with%20light%20jungle%20background_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 0, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as002", title: "Elephant Sounds", url: "https://archive.org/download/SSE_Library_ANIMALS/WILD/ANMLWild_Elephant%20running%20by%20in%20dirt_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 0, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as003", title: "Dog Barking", url: "https://archive.org/download/SSE_Library_ANIMALS/DOG/ANMLDog_Dog%20barking%20medium%20sized_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as004", title: "Cat Meowing", url: "https://archive.org/download/SSE_Library_ANIMALS/CAT%20DOMESTIC/ANMLCat_Cat%20meowing%20several%20times_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as005", title: "Cow Mooing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Cow%20mooing%20single_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as006", title: "Rooster Crowing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Rooster%20crowing_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.MORNING, Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as007", title: "Horse Neighing", url: "https://archive.org/download/SSE_Library_ANIMALS/HORSE/ANMLHorse_Horse%20whinny_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as008", title: "Pig Oinking", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Pig%20oinking_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as009", title: "Sheep Baaing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Sheep%20baaing_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
+  { id: "as010", title: "Duck Quacking", url: "https://archive.org/download/SSE_Library_ANIMALS/BIRD/ANMLBird_Ducks%20quacking_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.BATHTIME, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
 ];
 
 // Helper functions

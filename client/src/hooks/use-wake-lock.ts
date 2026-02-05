@@ -1,7 +1,14 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import NoSleep from "nosleep.js";
 
-export function useWakeLock() {
+export interface UseWakeLockReturn {
+  isActive: boolean;
+  requestWakeLock: () => Promise<void>;
+  releaseWakeLock: () => void;
+}
+
+export function useWakeLock(): UseWakeLockReturn {
+  const [isActive, setIsActive] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const noSleepRef = useRef<NoSleep | null>(null);
   const usingFallbackRef = useRef(false);
@@ -12,6 +19,7 @@ export function useWakeLock() {
         wakeLockRef.current = await navigator.wakeLock.request("screen");
         wakeLockRef.current.addEventListener("release", () => {
           wakeLockRef.current = null;
+          setIsActive(false);
         });
         return;
       } catch {
@@ -40,6 +48,7 @@ export function useWakeLock() {
       noSleepRef.current.disable();
       usingFallbackRef.current = false;
     }
+    setIsActive(false);
   }, []);
 
   useEffect(() => {
@@ -74,5 +83,5 @@ export function useWakeLock() {
     };
   }, [requestWakeLock, releaseWakeLock]);
 
-  return { requestWakeLock, releaseWakeLock };
+  return { isActive, requestWakeLock, releaseWakeLock };
 }
