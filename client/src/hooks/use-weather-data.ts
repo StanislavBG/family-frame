@@ -111,8 +111,8 @@ export function useWeatherData(): UseWeatherDataResult {
           sessionStorage.setItem("geo_attempted", "true");
           setCoords(newCoords);
         },
-        (error) => {
-          console.log("Geolocation error:", error.message);
+        () => {
+          // Geolocation failed or denied
         },
         { timeout: 10000, enableHighAccuracy: true }
       );

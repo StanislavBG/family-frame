@@ -29,8 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Pencil, Trash2, Maximize, Minimize } from "lucide-react";
-import { useFullscreen } from "@/hooks/use-fullscreen";
+import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Pencil, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
@@ -325,7 +324,6 @@ function EventCard({ event, people, currentUserId, onEdit, onDelete }: EventCard
 }
 
 export default function CalendarPage() {
-  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen();
   const { toast } = useToast();
   const { user } = useUser();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -413,7 +411,6 @@ export default function CalendarPage() {
   });
 
   const onSubmit = (data: EventFormValues) => {
-    console.log("Submitting event:", data);
     createEventMutation.mutate({
       title: data.title,
       startDate: data.startDate,
@@ -437,8 +434,8 @@ export default function CalendarPage() {
     });
   };
 
-  const onFormError = (errors: any) => {
-    console.log("Form validation errors:", errors);
+  const onFormError = (_errors: unknown) => {
+    // Form validation errors handled by react-hook-form
   };
 
   const handleEditEvent = (event: CalendarEvent) => {
@@ -471,25 +468,9 @@ export default function CalendarPage() {
     form.setValue("endDate", date.toISOString().split("T")[0]);
   };
 
-  // Fullscreen button component for reuse
-  const FullscreenButton = () => (
-    <div className="fixed top-4 right-4 z-50">
-      <Button
-        variant="secondary"
-        size="icon"
-        onClick={toggleFullscreen}
-        className="h-10 w-10"
-        data-testid="button-fullscreen"
-      >
-        {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
-      </Button>
-    </div>
-  );
-
   if (eventsLoading || peopleLoading) {
     return (
-      <div ref={containerRef} className="h-full bg-background">
-        <FullscreenButton />
+      <div className="h-full bg-background">
         <CalendarSkeleton />
       </div>
     );
@@ -506,9 +487,7 @@ export default function CalendarPage() {
   const hasPeople = people && people.length > 0;
 
   return (
-    <div ref={containerRef} className="h-full p-4 md:p-6 flex flex-col bg-background overflow-hidden">
-      <FullscreenButton />
-
+    <div className="h-full p-4 md:p-6 flex flex-col bg-background overflow-hidden">
       <div className="flex-1 flex flex-col gap-3 min-h-0">
         <Card className="flex-1 flex flex-col min-h-0">
           <CardHeader className="flex-row items-center justify-between py-2 px-4 flex-shrink-0">

@@ -1,4 +1,4 @@
-export const weatherCodeDescriptions: Record<number, { description: string; icon: string }> = {
+const weatherCodeDescriptions: Record<number, { description: string; icon: string }> = {
   0: { description: "Clear sky", icon: "sun" },
   1: { description: "Mainly clear", icon: "sun" },
   2: { description: "Partly cloudy", icon: "cloud-sun" },
@@ -33,7 +33,7 @@ export function getWeatherInfo(code: number): { description: string; icon: strin
   return weatherCodeDescriptions[code] || { description: "Unknown", icon: "cloud" };
 }
 
-export function celsiusToFahrenheit(celsius: number): number {
+function celsiusToFahrenheit(celsius: number): number {
   return Math.round((celsius * 9) / 5 + 32);
 }
 
@@ -44,17 +44,7 @@ export function formatTemperature(temp: number, unit: "celsius" | "fahrenheit"):
   return `${Math.round(temp)}°C`;
 }
 
-export function formatTime(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
 export function formatDay(isoString: string): string {
   const date = new Date(isoString);
   return date.toLocaleDateString([], { weekday: "short" });
-}
-
-export function formatDate(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }

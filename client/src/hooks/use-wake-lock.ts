@@ -17,17 +17,13 @@ export function useWakeLock(): UseWakeLockReturn {
     if ("wakeLock" in navigator) {
       try {
         wakeLockRef.current = await navigator.wakeLock.request("screen");
-        setIsActive(true);
-        console.log("Wake Lock active - screen will stay on");
-
         wakeLockRef.current.addEventListener("release", () => {
-          console.log("Wake Lock released");
           wakeLockRef.current = null;
           setIsActive(false);
         });
         return;
-      } catch (err) {
-        console.log("Wake Lock request failed, trying fallback:", err);
+      } catch {
+        // Wake Lock failed, try fallback
       }
     }
 
@@ -38,10 +34,8 @@ export function useWakeLock(): UseWakeLockReturn {
     try {
       await noSleepRef.current.enable();
       usingFallbackRef.current = true;
-      setIsActive(true);
-      console.log("NoSleep.js active - screen will stay on (iOS fallback)");
-    } catch (err) {
-      console.log("NoSleep.js failed:", err);
+    } catch {
+      // NoSleep fallback also failed
     }
   }, []);
 

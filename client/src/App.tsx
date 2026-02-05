@@ -34,7 +34,6 @@ import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, 
 import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useWakeLock } from "@/hooks/use-wake-lock";
-import { GlobalRadioPlayer } from "@/components/global-radio-player";
 import { AppControlsProvider, AppControlsWidget, HeaderControls } from "@/components/app-controls";
 
 interface ErrorBoundaryProps {
@@ -169,7 +168,6 @@ function AuthenticatedLayout() {
               <Router />
             </main>
           </div>
-          <GlobalRadioPlayer />
           <AppControlsWidget />
         </div>
       </SidebarProvider>

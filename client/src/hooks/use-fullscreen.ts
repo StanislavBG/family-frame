@@ -61,8 +61,8 @@ export function useFullscreen(options: UseFullscreenOptions = {}) {
   useEffect(() => {
     if (autoEnter && containerRef.current && !hasAutoEntered.current && !document.fullscreenElement) {
       hasAutoEntered.current = true;
-      containerRef.current.requestFullscreen().catch((error) => {
-        console.log("Auto-fullscreen not allowed:", error);
+      containerRef.current.requestFullscreen().catch(() => {
+        // Auto-fullscreen not allowed by browser
       });
     }
   }, [autoEnter]);
@@ -76,8 +76,8 @@ export function useFullscreen(options: UseFullscreenOptions = {}) {
       } else {
         await document.exitFullscreen();
       }
-    } catch (error) {
-      console.error("Fullscreen error:", error);
+    } catch {
+      // Fullscreen request failed
     }
   }, []);
 

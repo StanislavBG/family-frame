@@ -9,15 +9,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MessageSquare, Send, Check, CheckCheck, Trash2, Mail, MailOpen, Users, Plus, ArrowUpRight, Reply } from "lucide-react";
-import { useFullscreen } from "@/hooks/use-fullscreen";
-import { FullscreenButton } from "@/components/fullscreen-button";
 import { queryKeys, useCreateMutation, useUpdateMutation, useDeleteMutation } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/format";
 import { Link } from "wouter";
 import type { Message, ConnectedUser } from "@shared/schema";
 
 export default function MessagesPage() {
-  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen();
   const { user } = useUser();
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [selectedRecipient, setSelectedRecipient] = useState<string>("");
@@ -95,8 +92,7 @@ export default function MessagesPage() {
 
   if (isLoading) {
     return (
-      <div ref={containerRef} className="h-full p-4 md:p-8 overflow-auto bg-background">
-        <FullscreenButton isFullscreen={isFullscreen} onToggle={toggleFullscreen} />
+      <div className="h-full p-4 md:p-8 overflow-auto bg-background">
         <div className="max-w-4xl mx-auto">
           <div className="animate-pulse space-y-4">
             <div className="h-8 w-48 bg-muted rounded" />
@@ -108,8 +104,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div ref={containerRef} className="h-full p-4 md:p-6 overflow-auto bg-background">
-      <FullscreenButton isFullscreen={isFullscreen} onToggle={toggleFullscreen} />
+    <div className="h-full p-4 md:p-8 overflow-auto bg-background">
 
       <div className="max-w-6xl mx-auto space-y-4">
         <div className="flex items-center justify-between">

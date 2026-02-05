@@ -9,6 +9,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import Hls from "hls.js";
 import { useAppControls } from "@/components/app-controls";
+import { useFullscreen } from "@/hooks/use-fullscreen";
 import type { TVChannel, UserSettings } from "@shared/schema";
 
 type ChannelsByCountry = Record<string, TVChannel[]>;
@@ -23,105 +24,6 @@ interface QualityLevel {
 const AUTO_HIDE_DELAY = 4000; // 4 seconds
 const RECONNECT_DELAYS = [2000, 4000, 8000, 16000]; // Exponential backoff
 
-function useVideoFullscreen() {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!videoContainerRef.current) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        await videoContainerRef.current.requestFullscreen();
-      } else {
-        await document.exitFullscreen();
-      }
-    } catch (error) {
-      console.error("Fullscreen error:", error);
-    }
-  }, []);
-
-  return { isFullscreen, toggleFullscreen, videoContainerRef };
-}
-
-// Wake Lock hook to keep screen on during playback
-function useWakeLock(enabled: boolean) {
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-
-  useEffect(() => {
-    const requestWakeLock = async () => {
-      if (!enabled || !("wakeLock" in navigator)) return;
-
-      try {
-        wakeLockRef.current = await navigator.wakeLock.request("screen");
-      } catch (err) {
-        console.log("Wake Lock request failed:", err);
-      }
-    };
-
-    const releaseWakeLock = async () => {
-      if (wakeLockRef.current) {
-        await wakeLockRef.current.release();
-        wakeLockRef.current = null;
-      }
-    };
-
-    if (enabled) {
-      requestWakeLock();
-    } else {
-      releaseWakeLock();
-    }
-
-    // Re-acquire wake lock when page becomes visible again
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && enabled) {
-        requestWakeLock();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      releaseWakeLock();
-    };
-  }, [enabled]);
-}
-
-// Clock component for overlay
-function ClockOverlay({ visible }: { visible: boolean }) {
-  const [time, setTime] = useState(new Date());
-
-  useEffect(() => {
-    if (!visible) return;
-
-    const interval = setInterval(() => {
-      setTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [visible]);
-
-  if (!visible) return null;
-
-  return (
-    <div className="absolute top-4 right-4 bg-black/60 px-4 py-2 rounded-lg backdrop-blur-sm">
-      <span className="text-white text-2xl font-mono tabular-nums">
-        {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-      </span>
-    </div>
-  );
-}
-
 export default function TVPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -133,7 +35,7 @@ export default function TVPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState<string>("");
-  const { isFullscreen, toggleFullscreen, videoContainerRef } = useVideoFullscreen();
+  const { isFullscreen, toggleFullscreen, containerRef: videoContainerRef } = useFullscreen();
   const { addDebugLog } = useAppControls();
 
   // New state for enhanced features
