@@ -8,6 +8,9 @@ interface MarketData {
   price: number;
   change: number;
   changePercent: number;
+  change1Y?: number;
+  change3Y?: number;
+  change5Y?: number;
 }
 
 interface StockWidgetProps {
@@ -30,6 +33,30 @@ function formatPrice(price: number) {
     return price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
   return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatPercent(value: number | undefined) {
+  if (value === undefined || value === null) return "—";
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+function PercentBadge({ value, label }: { value: number | undefined; label: string }) {
+  if (value === undefined || value === null) {
+    return (
+      <div className="text-center">
+        <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
+        <div className="text-sm text-muted-foreground">—</div>
+      </div>
+    );
+  }
+  const color = value >= 0 ? "text-green-500" : "text-red-500";
+  return (
+    <div className="text-center">
+      <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
+      <div className={`text-sm font-medium ${color}`}>{formatPercent(value)}</div>
+    </div>
+  );
 }
 
 export function StockWidget({ symbol, name, data, variant = "full", className = "" }: StockWidgetProps) {
@@ -62,7 +89,7 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
 
   if (variant === "compact") {
     return (
-      <div 
+      <div
         className={`flex items-center justify-between p-4 rounded-lg bg-muted/30 ${className}`}
         data-testid={`stock-tile-${symbol.toLowerCase()}`}
       >
@@ -88,26 +115,33 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
     );
   }
 
+  // Full variant - redesigned with historical performance
   return (
     <Card className={`h-full ${className}`} data-testid={`stock-widget-${symbol.toLowerCase()}`}>
       <CardContent className="h-full flex flex-col items-center justify-center p-6">
-        <div className="text-lg text-muted-foreground uppercase tracking-wide mb-2">
+        {/* Name at top */}
+        <div className="text-sm md:text-base text-muted-foreground uppercase tracking-widest mb-4">
           {name}
         </div>
-        <div className="text-sm text-muted-foreground mb-4">
-          {symbol}
-        </div>
+
         {data ? (
           <>
-            <div className="text-5xl md:text-6xl lg:text-7xl font-bold flex items-center gap-2">
+            {/* Current price with trend icon */}
+            <div className="text-4xl md:text-5xl lg:text-6xl font-bold flex items-center gap-2 text-primary">
               {isCrypto ? '$' : ''}{formatPrice(data.price)}
               <TrendIcon change={data.change} />
             </div>
-            <div className={`text-2xl mt-2 ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+
+            {/* Today's change percent */}
+            <div className={`text-xl md:text-2xl mt-1 ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
               {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
             </div>
-            <div className={`text-lg ${data.change >= 0 ? 'text-green-500/70' : 'text-red-500/70'}`}>
-              {data.change >= 0 ? '+' : ''}{data.change.toFixed(2)}
+
+            {/* Historical performance row */}
+            <div className="flex items-center justify-center gap-6 md:gap-8 mt-6 pt-4 border-t w-full max-w-xs">
+              <PercentBadge value={data.change1Y} label="1Y" />
+              <PercentBadge value={data.change3Y} label="3Y" />
+              <PercentBadge value={data.change5Y} label="5Y" />
             </div>
           </>
         ) : (

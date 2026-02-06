@@ -1638,12 +1638,12 @@ export async function registerRoutes(
     }
   });
 
-  // Market data endpoint - fetches all requested stocks
+  // Market data endpoint - fetches all requested stocks with historical performance
   app.get("/api/market", async (req: Request, res: Response) => {
     try {
       const symbolsParam = req.query.symbols as string || "DJI,BTC";
       const symbols = symbolsParam.split(",").map(s => s.trim().toUpperCase());
-      
+
       const stockConfig: Record<string, { yahooSymbol?: string; isCrypto?: boolean; name: string }> = {
         "DJI": { yahooSymbol: "^DJI", name: "Dow Jones" },
         "VNQ": { yahooSymbol: "VNQ", name: "Real Estate" },
@@ -1653,25 +1653,42 @@ export async function registerRoutes(
         "ISRG": { yahooSymbol: "ISRG", name: "Intuitive Surgical" },
       };
 
-      const results: Record<string, { symbol: string; name: string; price: number; change: number; changePercent: number } | null> = {};
+      interface MarketResult {
+        symbol: string;
+        name: string;
+        price: number;
+        change: number;
+        changePercent: number;
+        change1Y?: number;
+        change3Y?: number;
+        change5Y?: number;
+      }
 
-      // Build fetch requests
-      const fetchPromises: Promise<{ symbol: string; data: any }>[] = [];
-      
+      const results: Record<string, MarketResult | null> = {};
+
+      // Build fetch requests - now fetching 5 year data for historical analysis
+      const fetchPromises: Promise<{ symbol: string; data: any; historical?: any }>[] = [];
+
       for (const symbol of symbols) {
         const config = stockConfig[symbol];
         if (!config) continue;
 
         if (config.isCrypto) {
+          // Fetch current price and historical data for Bitcoin
           fetchPromises.push(
-            fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true")
-              .then(r => r.ok ? r.json() : null)
-              .then(data => ({ symbol, data }))
-              .catch(() => ({ symbol, data: null }))
+            Promise.all([
+              fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true")
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null),
+              fetch("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1825&interval=daily")
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null)
+            ]).then(([data, historical]) => ({ symbol, data, historical }))
           );
         } else if (config.yahooSymbol) {
+          // Fetch 5 year data for historical analysis
           fetchPromises.push(
-            fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(config.yahooSymbol)}?interval=1d&range=1d`)
+            fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(config.yahooSymbol)}?interval=1mo&range=5y`)
               .then(r => r.ok ? r.json() : null)
               .then(data => ({ symbol, data }))
               .catch(() => ({ symbol, data: null }))
@@ -1681,7 +1698,7 @@ export async function registerRoutes(
 
       const responses = await Promise.all(fetchPromises);
 
-      for (const { symbol, data } of responses) {
+      for (const { symbol, data, historical } of responses) {
         const config = stockConfig[symbol];
         if (!config || !data) {
           results[symbol.toLowerCase()] = null;
@@ -1689,26 +1706,93 @@ export async function registerRoutes(
         }
 
         if (config.isCrypto && data.bitcoin) {
-          results[symbol.toLowerCase()] = {
+          const currentPrice = data.bitcoin.usd;
+          const result: MarketResult = {
             symbol,
             name: config.name,
-            price: data.bitcoin.usd,
+            price: currentPrice,
             change: data.bitcoin.usd_24h_change || 0,
             changePercent: data.bitcoin.usd_24h_change || 0
           };
+
+          // Calculate historical changes from CoinGecko market_chart data
+          if (historical?.prices && historical.prices.length > 0) {
+            const prices = historical.prices;
+            const now = Date.now();
+            const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
+            const threeYearsAgo = now - 3 * 365 * 24 * 60 * 60 * 1000;
+            const fiveYearsAgo = now - 5 * 365 * 24 * 60 * 60 * 1000;
+
+            // Find prices closest to 1Y, 3Y, 5Y ago
+            const findPriceAtTime = (targetTime: number) => {
+              let closest = prices[0];
+              for (const p of prices) {
+                if (Math.abs(p[0] - targetTime) < Math.abs(closest[0] - targetTime)) {
+                  closest = p;
+                }
+              }
+              return closest[1];
+            };
+
+            const price1YAgo = findPriceAtTime(oneYearAgo);
+            const price3YAgo = findPriceAtTime(threeYearsAgo);
+            const price5YAgo = prices[0]?.[1]; // First price in 5Y range
+
+            if (price1YAgo) result.change1Y = ((currentPrice - price1YAgo) / price1YAgo) * 100;
+            if (price3YAgo) result.change3Y = ((currentPrice - price3YAgo) / price3YAgo) * 100;
+            if (price5YAgo) result.change5Y = ((currentPrice - price5YAgo) / price5YAgo) * 100;
+          }
+
+          results[symbol.toLowerCase()] = result;
         } else if (data.chart?.result?.[0]) {
           const chart = data.chart.result[0];
           const price = chart.meta?.regularMarketPrice;
           const prevClose = chart.meta?.previousClose || chart.meta?.chartPreviousClose;
+
           if (price && prevClose) {
             const change = price - prevClose;
-            results[symbol.toLowerCase()] = {
+            const result: MarketResult = {
               symbol,
               name: config.name,
               price,
               change,
               changePercent: (change / prevClose) * 100
             };
+
+            // Calculate historical changes from Yahoo Finance monthly data
+            const timestamps = chart.timestamp || [];
+            const closes = chart.indicators?.quote?.[0]?.close || [];
+
+            if (timestamps.length > 0 && closes.length > 0) {
+              const now = Math.floor(Date.now() / 1000);
+              const oneYearAgo = now - 365 * 24 * 60 * 60;
+              const threeYearsAgo = now - 3 * 365 * 24 * 60 * 60;
+              const fiveYearsAgo = now - 5 * 365 * 24 * 60 * 60;
+
+              // Find prices closest to 1Y, 3Y, 5Y ago
+              const findPriceAtTime = (targetTime: number) => {
+                let closestIdx = 0;
+                let closestDiff = Math.abs(timestamps[0] - targetTime);
+                for (let i = 1; i < timestamps.length; i++) {
+                  const diff = Math.abs(timestamps[i] - targetTime);
+                  if (diff < closestDiff) {
+                    closestDiff = diff;
+                    closestIdx = i;
+                  }
+                }
+                return closes[closestIdx];
+              };
+
+              const price1YAgo = findPriceAtTime(oneYearAgo);
+              const price3YAgo = findPriceAtTime(threeYearsAgo);
+              const price5YAgo = closes[0]; // First price in 5Y range
+
+              if (price1YAgo) result.change1Y = ((price - price1YAgo) / price1YAgo) * 100;
+              if (price3YAgo) result.change3Y = ((price - price3YAgo) / price3YAgo) * 100;
+              if (price5YAgo) result.change5Y = ((price - price5YAgo) / price5YAgo) * 100;
+            }
+
+            results[symbol.toLowerCase()] = result;
           } else {
             results[symbol.toLowerCase()] = null;
           }
@@ -1718,7 +1802,7 @@ export async function registerRoutes(
       }
 
       // Legacy support: also return dow and bitcoin at top level
-      res.json({ 
+      res.json({
         ...results,
         dow: results.dji || null,
         bitcoin: results.btc || null
