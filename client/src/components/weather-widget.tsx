@@ -53,16 +53,16 @@ function WeatherWidgetRenderer({
 
   if (variant === "compact") {
     return (
-      <div className={`flex flex-col items-center justify-center ${className}`} data-testid="weather-widget">
-        <WeatherIcon 
-          code={weather.current.weatherCode} 
-          isDay={weather.current.isDay} 
-          className="h-24 w-24 md:h-32 md:w-32" 
+      <div className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="weather-widget">
+        <WeatherIcon
+          code={weather.current.weatherCode}
+          isDay={weather.current.isDay}
+          className="h-32 w-32 md:h-40 md:w-40 lg:h-48 lg:w-48"
         />
-        <div className="text-7xl md:text-8xl lg:text-9xl font-bold mt-4" data-testid="text-weather-temp">
+        <div className="text-7xl md:text-8xl lg:text-9xl font-bold mt-2" data-testid="text-weather-temp">
           {formatTemperature(weather.current.temperature)}
         </div>
-        <div className="text-2xl md:text-3xl text-muted-foreground mt-2">
+        <div className="text-xl md:text-2xl lg:text-3xl text-muted-foreground mt-1">
           {weather.location.city}
         </div>
       </div>

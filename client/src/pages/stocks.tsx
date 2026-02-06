@@ -11,6 +11,9 @@ interface MarketData {
   price: number;
   change: number;
   changePercent: number;
+  change1Y?: number;
+  change3Y?: number;
+  change5Y?: number;
 }
 
 export default function StocksPage() {

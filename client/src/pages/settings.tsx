@@ -986,6 +986,33 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      <Label>Clock Style</Label>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Choose analog or digital clock display for the Clock app</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">Analog</span>
+                    <Switch
+                      checked={settings?.clockStyle === "digital"}
+                      onCheckedChange={(checked) =>
+                        updateSettingsMutation.mutate({
+                          clockStyle: checked ? "digital" : "analog",
+                        })
+                      }
+                      data-testid="switch-clock-style"
+                    />
+                    <span className="text-sm">Digital</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         );
 
