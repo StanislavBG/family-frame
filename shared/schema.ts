@@ -169,7 +169,6 @@ export interface AppItem {
 export const defaultAppList: AppItem[] = [
   { id: "home", title: "Home", url: "/", fixed: true },
   { id: "settings", title: "Settings", url: "/settings", fixed: true },
-  { id: "dashboard", title: "Dashboard", url: "/dashboard" },
   { id: "clock", title: "Clock", url: "/clock" },
   { id: "weather", title: "Weather", url: "/weather" },
   { id: "photos", title: "Picture Frame", url: "/photos" },

@@ -338,6 +338,10 @@ export async function refreshPickerPhotoUrl(
   mediaItemId: string,
   sessionId: string
 ): Promise<{ baseUrl: string; fetchedAt: number } | null> {
+  let pageToken: string | undefined;
+  let pagesSearched = 0;
+  const maxPages = 10; // Limit to 1000 photos max
+
   try {
     do {
       const url = new URL(`https://photospicker.googleapis.com/v1/mediaItems`);

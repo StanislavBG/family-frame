@@ -2290,18 +2290,28 @@ export async function registerRoutes(
       // Get fresh URLs from the current session if available
       const sessionId = userData.settings?.pickerSessionId;
       let freshPhotos: GooglePhotoItem[] = [];
+      let sessionActive = false;
+      let sessionError: string | undefined;
+      let needsSessionRefresh = false;
 
       if (sessionId) {
         try {
           const session = await getPickerSession(accessToken, sessionId);
           if (session?.mediaItemsSet) {
             freshPhotos = await getPickedMediaItems(accessToken, sessionId);
+            sessionActive = true;
+          } else {
+            sessionError = "Session not ready";
+            needsSessionRefresh = true;
           }
         } catch {
           // Session may be expired
+          sessionError = "Session expired";
+          needsSessionRefresh = true;
         }
       } else {
         sessionError = "No session ID stored";
+        needsSessionRefresh = true;
       }
 
       // Build a map of fresh URLs by photo ID
