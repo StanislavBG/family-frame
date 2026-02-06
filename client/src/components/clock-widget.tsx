@@ -1,5 +1,6 @@
 import { useClock } from "@/hooks/use-clock";
 import { useQuery } from "@tanstack/react-query";
+import { useRef, useState, useEffect } from "react";
 import type { UserSettings } from "@shared/schema";
 
 interface ClockWidgetProps {
@@ -15,6 +16,32 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
   const timeFormat = settings?.timeFormat || "24h";
   const clockStyle = style || settings?.clockStyle || "analog";
   const { currentTime, date, year } = useClock(timeFormat);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 200, height: 200 });
+
+  // Measure container and update dimensions
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        // Leave some padding for the date display
+        const dateHeight = variant === "compact" ? 40 : 60;
+        setDimensions({
+          width: rect.width,
+          height: Math.max(rect.height - dateHeight, 100),
+        });
+      }
+    };
+
+    updateDimensions();
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, [variant]);
 
   // Format time for digital display
   const formatDigitalTime = () => {
@@ -55,7 +82,7 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
   // Digital clock display - scales to fill container
   if (clockStyle === "digital") {
     return (
-      <div className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
+      <div ref={containerRef} className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
         <div className="flex flex-col items-center justify-center flex-1 w-full">
           {/* Main time display - scales to fit */}
           <div className="flex items-baseline justify-center gap-2">
@@ -108,41 +135,84 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
     );
   }
 
-  // Analog clock display - scales to fill container while maintaining aspect ratio
+  // Dynamic analog clock - fills container shape
+  const { width, height } = dimensions;
+  const cx = width / 2;
+  const cy = height / 2;
+
+  // Radii for the ellipse - use most of the container with small padding
+  const padding = Math.min(width, height) * 0.08;
+  const rx = (width / 2) - padding;
+  const ry = (height / 2) - padding;
+
+  // Scale factor for elements (based on smaller radius)
+  const scale = Math.min(rx, ry) / 100;
+
+  // Helper to get point on ellipse at angle
+  const getEllipsePoint = (angle: number, radiusScale: number = 1) => {
+    const rad = (angle - 90) * (Math.PI / 180);
+    return {
+      x: cx + rx * radiusScale * Math.cos(rad),
+      y: cy + ry * radiusScale * Math.sin(rad),
+    };
+  };
+
+  // Helper to get hand end point
+  const getHandEnd = (angle: number, lengthRatio: number) => {
+    const rad = (angle - 90) * (Math.PI / 180);
+    return {
+      x: cx + rx * lengthRatio * Math.cos(rad),
+      y: cy + ry * lengthRatio * Math.sin(rad),
+    };
+  };
+
   return (
-    <div className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
-      {/* School Clock SVG - scales to fit container */}
-      <div className={`relative flex-1 w-full flex items-center justify-center ${variant === "compact" ? "max-h-48 md:max-h-56 lg:max-h-64" : ""}`}>
+    <div ref={containerRef} className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
+      {/* Dynamic Clock SVG - fills container shape */}
+      <div className="flex-1 w-full flex items-center justify-center">
         <svg
-          viewBox="0 0 200 200"
-          className="h-full w-auto max-w-full drop-shadow-lg"
-          style={{ aspectRatio: "1" }}
+          width={width}
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
+          className="drop-shadow-lg"
         >
-          {/* Clock frame - dark outer ring */}
-          <circle cx="100" cy="100" r="98" fill="#2c2c2c" />
+          {/* Clock frame - dark outer ellipse */}
+          <ellipse
+            cx={cx}
+            cy={cy}
+            rx={rx + padding * 0.3}
+            ry={ry + padding * 0.3}
+            fill="#2c2c2c"
+          />
 
           {/* Clock face - cream/off-white like school clocks */}
-          <circle cx="100" cy="100" r="90" fill="#f5f5dc" />
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="#f5f5dc" />
 
           {/* Inner subtle ring */}
-          <circle cx="100" cy="100" r="85" fill="none" stroke="#e8e8d0" strokeWidth="1" />
+          <ellipse
+            cx={cx}
+            cy={cy}
+            rx={rx * 0.94}
+            ry={ry * 0.94}
+            fill="none"
+            stroke="#e8e8d0"
+            strokeWidth={scale}
+          />
 
           {/* Hour markers - bold ticks at 12, 3, 6, 9 */}
           {[0, 3, 6, 9].map((hour) => {
-            const angle = (hour * 30 - 90) * (Math.PI / 180);
-            const x1 = 100 + 70 * Math.cos(angle);
-            const y1 = 100 + 70 * Math.sin(angle);
-            const x2 = 100 + 82 * Math.cos(angle);
-            const y2 = 100 + 82 * Math.sin(angle);
+            const angle = hour * 30;
+            const outer = getEllipsePoint(angle, 0.9);
+            const inner = getEllipsePoint(angle, 0.78);
             return (
               <line
                 key={hour}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
+                x1={inner.x}
+                y1={inner.y}
+                x2={outer.x}
+                y2={outer.y}
                 stroke="#1a1a1a"
-                strokeWidth="4"
+                strokeWidth={scale * 4}
                 strokeLinecap="round"
               />
             );
@@ -150,20 +220,18 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
 
           {/* Hour markers - regular ticks */}
           {[1, 2, 4, 5, 7, 8, 10, 11].map((hour) => {
-            const angle = (hour * 30 - 90) * (Math.PI / 180);
-            const x1 = 100 + 74 * Math.cos(angle);
-            const y1 = 100 + 74 * Math.sin(angle);
-            const x2 = 100 + 82 * Math.cos(angle);
-            const y2 = 100 + 82 * Math.sin(angle);
+            const angle = hour * 30;
+            const outer = getEllipsePoint(angle, 0.9);
+            const inner = getEllipsePoint(angle, 0.82);
             return (
               <line
                 key={hour}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
+                x1={inner.x}
+                y1={inner.y}
+                x2={outer.x}
+                y2={outer.y}
                 stroke="#1a1a1a"
-                strokeWidth="2"
+                strokeWidth={scale * 2}
                 strokeLinecap="round"
               />
             );
@@ -171,23 +239,21 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
 
           {/* Hour numbers */}
           {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((hour) => {
-            const displayHour = hour === 0 ? 12 : hour;
-            const angle = (hour * 30 - 90) * (Math.PI / 180);
-            const x = 100 + 62 * Math.cos(angle);
-            const y = 100 + 62 * Math.sin(angle);
+            const angle = hour * 30;
+            const pos = getEllipsePoint(angle, 0.68);
             return (
               <text
                 key={hour}
-                x={x}
-                y={y}
+                x={pos.x}
+                y={pos.y}
                 textAnchor="middle"
                 dominantBaseline="central"
                 fill="#1a1a1a"
-                fontSize="14"
+                fontSize={scale * 14}
                 fontWeight="600"
                 fontFamily="system-ui, -apple-system, sans-serif"
               >
-                {displayHour}
+                {hour}
               </text>
             );
           })}
@@ -195,75 +261,86 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
           {/* Minute ticks */}
           {Array.from({ length: 60 }, (_, i) => {
             if (i % 5 === 0) return null; // Skip hour positions
-            const angle = (i * 6 - 90) * (Math.PI / 180);
-            const x1 = 100 + 80 * Math.cos(angle);
-            const y1 = 100 + 80 * Math.sin(angle);
-            const x2 = 100 + 84 * Math.cos(angle);
-            const y2 = 100 + 84 * Math.sin(angle);
+            const angle = i * 6;
+            const outer = getEllipsePoint(angle, 0.9);
+            const inner = getEllipsePoint(angle, 0.87);
             return (
               <line
                 key={i}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
+                x1={inner.x}
+                y1={inner.y}
+                x2={outer.x}
+                y2={outer.y}
                 stroke="#666"
-                strokeWidth="1"
+                strokeWidth={scale}
               />
             );
           })}
 
           {/* Hour hand - short and thick */}
-          <line
-            x1="100"
-            y1="100"
-            x2="100"
-            y2="55"
-            stroke="#1a1a1a"
-            strokeWidth="6"
-            strokeLinecap="round"
-            transform={`rotate(${hourAngle}, 100, 100)`}
-            className="transition-transform duration-200"
-          />
+          {(() => {
+            const end = getHandEnd(hourAngle, 0.45);
+            return (
+              <line
+                x1={cx}
+                y1={cy}
+                x2={end.x}
+                y2={end.y}
+                stroke="#1a1a1a"
+                strokeWidth={scale * 6}
+                strokeLinecap="round"
+                className="transition-all duration-200"
+              />
+            );
+          })()}
 
           {/* Minute hand - long and medium thickness */}
-          <line
-            x1="100"
-            y1="100"
-            x2="100"
-            y2="28"
-            stroke="#1a1a1a"
-            strokeWidth="4"
-            strokeLinecap="round"
-            transform={`rotate(${minuteAngle}, 100, 100)`}
-            className="transition-transform duration-200"
-          />
+          {(() => {
+            const end = getHandEnd(minuteAngle, 0.72);
+            return (
+              <line
+                x1={cx}
+                y1={cy}
+                x2={end.x}
+                y2={end.y}
+                stroke="#1a1a1a"
+                strokeWidth={scale * 4}
+                strokeLinecap="round"
+                className="transition-all duration-200"
+              />
+            );
+          })()}
 
-          {/* Second hand - thin and red */}
-          <line
-            x1="100"
-            y1="115"
-            x2="100"
-            y2="25"
-            stroke="#c05746"
-            strokeWidth="2"
-            strokeLinecap="round"
-            transform={`rotate(${secondAngle}, 100, 100)`}
-          />
+          {/* Second hand - thin and red with tail */}
+          {(() => {
+            const end = getHandEnd(secondAngle, 0.78);
+            const tail = getHandEnd(secondAngle + 180, 0.15);
+            return (
+              <line
+                x1={tail.x}
+                y1={tail.y}
+                x2={end.x}
+                y2={end.y}
+                stroke="#c05746"
+                strokeWidth={scale * 2}
+                strokeLinecap="round"
+              />
+            );
+          })()}
 
           {/* Center cap */}
-          <circle cx="100" cy="100" r="6" fill="#1a1a1a" />
-          <circle cx="100" cy="100" r="3" fill="#c05746" />
+          <circle cx={cx} cy={cy} r={scale * 6} fill="#1a1a1a" />
+          <circle cx={cx} cy={cy} r={scale * 3} fill="#c05746" />
         </svg>
       </div>
 
       {/* Date display below clock */}
       {variant === "compact" ? (
-        <div className="text-lg md:text-xl lg:text-2xl text-muted-foreground text-center font-medium mt-2" data-testid="text-date">
+        <div className="text-lg md:text-xl lg:text-2xl text-muted-foreground text-center font-medium mt-2 flex-shrink-0" data-testid="text-date">
           {date}
         </div>
       ) : (
-        <div className="text-2xl md:text-3xl text-muted-foreground text-center mt-4" data-testid="text-date">
+        <div className="text-2xl md:text-3xl text-muted-foreground text-center mt-4 flex-shrink-0" data-testid="text-date">
           {date}, {year}
         </div>
       )}
