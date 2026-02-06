@@ -25,11 +25,9 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
     const updateDimensions = () => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
-        // Leave some padding for the date display
-        const dateHeight = variant === "compact" ? 40 : 60;
         setDimensions({
           width: Math.max(rect.width, 100),
-          height: Math.max(rect.height - dateHeight, 100),
+          height: Math.max(rect.height, 100),
         });
       }
     };
@@ -204,10 +202,9 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
   const cornerRadius = Math.min(innerWidth, innerHeight) * 0.05;
 
   return (
-    <div ref={containerRef} className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
-      {/* Rectangular Clock SVG - fills container */}
-      <div className="flex-1 w-full flex items-center justify-center">
-        <svg
+    <div ref={containerRef} className={`h-full w-full ${className}`} data-testid="clock-widget">
+      {/* Rectangular Clock SVG - fills entire container */}
+      <svg
           width={width}
           height={height}
           viewBox={`0 0 ${width} ${height}`}
@@ -366,18 +363,6 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
           <circle cx={cx} cy={cy} r={scale * 8} fill="#1a1a1a" />
           <circle cx={cx} cy={cy} r={scale * 4} fill="#c05746" />
         </svg>
-      </div>
-
-      {/* Date display below clock */}
-      {variant === "compact" ? (
-        <div className="text-lg md:text-xl lg:text-2xl text-muted-foreground text-center font-medium mt-2 flex-shrink-0" data-testid="text-date">
-          {date}
-        </div>
-      ) : (
-        <div className="text-2xl md:text-3xl text-muted-foreground text-center mt-4 flex-shrink-0" data-testid="text-date">
-          {date}, {year}
-        </div>
-      )}
     </div>
   );
 }
