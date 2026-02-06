@@ -1,7 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WeatherIcon } from "@/components/weather-icon";
 import {
@@ -30,8 +28,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { useWeatherData, type WeatherResponse } from "@/hooks/use-weather-data";
-import { queryClient } from "@/lib/queryClient";
-import type { DailyForecast, HourlyForecast } from "@shared/schema";
+import type { DailyForecast } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
 function WeatherSkeleton() {
@@ -215,92 +212,51 @@ function WeatherDenseMode({
 
 // --- Light mode (new: focused today/tomorrow view with advisories) ---
 
-function OutdoorAdvisoryCard({ advice }: { advice: OutdoorAdvice }) {
-  const colorMap = {
-    yes: {
-      bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800",
-      icon: <CheckCircle2 className="h-16 w-16 md:h-20 md:w-20 text-emerald-500" />,
-      text: "text-emerald-700 dark:text-emerald-300",
-    },
-    maybe: {
-      bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",
-      icon: <AlertTriangle className="h-16 w-16 md:h-20 md:w-20 text-amber-500" />,
-      text: "text-amber-700 dark:text-amber-300",
-    },
-    no: {
-      bg: "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800",
-      icon: <XCircle className="h-16 w-16 md:h-20 md:w-20 text-red-500" />,
-      text: "text-red-700 dark:text-red-300",
-    },
-  };
+// --- Light mode advisory components (compact, secondary role) ---
 
-  const style = colorMap[advice.rating];
+function OutdoorAdvisoryCompact({ advice }: { advice: OutdoorAdvice }) {
+  const styles = {
+    yes: { icon: <CheckCircle2 className="h-8 w-8 md:h-10 md:w-10 text-emerald-500" />, text: "text-emerald-700 dark:text-emerald-300" },
+    maybe: { icon: <AlertTriangle className="h-8 w-8 md:h-10 md:w-10 text-amber-500" />, text: "text-amber-700 dark:text-amber-300" },
+    no: { icon: <XCircle className="h-8 w-8 md:h-10 md:w-10 text-red-500" />, text: "text-red-700 dark:text-red-300" },
+  };
+  const s = styles[advice.rating];
 
   return (
-    <Card className={cn("border-2", style.bg)} data-testid="card-outdoor-advisory">
-      <CardContent className="flex flex-col items-center justify-center p-6 md:p-8 text-center">
-        {style.icon}
-        <h3
-          className={cn(
-            "text-3xl md:text-4xl lg:text-5xl font-bold mt-4",
-            style.text
-          )}
-        >
+    <div className="flex items-center gap-3" data-testid="card-outdoor-advisory">
+      {s.icon}
+      <div className="min-w-0">
+        <div className={cn("text-lg md:text-xl font-semibold leading-tight", s.text)}>
           {advice.headline}
-        </h3>
-        <div className="mt-3 space-y-1">
-          {advice.reasons.map((reason, i) => (
-            <p
-              key={i}
-              className="text-lg md:text-xl lg:text-2xl text-muted-foreground"
-            >
-              {reason}
-            </p>
-          ))}
         </div>
-      </CardContent>
-    </Card>
+        <div className="text-sm md:text-base text-muted-foreground truncate">
+          {advice.reasons[0]}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function TrailAdvisoryCard({ advice }: { advice: TrailAdvice }) {
-  const styleMap = {
-    dry: {
-      bg: "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800",
-      icon: <TreePine className="h-14 w-14 md:h-16 md:w-16 text-emerald-500" />,
-      text: "text-emerald-700 dark:text-emerald-300",
-    },
-    damp: {
-      bg: "bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800",
-      icon: <Footprints className="h-14 w-14 md:h-16 md:w-16 text-amber-500" />,
-      text: "text-amber-700 dark:text-amber-300",
-    },
-    wet: {
-      bg: "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800",
-      icon: <Layers className="h-14 w-14 md:h-16 md:w-16 text-blue-500" />,
-      text: "text-blue-700 dark:text-blue-300",
-    },
+function TrailAdvisoryCompact({ advice }: { advice: TrailAdvice }) {
+  const styles = {
+    dry: { icon: <TreePine className="h-8 w-8 md:h-10 md:w-10 text-emerald-500" />, text: "text-emerald-700 dark:text-emerald-300" },
+    damp: { icon: <Footprints className="h-8 w-8 md:h-10 md:w-10 text-amber-500" />, text: "text-amber-700 dark:text-amber-300" },
+    wet: { icon: <Layers className="h-8 w-8 md:h-10 md:w-10 text-blue-500" />, text: "text-blue-700 dark:text-blue-300" },
   };
-
-  const style = styleMap[advice.condition];
+  const s = styles[advice.condition];
 
   return (
-    <Card className={cn("border-2", style.bg)} data-testid="card-trail-advisory">
-      <CardContent className="flex flex-col items-center justify-center p-6 md:p-8 text-center">
-        {style.icon}
-        <h3
-          className={cn(
-            "text-2xl md:text-3xl lg:text-4xl font-bold mt-3",
-            style.text
-          )}
-        >
+    <div className="flex items-center gap-3" data-testid="card-trail-advisory">
+      {s.icon}
+      <div className="min-w-0">
+        <div className={cn("text-lg md:text-xl font-semibold leading-tight", s.text)}>
           {advice.headline}
-        </h3>
-        <p className="text-lg md:text-xl text-muted-foreground mt-2">
+        </div>
+        <div className="text-sm md:text-base text-muted-foreground truncate">
           {advice.detail}
-        </p>
-      </CardContent>
-    </Card>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -323,7 +279,7 @@ function WeatherLightMode({
     ? getWeatherInfo(focusDay.weatherCode)
     : getWeatherInfo(current.weatherCode);
 
-  // For "Can I Go Out?" use the focus day's data
+  // Advisories
   const outdoorAdvice = getOutdoorAdvice(
     isAfterDark && focusDay ? focusDay.weatherCode : current.weatherCode,
     isAfterDark && focusDay
@@ -333,7 +289,6 @@ function WeatherLightMode({
     focusDay?.precipitationProbability ?? 0
   );
 
-  // For "Trail Conditions" use hourly precipitation history
   const trailAdvice = getTrailAdvice(
     hourly,
     today?.precipitationSum ?? 0,
@@ -341,99 +296,87 @@ function WeatherLightMode({
   );
 
   return (
-    <div className="flex-1 flex flex-col gap-4 md:gap-6 p-4 md:p-0 overflow-y-auto md:overflow-hidden">
-      {/* Top: Current conditions + focus day summary */}
-      <Card className="flex-shrink-0" data-testid="widget-light-current">
-        <CardContent className="flex items-center gap-6 md:gap-8 p-6 md:p-8">
+    <div className="flex-1 flex flex-col gap-3 md:gap-4 p-4 md:p-0 overflow-y-auto md:overflow-hidden">
+      {/* Hero: Today's weather - takes up most of the space */}
+      <Card className="flex-1 min-h-0" data-testid="widget-light-current">
+        <CardContent className="h-full flex flex-col items-center justify-center p-6 md:p-8 text-center">
+          <div className="text-lg md:text-xl text-muted-foreground font-medium mb-2">
+            {focusLabel} in {location.city}
+          </div>
           <WeatherIcon
             code={isAfterDark && focusDay ? focusDay.weatherCode : current.weatherCode}
             isDay={!isAfterDark}
-            className="h-24 w-24 md:h-32 md:w-32 flex-shrink-0"
+            className="h-28 w-28 md:h-36 md:w-36 lg:h-44 lg:w-44"
           />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <span className="text-5xl md:text-7xl lg:text-8xl font-bold leading-none">
-                {isAfterDark && focusDay
-                  ? formatTemperature(
-                      Math.round((focusDay.tempMax + focusDay.tempMin) / 2),
-                      unit
-                    )
-                  : formatTemperature(current.temperature, unit)}
-              </span>
-              <span className="text-2xl md:text-3xl text-muted-foreground font-medium">
-                {focusLabel}
-              </span>
-            </div>
-            <div className="text-xl md:text-2xl text-muted-foreground mt-1">
-              {focusDayInfo.description} in {location.city}
-            </div>
-            {focusDay && (
-              <div className="flex items-center gap-4 mt-2 text-lg md:text-xl">
-                <span className="flex items-center gap-1">
-                  <ArrowUp className="h-5 w-5 text-orange-500" />
-                  {formatTemperature(focusDay.tempMax, unit)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <ArrowDown className="h-5 w-5 text-blue-500" />
-                  {formatTemperature(focusDay.tempMin, unit)}
-                </span>
-                {focusDay.precipitationProbability > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Droplets className="h-5 w-5 text-blue-400" />
-                    {focusDay.precipitationProbability}%
-                  </span>
-                )}
-              </div>
-            )}
+          <div className="text-[18vw] md:text-[11vw] lg:text-[9vw] font-bold leading-none mt-2">
+            {isAfterDark && focusDay
+              ? formatTemperature(
+                  Math.round((focusDay.tempMax + focusDay.tempMin) / 2),
+                  unit
+                )
+              : formatTemperature(current.temperature, unit)}
           </div>
+          <div className="text-2xl md:text-3xl text-muted-foreground mt-2">
+            {focusDayInfo.description}
+          </div>
+          {focusDay && (
+            <div className="flex items-center gap-6 mt-3 text-xl md:text-2xl">
+              <span className="flex items-center gap-1">
+                <ArrowUp className="h-5 w-5 md:h-6 md:w-6 text-orange-500" />
+                {formatTemperature(focusDay.tempMax, unit)}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowDown className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
+                {formatTemperature(focusDay.tempMin, unit)}
+              </span>
+              {focusDay.precipitationProbability > 0 && (
+                <span className="flex items-center gap-1">
+                  <Droplets className="h-5 w-5 md:h-6 md:w-6 text-blue-400" />
+                  {focusDay.precipitationProbability}%
+                </span>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Middle: Advisory panels side-by-side */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-h-0">
-        <div className="flex flex-col justify-center">
-          <div className="text-lg md:text-xl font-medium text-muted-foreground mb-2 px-1">
-            Can I go out?
-          </div>
-          <OutdoorAdvisoryCard advice={outdoorAdvice} />
-        </div>
-        <div className="flex flex-col justify-center">
-          <div className="text-lg md:text-xl font-medium text-muted-foreground mb-2 px-1">
-            Trail conditions
-          </div>
-          <TrailAdvisoryCard advice={trailAdvice} />
-        </div>
-      </div>
+      {/* Bottom bar: Advisories (compact) + Tomorrow peek */}
+      <Card className="flex-shrink-0">
+        <CardContent className="p-4 md:p-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 items-center">
+            {/* Outdoor advisory */}
+            <OutdoorAdvisoryCompact advice={outdoorAdvice} />
 
-      {/* Bottom: Quick peek at the other day */}
-      <Card className="flex-shrink-0" data-testid="widget-light-peek">
-        <CardContent className="flex items-center justify-between p-4 md:p-6">
-          <span className="text-lg md:text-xl text-muted-foreground">
-            {isAfterDark ? "Right now" : "Tomorrow"}
-          </span>
-          <div className="flex items-center gap-4">
-            <WeatherIcon
-              code={
-                isAfterDark
-                  ? current.weatherCode
-                  : (tomorrow?.weatherCode ?? current.weatherCode)
-              }
-              isDay={isAfterDark ? false : true}
-              className="h-8 w-8 md:h-10 md:w-10"
-            />
-            <span className="text-2xl md:text-3xl font-bold">
-              {isAfterDark
-                ? formatTemperature(current.temperature, unit)
-                : tomorrow
-                  ? `${formatTemperature(tomorrow.tempMax, unit)} / ${formatTemperature(tomorrow.tempMin, unit)}`
-                  : "---"}
-            </span>
-            {!isAfterDark && tomorrow && tomorrow.precipitationProbability > 0 && (
-              <span className="flex items-center gap-1 text-lg text-muted-foreground">
-                <Droplets className="h-4 w-4 text-blue-400" />
-                {tomorrow.precipitationProbability}%
-              </span>
-            )}
+            {/* Trail advisory */}
+            <TrailAdvisoryCompact advice={trailAdvice} />
+
+            {/* Tomorrow / Now peek */}
+            <div className="flex items-center gap-3" data-testid="widget-light-peek">
+              <WeatherIcon
+                code={
+                  isAfterDark
+                    ? current.weatherCode
+                    : (tomorrow?.weatherCode ?? current.weatherCode)
+                }
+                isDay={isAfterDark ? false : true}
+                className="h-8 w-8 md:h-10 md:w-10 flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <div className="text-lg md:text-xl font-semibold leading-tight">
+                  {isAfterDark
+                    ? formatTemperature(current.temperature, unit)
+                    : tomorrow
+                      ? `${formatTemperature(tomorrow.tempMax, unit)} / ${formatTemperature(tomorrow.tempMin, unit)}`
+                      : "---"}
+                </div>
+                <div className="text-sm md:text-base text-muted-foreground">
+                  {isAfterDark ? "Right now" : "Tomorrow"}
+                  {!isAfterDark && tomorrow && tomorrow.precipitationProbability > 0
+                    ? ` \u00b7 ${tomorrow.precipitationProbability}% rain`
+                    : ""}
+                </div>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -456,62 +399,9 @@ export default function WeatherPage() {
   const unit = temperatureUnit;
   const displayMode = weatherDisplayMode;
 
-  const TopControls = () => (
-    <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
-      {/* Display mode toggle */}
-      <div className="flex items-center gap-2 bg-black/40 backdrop-blur rounded-lg px-4 py-2">
-        <Label htmlFor="mode-toggle" className="text-sm font-semibold text-white/80">
-          Dense
-        </Label>
-        <Switch
-          id="mode-toggle"
-          checked={displayMode === "light"}
-          onCheckedChange={async (checked) => {
-            const newMode = checked ? "light" : "dense";
-            await fetch("/api/settings", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ weatherDisplayMode: newMode }),
-            });
-            queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-          }}
-          data-testid="switch-weather-display-mode"
-        />
-        <Label htmlFor="mode-toggle" className="text-sm font-semibold text-white/80">
-          Light
-        </Label>
-      </div>
-
-      {/* Temperature unit toggle */}
-      <div className="flex items-center gap-2 bg-black/40 backdrop-blur rounded-lg px-4 py-2">
-        <Label htmlFor="unit-toggle" className="text-sm font-semibold text-white/80">
-          °C
-        </Label>
-        <Switch
-          id="unit-toggle"
-          checked={unit === "fahrenheit"}
-          onCheckedChange={async (checked) => {
-            const newUnit = checked ? "fahrenheit" : "celsius";
-            await fetch("/api/settings", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ temperatureUnit: newUnit }),
-            });
-            queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-          }}
-          data-testid="switch-temperature-unit"
-        />
-        <Label htmlFor="unit-toggle" className="text-sm font-semibold text-white/80">
-          °F
-        </Label>
-      </div>
-    </div>
-  );
-
   if (isLoading) {
     return (
       <div className="h-full bg-background">
-        <TopControls />
         <WeatherSkeleton />
       </div>
     );
@@ -520,7 +410,6 @@ export default function WeatherPage() {
   if (!hasLocation) {
     return (
       <div className="h-full flex items-center justify-center p-8 bg-background">
-        <TopControls />
         <Card className="max-w-lg">
           <CardContent className="p-12 text-center">
             <div className="w-24 h-24 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-6">
@@ -562,7 +451,6 @@ export default function WeatherPage() {
   if (!weather) {
     return (
       <div className="h-full bg-background">
-        <TopControls />
         <WeatherSkeleton />
       </div>
     );
@@ -570,7 +458,6 @@ export default function WeatherPage() {
 
   return (
     <div className="h-full bg-background overflow-y-auto md:overflow-hidden md:flex md:flex-col md:p-6 md:gap-4 snap-y snap-mandatory md:snap-none">
-      <TopControls />
 
       {displayMode === "light" ? (
         <WeatherLightMode weather={weather} unit={unit} />
