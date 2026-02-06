@@ -1906,7 +1906,7 @@ export async function registerRoutes(
       const userData = await getOrCreateUser(userId, username);
       await updateUserData(userId, {
         googleTokens: tokens,
-        settings: { ...userData.settings, googlePhotosConnected: true },
+        settings: { ...userData.settings, googlePhotosConnected: true, photoSource: "google_photos" },
       });
 
       res.redirect("/settings?success=google_connected");
@@ -2270,7 +2270,7 @@ export async function registerRoutes(
       const selectedPhotos = userData.settings?.selectedPhotos || [];
 
       if (selectedPhotos.length === 0) {
-        res.json([]);
+        res.json({ photos: [], storedCount: 0, sessionActive: false, needsSessionRefresh: false });
         return;
       }
 

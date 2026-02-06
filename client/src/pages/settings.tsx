@@ -1172,7 +1172,7 @@ export default function SettingsPage() {
                 <div className="space-y-3">
                   <Label>Photo Source</Label>
                   <Select
-                    value={settings?.photoSource || PhotoSource.GOOGLE_PHOTOS}
+                    value={settings?.photoSource || PhotoSource.PIXABAY}
                     onValueChange={(value) => 
                       updateSettingsMutation.mutate({ photoSource: value as typeof PhotoSource.GOOGLE_PHOTOS | typeof PhotoSource.PIXABAY })
                     }
