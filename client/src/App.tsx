@@ -24,7 +24,6 @@ import ClockPage from "@/pages/clock";
 import StocksPage from "@/pages/stocks";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
-import DashboardPage from "@/pages/dashboard";
 import ChoresPage from "@/pages/chores";
 import RecipesPage from "@/pages/recipes";
 import ScreensaverPage from "@/pages/screensaver";
@@ -112,7 +111,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={HomePage} />
-      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/clock" component={ClockPage} />
       <Route path="/weather" component={WeatherPage} />
       <Route path="/photos" component={PhotosPage} />
