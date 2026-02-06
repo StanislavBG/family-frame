@@ -32,10 +32,10 @@ export function AppSettings({ title, description, children }: AppSettingsProps) 
         <Button
           variant="ghost"
           size="icon"
-          className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full bg-background/80 backdrop-blur-sm shadow-lg border hover:bg-accent"
+          className="fixed top-2 right-48 z-50 h-9 w-9"
           data-testid="button-app-settings"
         >
-          <Settings className="h-5 w-5" />
+          <Settings className="h-4 w-4" />
           <span className="sr-only">Open {title}</span>
         </Button>
       </SheetTrigger>
