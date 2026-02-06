@@ -1,10 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bug, Maximize, Minimize, X, RotateCw, Volume2, Pause, MessageSquare } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Bug, Maximize, Minimize, X, RotateCw, Volume2, Pause, MessageSquare, Settings, ExternalLink } from "lucide-react";
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from "react";
 import { useLocation } from "wouter";
 import { radioService } from "@/lib/radio-service";
 import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import type { UserSettings } from "@shared/schema";
 
 interface AppControlsContextType {
   showDebug: boolean;
@@ -161,6 +166,80 @@ export function AppControlsWidget() {
   );
 }
 
+// Map current route to the corresponding settings section
+const routeToSettingsSection: Record<string, string> = {
+  "/weather": "weather",
+  "/photos": "picture-frame",
+  "/radio": "picture-frame",
+  "/baby-songs": "baby-songs",
+  "/tv": "tv",
+  "/stocks": "stocks",
+  "/clock": "household",
+  "/calendar": "household",
+  "/messages": "household",
+  "/notepad": "household",
+  "/shopping": "household",
+  "/chores": "household",
+  "/recipes": "household",
+};
+
+// Routes that have inline settings controls in the popover
+const routesWithInlineSettings = new Set(["/weather"]);
+
+// Helper to update a single setting
+async function patchSetting(patch: Partial<UserSettings>) {
+  await fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+}
+
+function WeatherSettingsPanel({ settings }: { settings: UserSettings | undefined }) {
+  const unit = settings?.temperatureUnit || "celsius";
+  const displayMode = settings?.weatherDisplayMode || "dense";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Label htmlFor="popover-mode-toggle" className="text-sm font-medium">
+          Display mode
+        </Label>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Dense</span>
+          <Switch
+            id="popover-mode-toggle"
+            checked={displayMode === "light"}
+            onCheckedChange={(checked) =>
+              patchSetting({ weatherDisplayMode: checked ? "light" : "dense" })
+            }
+            data-testid="switch-weather-display-mode"
+          />
+          <span className="text-xs text-muted-foreground">Light</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <Label htmlFor="popover-unit-toggle" className="text-sm font-medium">
+          Temperature
+        </Label>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">°C</span>
+          <Switch
+            id="popover-unit-toggle"
+            checked={unit === "fahrenheit"}
+            onCheckedChange={(checked) =>
+              patchSetting({ temperatureUnit: checked ? "fahrenheit" : "celsius" })
+            }
+            data-testid="switch-temperature-unit"
+          />
+          <span className="text-xs text-muted-foreground">°F</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function HeaderControls() {
   const {
     showDebug,
@@ -169,12 +248,19 @@ export function HeaderControls() {
     toggleFullscreen,
   } = useAppControls();
 
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [radioState, setRadioState] = useState(radioService.getState());
 
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],
     refetchInterval: 30000,
+  });
+
+  // Settings data (used by inline settings panels)
+  const hasInlineSettings = routesWithInlineSettings.has(location);
+  const { data: settings } = useQuery<UserSettings>({
+    queryKey: ["/api/settings"],
+    enabled: hasInlineSettings,
   });
 
   const unreadCount = unreadData?.count || 0;
@@ -205,6 +291,9 @@ export function HeaderControls() {
       ? radioService.getStationByUrl(radioState.currentStation)?.name || "Radio"
       : null;
 
+  const settingsSection = routeToSettingsSection[location];
+  const showSettingsGear = location !== "/" && location !== "/settings";
+
   return (
     <div className="flex items-center gap-2">
       {isPlaying && nowPlayingLabel && (
@@ -233,13 +322,61 @@ export function HeaderControls() {
           data-testid="button-unread-messages"
         >
           <MessageSquare className="h-4 w-4" />
-          <Badge 
-            variant="destructive" 
+          <Badge
+            variant="destructive"
             className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
           >
             {unreadCount > 9 ? "9+" : unreadCount}
           </Badge>
         </Button>
+      )}
+
+      {/* Context-aware settings gear */}
+      {showSettingsGear && (
+        hasInlineSettings ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                data-testid="button-app-settings"
+                title="App Settings"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72">
+              {location === "/weather" && (
+                <WeatherSettingsPanel settings={settings} />
+              )}
+              <div className="mt-4 pt-3 border-t">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-between text-muted-foreground"
+                  onClick={() => setLocation(
+                    settingsSection ? `/settings?section=${settingsSection}` : "/settings"
+                  )}
+                >
+                  All settings
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation(
+              settingsSection ? `/settings?section=${settingsSection}` : "/settings"
+            )}
+            data-testid="button-app-settings"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        )
       )}
 
       <Button
