@@ -1,5 +1,5 @@
 import type { WeatherData, DailyForecast, HourlyForecast } from "@shared/schema";
-import { getWeatherInfo } from "./weather-codes";
+import { getWeatherInfo } from "@shared/weather-codes";
 
 interface OpenMeteoResponse {
   timezone: string;
