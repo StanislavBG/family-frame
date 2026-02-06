@@ -18,7 +18,7 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
   const { currentTime, date, year } = useClock(timeFormat);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 200, height: 200 });
+  const [dimensions, setDimensions] = useState({ width: 400, height: 300 });
 
   // Measure container and update dimensions
   useEffect(() => {
@@ -28,7 +28,7 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
         // Leave some padding for the date display
         const dateHeight = variant === "compact" ? 40 : 60;
         setDimensions({
-          width: rect.width,
+          width: Math.max(rect.width, 100),
           height: Math.max(rect.height - dateHeight, 100),
         });
       }
@@ -135,40 +135,77 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
     );
   }
 
-  // Dynamic analog clock - fills container shape
+  // Rectangular analog clock - fills entire container
   const { width, height } = dimensions;
+  const padding = 8;
+  const frameWidth = 12;
+
+  // Inner dimensions (clock face)
+  const innerWidth = width - (padding + frameWidth) * 2;
+  const innerHeight = height - (padding + frameWidth) * 2;
   const cx = width / 2;
   const cy = height / 2;
 
-  // Radii for the ellipse - use most of the container with small padding
-  const padding = Math.min(width, height) * 0.08;
-  const rx = (width / 2) - padding;
-  const ry = (height / 2) - padding;
+  // Scale factor for elements
+  const scale = Math.min(innerWidth, innerHeight) / 200;
 
-  // Scale factor for elements (based on smaller radius)
-  const scale = Math.min(rx, ry) / 100;
-
-  // Helper to get point on ellipse at angle
-  const getEllipsePoint = (angle: number, radiusScale: number = 1) => {
+  // Helper to get point on rectangular perimeter at angle
+  // Returns the point where a ray from center at given angle intersects the rectangle
+  const getRectPoint = (angle: number, inset: number = 0) => {
     const rad = (angle - 90) * (Math.PI / 180);
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    // Half dimensions with inset
+    const hw = (innerWidth / 2) - inset;
+    const hh = (innerHeight / 2) - inset;
+
+    // Find intersection with rectangle edges
+    let t = Infinity;
+
+    // Right edge (x = hw)
+    if (cos > 0.001) t = Math.min(t, hw / cos);
+    // Left edge (x = -hw)
+    if (cos < -0.001) t = Math.min(t, -hw / cos);
+    // Bottom edge (y = hh)
+    if (sin > 0.001) t = Math.min(t, hh / sin);
+    // Top edge (y = -hh)
+    if (sin < -0.001) t = Math.min(t, -hh / sin);
+
     return {
-      x: cx + rx * radiusScale * Math.cos(rad),
-      y: cy + ry * radiusScale * Math.sin(rad),
+      x: cx + cos * t,
+      y: cy + sin * t,
     };
   };
 
-  // Helper to get hand end point
+  // Helper to get hand end point (scaled from center)
   const getHandEnd = (angle: number, lengthRatio: number) => {
     const rad = (angle - 90) * (Math.PI / 180);
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    // Calculate max length to edge
+    const hw = innerWidth / 2;
+    const hh = innerHeight / 2;
+    let maxT = Infinity;
+    if (cos > 0.001) maxT = Math.min(maxT, hw / cos);
+    if (cos < -0.001) maxT = Math.min(maxT, -hw / cos);
+    if (sin > 0.001) maxT = Math.min(maxT, hh / sin);
+    if (sin < -0.001) maxT = Math.min(maxT, -hh / sin);
+
+    const t = maxT * lengthRatio;
     return {
-      x: cx + rx * lengthRatio * Math.cos(rad),
-      y: cy + ry * lengthRatio * Math.sin(rad),
+      x: cx + cos * t,
+      y: cy + sin * t,
     };
   };
+
+  // Corner radius for rounded rectangle
+  const cornerRadius = Math.min(innerWidth, innerHeight) * 0.05;
 
   return (
     <div ref={containerRef} className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
-      {/* Dynamic Clock SVG - fills container shape */}
+      {/* Rectangular Clock SVG - fills container */}
       <div className="flex-1 w-full flex items-center justify-center">
         <svg
           width={width}
@@ -176,34 +213,33 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
           viewBox={`0 0 ${width} ${height}`}
           className="drop-shadow-lg"
         >
-          {/* Clock frame - dark outer ellipse */}
-          <ellipse
-            cx={cx}
-            cy={cy}
-            rx={rx + padding * 0.3}
-            ry={ry + padding * 0.3}
+          {/* Clock frame - dark outer rectangle */}
+          <rect
+            x={padding}
+            y={padding}
+            width={width - padding * 2}
+            height={height - padding * 2}
+            rx={cornerRadius + frameWidth}
+            ry={cornerRadius + frameWidth}
             fill="#2c2c2c"
           />
 
-          {/* Clock face - cream/off-white like school clocks */}
-          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="#f5f5dc" />
-
-          {/* Inner subtle ring */}
-          <ellipse
-            cx={cx}
-            cy={cy}
-            rx={rx * 0.94}
-            ry={ry * 0.94}
-            fill="none"
-            stroke="#e8e8d0"
-            strokeWidth={scale}
+          {/* Clock face - cream/off-white */}
+          <rect
+            x={padding + frameWidth}
+            y={padding + frameWidth}
+            width={innerWidth}
+            height={innerHeight}
+            rx={cornerRadius}
+            ry={cornerRadius}
+            fill="#f5f5dc"
           />
 
           {/* Hour markers - bold ticks at 12, 3, 6, 9 */}
           {[0, 3, 6, 9].map((hour) => {
             const angle = hour * 30;
-            const outer = getEllipsePoint(angle, 0.9);
-            const inner = getEllipsePoint(angle, 0.78);
+            const outer = getRectPoint(angle, 0);
+            const inner = getRectPoint(angle, scale * 20);
             return (
               <line
                 key={hour}
@@ -212,7 +248,7 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
                 x2={outer.x}
                 y2={outer.y}
                 stroke="#1a1a1a"
-                strokeWidth={scale * 4}
+                strokeWidth={scale * 5}
                 strokeLinecap="round"
               />
             );
@@ -221,8 +257,8 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
           {/* Hour markers - regular ticks */}
           {[1, 2, 4, 5, 7, 8, 10, 11].map((hour) => {
             const angle = hour * 30;
-            const outer = getEllipsePoint(angle, 0.9);
-            const inner = getEllipsePoint(angle, 0.82);
+            const outer = getRectPoint(angle, 0);
+            const inner = getRectPoint(angle, scale * 14);
             return (
               <line
                 key={hour}
@@ -231,7 +267,7 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
                 x2={outer.x}
                 y2={outer.y}
                 stroke="#1a1a1a"
-                strokeWidth={scale * 2}
+                strokeWidth={scale * 3}
                 strokeLinecap="round"
               />
             );
@@ -240,7 +276,7 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
           {/* Hour numbers */}
           {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((hour) => {
             const angle = hour * 30;
-            const pos = getEllipsePoint(angle, 0.68);
+            const pos = getRectPoint(angle, scale * 35);
             return (
               <text
                 key={hour}
@@ -249,7 +285,7 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
                 textAnchor="middle"
                 dominantBaseline="central"
                 fill="#1a1a1a"
-                fontSize={scale * 14}
+                fontSize={scale * 18}
                 fontWeight="600"
                 fontFamily="system-ui, -apple-system, sans-serif"
               >
@@ -262,8 +298,8 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
           {Array.from({ length: 60 }, (_, i) => {
             if (i % 5 === 0) return null; // Skip hour positions
             const angle = i * 6;
-            const outer = getEllipsePoint(angle, 0.9);
-            const inner = getEllipsePoint(angle, 0.87);
+            const outer = getRectPoint(angle, 0);
+            const inner = getRectPoint(angle, scale * 8);
             return (
               <line
                 key={i}
@@ -271,8 +307,8 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
                 y1={inner.y}
                 x2={outer.x}
                 y2={outer.y}
-                stroke="#666"
-                strokeWidth={scale}
+                stroke="#888"
+                strokeWidth={scale * 1.5}
               />
             );
           })}
@@ -287,16 +323,15 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
                 x2={end.x}
                 y2={end.y}
                 stroke="#1a1a1a"
-                strokeWidth={scale * 6}
+                strokeWidth={scale * 8}
                 strokeLinecap="round"
-                className="transition-all duration-200"
               />
             );
           })()}
 
           {/* Minute hand - long and medium thickness */}
           {(() => {
-            const end = getHandEnd(minuteAngle, 0.72);
+            const end = getHandEnd(minuteAngle, 0.7);
             return (
               <line
                 x1={cx}
@@ -304,16 +339,15 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
                 x2={end.x}
                 y2={end.y}
                 stroke="#1a1a1a"
-                strokeWidth={scale * 4}
+                strokeWidth={scale * 5}
                 strokeLinecap="round"
-                className="transition-all duration-200"
               />
             );
           })()}
 
           {/* Second hand - thin and red with tail */}
           {(() => {
-            const end = getHandEnd(secondAngle, 0.78);
+            const end = getHandEnd(secondAngle, 0.8);
             const tail = getHandEnd(secondAngle + 180, 0.15);
             return (
               <line
@@ -322,15 +356,15 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
                 x2={end.x}
                 y2={end.y}
                 stroke="#c05746"
-                strokeWidth={scale * 2}
+                strokeWidth={scale * 2.5}
                 strokeLinecap="round"
               />
             );
           })()}
 
           {/* Center cap */}
-          <circle cx={cx} cy={cy} r={scale * 6} fill="#1a1a1a" />
-          <circle cx={cx} cy={cy} r={scale * 3} fill="#c05746" />
+          <circle cx={cx} cy={cy} r={scale * 8} fill="#1a1a1a" />
+          <circle cx={cx} cy={cy} r={scale * 4} fill="#c05746" />
         </svg>
       </div>
 
