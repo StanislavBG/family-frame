@@ -10,7 +10,27 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import Hls from "hls.js";
 import { useAppControls } from "@/components/app-controls";
 import { useFullscreen } from "@/hooks/use-fullscreen";
+import { useWakeLock } from "@/hooks/use-wake-lock";
 import type { TVChannel, UserSettings } from "@shared/schema";
+
+// Simple clock overlay for TV viewing
+function ClockOverlay({ visible }: { visible: boolean }) {
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm rounded-lg px-4 py-2 text-white font-mono text-2xl">
+      {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+    </div>
+  );
+}
 
 type ChannelsByCountry = Record<string, TVChannel[]>;
 
@@ -49,7 +69,14 @@ export default function TVPage() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Wake lock when playing
-  useWakeLock(isPlaying);
+  const { requestWakeLock, releaseWakeLock } = useWakeLock();
+  useEffect(() => {
+    if (isPlaying) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }, [isPlaying, requestWakeLock, releaseWakeLock]);
 
   const { data: settings, isLoading: settingsLoading } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],

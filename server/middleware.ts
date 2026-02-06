@@ -42,6 +42,7 @@ function getDefaultUserData(clerkId: string, username: string): UserData {
       location: { city: "", country: "" },
       temperatureUnit: "celsius",
       timeFormat: "24h",
+      clockStyle: "analog",
       googlePhotosConnected: false,
       selectedAlbums: [],
       selectedPhotos: [],
