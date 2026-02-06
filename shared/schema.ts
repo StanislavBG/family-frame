@@ -237,6 +237,8 @@ export const userSettingsSchema = z.object({
   sleepStartTime: z.string().default("22:00"), // 24h format
   sleepEndTime: z.string().default("07:00"),
   sleepDimLevel: z.number().min(10).max(50).default(20), // Percentage brightness
+  // Weather display mode
+  weatherDisplayMode: z.enum(["dense", "light"]).default("dense"),
   // Weather alerts
   weatherAlertsEnabled: z.boolean().default(true),
   // Dashboard settings
@@ -339,12 +341,17 @@ export const dailyForecastSchema = z.object({
   tempMin: z.number(),
   weatherCode: z.number(),
   precipitationProbability: z.number(),
+  precipitationSum: z.number().optional(),
+  sunrise: z.string().optional(),
+  sunset: z.string().optional(),
 });
 
 export const hourlyForecastSchema = z.object({
   time: z.string(),
   temperature: z.number(),
   weatherCode: z.number(),
+  precipitationProbability: z.number().optional(),
+  precipitation: z.number().optional(),
 });
 
 export type WeatherData = z.infer<typeof weatherDataSchema>;

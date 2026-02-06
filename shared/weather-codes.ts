@@ -1,3 +1,5 @@
+// WMO Weather interpretation codes (https://open-meteo.com/en/docs)
+// Shared between server and client to ensure consistency
 export const weatherCodeDescriptions: Record<number, { description: string; icon: string }> = {
   0: { description: "Clear sky", icon: "sun" },
   1: { description: "Mainly clear", icon: "sun" },

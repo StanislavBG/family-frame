@@ -1,5 +1,5 @@
 import type { WeatherData, DailyForecast, HourlyForecast } from "@shared/schema";
-import { getWeatherInfo } from "./weather-codes";
+import { getWeatherInfo } from "@shared/weather-codes";
 
 interface OpenMeteoResponse {
   timezone: string;
@@ -19,11 +19,16 @@ interface OpenMeteoResponse {
     temperature_2m_min: number[];
     precipitation_probability_max: number[];
     uv_index_max: number[];
+    precipitation_sum: number[];
+    sunrise: string[];
+    sunset: string[];
   };
   hourly: {
     time: string[];
     temperature_2m: number[];
     weather_code: number[];
+    precipitation_probability: number[];
+    precipitation: number[];
   };
 }
 
@@ -85,7 +90,7 @@ export async function getWeather(lat: number, lon: number): Promise<{
 } | null> {
   try {
     const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max&timezone=auto&forecast_days=7`
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day&hourly=temperature_2m,weather_code,precipitation_probability,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,precipitation_sum,sunrise,sunset&timezone=auto&forecast_days=7&past_days=1`
     );
 
     if (!response.ok) {
@@ -93,6 +98,11 @@ export async function getWeather(lat: number, lon: number): Promise<{
     }
 
     const data: OpenMeteoResponse = await response.json();
+
+    // With past_days=1, daily[0] may be yesterday. Find today's index.
+    const todayStr = new Date().toISOString().split("T")[0];
+    const todayDailyIdx = data.daily.time.findIndex(d => d >= todayStr);
+    const dailyStart = todayDailyIdx >= 0 ? todayDailyIdx : 0;
 
     const current: WeatherData = {
       temperature: data.current.temperature_2m,
@@ -102,21 +112,31 @@ export async function getWeather(lat: number, lon: number): Promise<{
       weatherCode: data.current.weather_code,
       description: getWeatherInfo(data.current.weather_code).description,
       isDay: data.current.is_day === 1,
-      uvIndex: data.daily.uv_index_max?.[0] || 0,
+      uvIndex: data.daily.uv_index_max?.[dailyStart] || 0,
     };
 
-    const daily: DailyForecast[] = data.daily.time.map((date, index) => ({
-      date,
-      tempMax: data.daily.temperature_2m_max[index],
-      tempMin: data.daily.temperature_2m_min[index],
-      weatherCode: data.daily.weather_code[index],
-      precipitationProbability: data.daily.precipitation_probability_max[index],
-    }));
+    // Daily forecast starting from today (keeps backward compat)
+    const daily: DailyForecast[] = data.daily.time.slice(dailyStart).map((date, i) => {
+      const idx = dailyStart + i;
+      return {
+        date,
+        tempMax: data.daily.temperature_2m_max[idx],
+        tempMin: data.daily.temperature_2m_min[idx],
+        weatherCode: data.daily.weather_code[idx],
+        precipitationProbability: data.daily.precipitation_probability_max[idx],
+        precipitationSum: data.daily.precipitation_sum[idx],
+        sunrise: data.daily.sunrise[idx],
+        sunset: data.daily.sunset[idx],
+      };
+    });
 
-    const hourly: HourlyForecast[] = data.hourly.time.slice(0, 24).map((time, index) => ({
+    // Include all hourly data (past day + forecast) for trail wetness analysis
+    const hourly: HourlyForecast[] = data.hourly.time.map((time, index) => ({
       time,
       temperature: data.hourly.temperature_2m[index],
       weatherCode: data.hourly.weather_code[index],
+      precipitationProbability: data.hourly.precipitation_probability[index],
+      precipitation: data.hourly.precipitation[index],
     }));
 
     return { current, daily, hourly, timezone: data.timezone };

@@ -9,6 +9,7 @@ import { ClockWidget } from "@/components/clock-widget";
 import { WeatherWidget } from "@/components/weather-widget";
 import { StockWidget } from "@/components/stock-widget";
 import { radioService, type StreamMetadata } from "@/lib/radio-service";
+import { formatTemperature } from "@/lib/weather-utils";
 import type { UserSettings, CalendarEvent, WeatherData } from "@shared/schema";
 import { availableStocks } from "@shared/schema";
 
@@ -108,13 +109,6 @@ export default function HomePage() {
     return eventDate >= now && eventDate <= nextWeek;
   }).slice(0, 3) || [];
 
-  const formatTemperature = (temp: number) => {
-    if (temperatureUnit === "fahrenheit") {
-      return `${Math.round(temp * 9/5 + 32)}°`;
-    }
-    return `${Math.round(temp)}°`;
-  };
-
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -201,7 +195,7 @@ export default function HomePage() {
                                 className="h-12 w-12 lg:h-14 lg:w-14" 
                               />
                               <span className="text-2xl lg:text-3xl font-bold mt-1" data-testid={`home-temp-${conn.id}`}>
-                                {formatTemperature(conn.weather.current.temperature)}
+                                {formatTemperature(conn.weather.current.temperature, temperatureUnit)}
                               </span>
                             </div>
                           )}

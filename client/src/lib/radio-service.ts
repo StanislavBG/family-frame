@@ -25,22 +25,32 @@ export interface StreamMetadata {
 }
 
 export const RADIO_STATIONS: RadioStation[] = [
-  { 
-    name: "BG Radio", 
+  {
+    name: "BG Radio",
     url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
     fallbackUrls: [
       "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_L.aac",
-      "http://play.global.audio/bgradio.ogg",
-      "http://stream.radioreklama.bg/bgradio128",
     ],
-    logo: "https://i.imgur.com/J2Vv9Lz.png" 
+    logo: "https://i.imgur.com/J2Vv9Lz.png"
   },
-  { name: "Radio Energy", url: "http://play.global.audio/nrj128", logo: "https://i.imgur.com/Fg0QKWM.png" },
+  {
+    name: "Radio Energy",
+    url: "https://playerservices.streamtheworld.com/api/livestream-redirect/RADIO_ENERGYAAC_H.aac",
+    fallbackUrls: [
+      "https://playerservices.streamtheworld.com/api/livestream-redirect/RADIO_ENERGYAAC_L.aac",
+    ],
+    logo: "https://i.imgur.com/Fg0QKWM.png"
+  },
   { name: "Magic FM", url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8", logo: "https://i.imgur.com/n7bcrrp.png" },
-  { name: "Avto Radio", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac", logo: "https://i.imgur.com/VNHL0Lt.png" },
-  { name: "BNR Horizont", url: "http://stream.bnr.bg:8000/horizont.mp3", logo: "https://i.imgur.com/HJSkXaS.png" },
-  { name: "BNR Hristo Botev", url: "http://stream.bnr.bg:8012/hristo-botev.aac", logo: "https://i.imgur.com/fmypTHa.png" },
-  { name: "1 Rock Bulgaria", url: "http://31.13.223.148:8000/1_rock.mp3", logo: "https://i.imgur.com/1TxGNtW.png" },
+  {
+    name: "Avto Radio",
+    url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_H.aac",
+    fallbackUrls: [
+      "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_L.aac",
+    ],
+    logo: "https://i.imgur.com/VNHL0Lt.png"
+  },
+  { name: "The Voice Radio", url: "https://bss.neterra.tv/rtplive/thevoiceradio_live.stream/playlist.m3u8", logo: "https://i.imgur.com/OoJSmoj.png" },
   { name: "bTV Radio", url: "https://cdn.bweb.bg/radio/btv-radio.mp3", logo: "https://i.imgur.com/OoJSmoj.png" },
 ];
 
@@ -299,9 +309,6 @@ class RadioService {
 
   private playStreamUrl(url: string): void {
     const audio = this.ensureAudio();
-    
-    // Set crossOrigin for streaming mode (HLS needs it)
-    audio.crossOrigin = "anonymous";
 
     if (this.hls) {
       this.hls.destroy();
@@ -318,6 +325,9 @@ class RadioService {
     console.log("[RadioService] Playing stream URL:", url);
 
     if (this.isHlsStream(url) && Hls.isSupported()) {
+      // HLS.js handles its own fetching; crossOrigin needed for media attachment
+      audio.crossOrigin = "anonymous";
+
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
@@ -337,7 +347,7 @@ class RadioService {
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           console.error("HLS error:", data);
-          
+
           // Try fallback for HLS errors too
           if (this.currentStationData?.fallbackUrls && this.fallbackIndex < this.currentStationData.fallbackUrls.length) {
             const nextUrl = this.currentStationData.fallbackUrls[this.fallbackIndex];
@@ -346,25 +356,31 @@ class RadioService {
             this.playStreamUrl(nextUrl);
             return;
           }
-          
+
           console.error("[RadioService] All stream sources failed for station:", this.currentStationData?.name);
           this.isPlaying = false;
           this.isBuffering = false;
           this.emit("stateChange", this.getState());
-          this.emit("error", { 
-            message: `Unable to play ${this.currentStationData?.name || 'station'}. All sources unavailable.` 
+          this.emit("error", {
+            message: `Unable to play ${this.currentStationData?.name || 'station'}. All sources unavailable.`
           });
         }
       });
 
       this.hls = hls;
     } else if (this.isHlsStream(url) && audio.canPlayType("application/vnd.apple.mpegurl")) {
+      // Native HLS (Safari) - needs crossOrigin for CORS
+      audio.crossOrigin = "anonymous";
       audio.src = url;
       audio.play().then(() => {
         this.isPlaying = true;
         this.emit("stateChange", this.getState());
       }).catch(console.error);
     } else {
+      // Regular audio streams (MP3, AAC, OGG) - do NOT set crossOrigin
+      // as most radio streaming servers don't support CORS headers,
+      // and setting crossOrigin="anonymous" would block playback entirely
+      audio.crossOrigin = null;
       audio.src = url;
       audio.play().then(() => {
         this.isPlaying = true;

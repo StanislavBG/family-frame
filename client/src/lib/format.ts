@@ -1,18 +1,4 @@
 /**
- * Format temperature with unit conversion.
- * Input is always in Celsius, converts to Fahrenheit if needed.
- */
-export function formatTemperature(
-  temp: number,
-  unit: "celsius" | "fahrenheit" = "celsius"
-): string {
-  if (unit === "fahrenheit") {
-    return `${Math.round((temp * 9) / 5 + 32)}°`;
-  }
-  return `${Math.round(temp)}°`;
-}
-
-/**
  * Format a date string as relative time (e.g., "5m ago", "2h ago").
  */
 export function formatRelativeTime(dateString: string): string {

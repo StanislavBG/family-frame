@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import type { UserSettings, WeatherData, GooglePhotoItem } from "@shared/schema";
+import { useWeatherData } from "@/hooks/use-weather-data";
+import { formatTemperature } from "@/lib/weather-utils";
+import type { UserSettings, GooglePhotoItem } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
 
 // Screensaver modes cycle through these displays
@@ -10,17 +12,6 @@ type ScreensaverDisplay = "photos" | "clock" | "weather";
 
 const CYCLE_INTERVAL = 30000; // 30 seconds per mode when cycling
 const PHOTO_INTERVAL = 10000; // 10 seconds per photo
-
-// Weather code to icon mapping
-function getWeatherIcon(code: number, isDay: boolean): string {
-  if (code === 0) return isDay ? "sunny" : "clear_night";
-  if (code <= 3) return isDay ? "partly_cloudy_day" : "partly_cloudy_night";
-  if (code <= 49) return "foggy";
-  if (code <= 69) return "rainy";
-  if (code <= 79) return "weather_snowy";
-  if (code <= 99) return "thunderstorm";
-  return "cloud";
-}
 
 function getWeatherEmoji(code: number, isDay: boolean): string {
   if (code === 0) return isDay ? "\u2600\ufe0f" : "\ud83c\udf19";
@@ -66,29 +57,30 @@ function AmbientClock({ timeFormat }: { timeFormat: "12h" | "24h" }) {
 
 // Ambient weather display
 function AmbientWeather({
-  weather,
+  temperature,
+  weatherCode,
+  isDay,
+  description,
   temperatureUnit,
   location
 }: {
-  weather: WeatherData;
+  temperature: number;
+  weatherCode: number;
+  isDay: boolean;
+  description: string;
   temperatureUnit: "celsius" | "fahrenheit";
   location?: { city?: string; country?: string };
 }) {
-  const temp = temperatureUnit === "fahrenheit"
-    ? Math.round(weather.temperature * 9/5 + 32)
-    : Math.round(weather.temperature);
-  const unit = temperatureUnit === "fahrenheit" ? "F" : "C";
-
   return (
     <div className="flex flex-col items-center justify-center text-white animate-fade-in">
       <div className="text-[8vw] mb-4">
-        {getWeatherEmoji(weather.weatherCode, weather.isDay)}
+        {getWeatherEmoji(weatherCode, isDay)}
       </div>
       <div className="text-[10vw] font-light tracking-tight leading-none">
-        {temp}&deg;{unit}
+        {formatTemperature(temperature, temperatureUnit)}
       </div>
       <div className="text-[2.5vw] font-light text-white/70 mt-4">
-        {weather.description}
+        {description}
       </div>
       {location?.city && (
         <div className="text-[2vw] font-light text-white/50 mt-2">
@@ -149,10 +141,7 @@ export default function ScreensaverPage() {
     queryKey: ["/api/settings"],
   });
 
-  const { data: weather } = useQuery<WeatherData>({
-    queryKey: ["/api/weather", settings?.location?.city, settings?.location?.country],
-    enabled: !!settings?.location?.city,
-  });
+  const { weather, temperatureUnit: weatherTempUnit } = useWeatherData();
 
   // Fetch photos from API (with fresh URLs)
   const hasPhotosSelected = (settings?.selectedPhotos?.length ?? 0) > 0;
@@ -170,7 +159,7 @@ export default function ScreensaverPage() {
     : (photosData as PhotosResponse)?.photos || [];
   const screensaverMode = settings?.screensaverMode || "cycle";
   const timeFormat = settings?.timeFormat || "24h";
-  const temperatureUnit = settings?.temperatureUnit || "celsius";
+  const temperatureUnit = weatherTempUnit;
 
   // Cycle through displays if mode is "cycle"
   useEffect(() => {
@@ -264,11 +253,14 @@ export default function ScreensaverPage() {
           <AmbientClock timeFormat={timeFormat} />
         )}
 
-        {currentDisplay === "weather" && weather && (
+        {currentDisplay === "weather" && weather?.current && (
           <AmbientWeather
-            weather={weather}
+            temperature={weather.current.temperature}
+            weatherCode={weather.current.weatherCode}
+            isDay={weather.current.isDay}
+            description={weather.current.description}
             temperatureUnit={temperatureUnit}
-            location={settings?.location}
+            location={weather.location}
           />
         )}
 

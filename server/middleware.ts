@@ -64,6 +64,8 @@ function getDefaultUserData(clerkId: string, username: string): UserData {
       sleepStartTime: "22:00",
       sleepEndTime: "07:00",
       sleepDimLevel: 20,
+      // Weather display mode
+      weatherDisplayMode: "dense" as const,
       // Weather alerts
       weatherAlertsEnabled: true,
       // Dashboard settings

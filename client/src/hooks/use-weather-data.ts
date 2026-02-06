@@ -16,6 +16,7 @@ interface UseWeatherDataResult {
   weather: WeatherResponse | undefined;
   isLoading: boolean;
   temperatureUnit: "celsius" | "fahrenheit";
+  weatherDisplayMode: "dense" | "light";
   coords: { lat: number; lon: number } | null;
   hasLocation: boolean;
   requestLocation: () => void;
@@ -123,6 +124,7 @@ export function useWeatherData(): UseWeatherDataResult {
     weather,
     isLoading,
     temperatureUnit: settings?.temperatureUnit || "celsius",
+    weatherDisplayMode: settings?.weatherDisplayMode || "dense",
     coords,
     hasLocation,
     requestLocation,

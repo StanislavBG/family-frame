@@ -1,37 +1,6 @@
-const weatherCodeDescriptions: Record<number, { description: string; icon: string }> = {
-  0: { description: "Clear sky", icon: "sun" },
-  1: { description: "Mainly clear", icon: "sun" },
-  2: { description: "Partly cloudy", icon: "cloud-sun" },
-  3: { description: "Overcast", icon: "cloud" },
-  45: { description: "Foggy", icon: "cloud-fog" },
-  48: { description: "Depositing rime fog", icon: "cloud-fog" },
-  51: { description: "Light drizzle", icon: "cloud-drizzle" },
-  53: { description: "Moderate drizzle", icon: "cloud-drizzle" },
-  55: { description: "Dense drizzle", icon: "cloud-drizzle" },
-  56: { description: "Freezing drizzle", icon: "snowflake" },
-  57: { description: "Dense freezing drizzle", icon: "snowflake" },
-  61: { description: "Slight rain", icon: "cloud-rain" },
-  63: { description: "Moderate rain", icon: "cloud-rain" },
-  65: { description: "Heavy rain", icon: "cloud-rain" },
-  66: { description: "Freezing rain", icon: "snowflake" },
-  67: { description: "Heavy freezing rain", icon: "snowflake" },
-  71: { description: "Slight snow", icon: "snowflake" },
-  73: { description: "Moderate snow", icon: "snowflake" },
-  75: { description: "Heavy snow", icon: "snowflake" },
-  77: { description: "Snow grains", icon: "snowflake" },
-  80: { description: "Slight rain showers", icon: "cloud-rain" },
-  81: { description: "Moderate rain showers", icon: "cloud-rain" },
-  82: { description: "Violent rain showers", icon: "cloud-rain" },
-  85: { description: "Slight snow showers", icon: "snowflake" },
-  86: { description: "Heavy snow showers", icon: "snowflake" },
-  95: { description: "Thunderstorm", icon: "cloud-lightning" },
-  96: { description: "Thunderstorm with hail", icon: "cloud-lightning" },
-  99: { description: "Thunderstorm with heavy hail", icon: "cloud-lightning" },
-};
-
-export function getWeatherInfo(code: number): { description: string; icon: string } {
-  return weatherCodeDescriptions[code] || { description: "Unknown", icon: "cloud" };
-}
+// Re-export weather code descriptions from shared module (single source of truth)
+import { weatherCodeDescriptions, getWeatherInfo } from "@shared/weather-codes";
+export { weatherCodeDescriptions, getWeatherInfo };
 
 function celsiusToFahrenheit(celsius: number): number {
   return Math.round((celsius * 9) / 5 + 32);
@@ -47,4 +16,150 @@ export function formatTemperature(temp: number, unit: "celsius" | "fahrenheit"):
 export function formatDay(isoString: string): string {
   const date = new Date(isoString);
   return date.toLocaleDateString([], { weekday: "short" });
+}
+
+// --- Outdoor advisory logic ---
+
+export type OutdoorRating = "yes" | "maybe" | "no";
+
+export interface OutdoorAdvice {
+  rating: OutdoorRating;
+  headline: string;
+  reasons: string[];
+}
+
+// WMO weather codes that indicate precipitation
+const RAIN_CODES = new Set([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]);
+const SNOW_CODES = new Set([71, 73, 75, 77, 85, 86]);
+const STORM_CODES = new Set([95, 96, 99]);
+const FOG_CODES = new Set([45, 48]);
+
+function isPrecipCode(code: number): boolean {
+  return RAIN_CODES.has(code) || SNOW_CODES.has(code) || STORM_CODES.has(code);
+}
+
+/**
+ * "Can I Go Out?" advisory based on current conditions and forecast.
+ */
+export function getOutdoorAdvice(
+  weatherCode: number,
+  temperature: number,
+  windSpeed: number,
+  precipProbability: number,
+): OutdoorAdvice {
+  const reasons: string[] = [];
+  let rating: OutdoorRating = "yes";
+
+  // Storms → definite no
+  if (STORM_CODES.has(weatherCode)) {
+    return { rating: "no", headline: "Stay inside", reasons: ["Thunderstorm activity"] };
+  }
+
+  // Heavy rain/snow → no
+  if ([65, 67, 82, 75, 86].includes(weatherCode)) {
+    return { rating: "no", headline: "Stay inside", reasons: [getWeatherInfo(weatherCode).description] };
+  }
+
+  // Moderate/light precipitation → maybe
+  if (RAIN_CODES.has(weatherCode) || SNOW_CODES.has(weatherCode)) {
+    rating = "maybe";
+    reasons.push(getWeatherInfo(weatherCode).description);
+  }
+
+  // Fog → maybe
+  if (FOG_CODES.has(weatherCode)) {
+    rating = "maybe";
+    reasons.push("Low visibility - foggy conditions");
+  }
+
+  // High wind
+  if (windSpeed > 50) {
+    rating = "no";
+    reasons.push(`Strong wind (${Math.round(windSpeed)} km/h)`);
+  } else if (windSpeed > 35) {
+    if (rating === "yes") rating = "maybe";
+    reasons.push(`Gusty wind (${Math.round(windSpeed)} km/h)`);
+  }
+
+  // Temperature extremes
+  if (temperature < -10) {
+    if (rating === "yes") rating = "maybe";
+    reasons.push("Very cold conditions");
+  } else if (temperature > 38) {
+    if (rating === "yes") rating = "maybe";
+    reasons.push("Extreme heat");
+  }
+
+  // High precipitation probability upcoming
+  if (precipProbability > 70 && rating === "yes") {
+    rating = "maybe";
+    reasons.push(`${precipProbability}% chance of rain`);
+  }
+
+  if (rating === "yes") {
+    return { rating: "yes", headline: "Great to go out!", reasons: ["Conditions look good"] };
+  }
+  return { rating, headline: rating === "maybe" ? "Use caution" : "Stay inside", reasons };
+}
+
+export type TrailCondition = "dry" | "damp" | "wet";
+
+export interface TrailAdvice {
+  condition: TrailCondition;
+  headline: string;
+  detail: string;
+}
+
+/**
+ * "Are the trails wet?" advisory.
+ * Checks recent precipitation (past 24h hourly data) and today's forecast.
+ */
+export function getTrailAdvice(
+  hourlyData: Array<{ time: string; weatherCode: number; precipitation?: number }>,
+  todayPrecipSum: number,
+  todayPrecipProbability: number,
+): TrailAdvice {
+  const now = new Date();
+  const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // Sum precipitation in the past 24 hours
+  let recentPrecipMm = 0;
+  let recentRainHours = 0;
+  for (const h of hourlyData) {
+    const t = new Date(h.time);
+    if (t >= past24h && t <= now) {
+      if (h.precipitation && h.precipitation > 0) {
+        recentPrecipMm += h.precipitation;
+      }
+      if (isPrecipCode(h.weatherCode)) {
+        recentRainHours++;
+      }
+    }
+  }
+
+  // Heavy recent rain → wet
+  if (recentPrecipMm > 5 || recentRainHours >= 4) {
+    return {
+      condition: "wet",
+      headline: "Stick to paved paths",
+      detail: `${recentPrecipMm.toFixed(1)}mm rain in the past 24h`,
+    };
+  }
+
+  // Light recent rain or high probability today → damp
+  if (recentPrecipMm > 0.5 || todayPrecipSum > 2 || todayPrecipProbability > 60) {
+    return {
+      condition: "damp",
+      headline: "Trails may be muddy",
+      detail: recentPrecipMm > 0
+        ? `Light rain recently (${recentPrecipMm.toFixed(1)}mm)`
+        : `${todayPrecipProbability}% rain chance today`,
+    };
+  }
+
+  return {
+    condition: "dry",
+    headline: "Trails should be dry",
+    detail: "No recent rain - enjoy the hike!",
+  };
 }
