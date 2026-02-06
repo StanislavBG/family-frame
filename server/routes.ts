@@ -815,7 +815,7 @@ export async function registerRoutes(
                       country: connectedUserData.settings.location.country,
                     },
                   };
-                  entry.timezone = "Europe/London"; // Default, could be enhanced with timezone lookup
+                  entry.timezone = weatherData.timezone;
                 }
               }
             } catch {

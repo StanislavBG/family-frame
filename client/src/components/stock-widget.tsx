@@ -120,25 +120,25 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
     <Card className={`h-full ${className}`} data-testid={`stock-widget-${symbol.toLowerCase()}`}>
       <CardContent className="h-full flex flex-col items-center justify-center p-6">
         {/* Name at top */}
-        <div className="text-sm md:text-base text-muted-foreground uppercase tracking-widest mb-4">
+        <div className="text-sm md:text-base text-muted-foreground uppercase tracking-widest mb-2">
           {name}
         </div>
 
         {data ? (
           <>
-            {/* Current price with trend icon */}
-            <div className="text-4xl md:text-5xl lg:text-6xl font-bold flex items-center gap-2 text-primary">
-              {isCrypto ? '$' : ''}{formatPrice(data.price)}
+            {/* Current price with trend icon and change on same line */}
+            <div className="flex items-center gap-3">
+              <span className="text-4xl md:text-5xl lg:text-6xl font-bold text-primary">
+                {isCrypto ? '$' : ''}{formatPrice(data.price)}
+              </span>
               <TrendIcon change={data.change} />
-            </div>
-
-            {/* Today's change percent */}
-            <div className={`text-xl md:text-2xl mt-1 ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+              <span className={`text-xl md:text-2xl font-semibold ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+              </span>
             </div>
 
             {/* Historical performance row */}
-            <div className="flex items-center justify-center gap-6 md:gap-8 mt-6 pt-4 border-t w-full max-w-xs">
+            <div className="flex items-center justify-center gap-6 md:gap-8 mt-4 pt-4 border-t w-full max-w-xs">
               <PercentBadge value={data.change1Y} label="1Y" />
               <PercentBadge value={data.change3Y} label="3Y" />
               <PercentBadge value={data.change5Y} label="5Y" />

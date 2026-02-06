@@ -2,6 +2,7 @@ import type { WeatherData, DailyForecast, HourlyForecast } from "@shared/schema"
 import { getWeatherInfo } from "./weather-codes";
 
 interface OpenMeteoResponse {
+  timezone: string;
   current: {
     temperature_2m: number;
     apparent_temperature: number;
@@ -80,6 +81,7 @@ export async function getWeather(lat: number, lon: number): Promise<{
   current: WeatherData;
   daily: DailyForecast[];
   hourly: HourlyForecast[];
+  timezone: string;
 } | null> {
   try {
     const response = await fetch(
@@ -117,7 +119,7 @@ export async function getWeather(lat: number, lon: number): Promise<{
       weatherCode: data.hourly.weather_code[index],
     }));
 
-    return { current, daily, hourly };
+    return { current, daily, hourly, timezone: data.timezone };
   } catch (error) {
     console.error("Weather API error:", error);
     return null;
