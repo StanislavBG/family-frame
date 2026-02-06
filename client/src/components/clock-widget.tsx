@@ -4,17 +4,41 @@ import type { UserSettings } from "@shared/schema";
 
 interface ClockWidgetProps {
   variant?: "full" | "compact";
+  style?: "analog" | "digital"; // Override setting (home always uses analog)
   className?: string;
 }
 
-export function ClockWidget({ variant = "full", className = "" }: ClockWidgetProps) {
+export function ClockWidget({ variant = "full", style, className = "" }: ClockWidgetProps) {
   const { data: settings } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
   });
   const timeFormat = settings?.timeFormat || "24h";
+  const clockStyle = style || settings?.clockStyle || "analog";
   const { currentTime, date, year } = useClock(timeFormat);
 
-  // Calculate hand angles
+  // Format time for digital display
+  const formatDigitalTime = () => {
+    const hours = currentTime.getHours();
+    const minutes = currentTime.getMinutes();
+    const seconds = currentTime.getSeconds();
+
+    if (timeFormat === "12h") {
+      const h = hours % 12 || 12;
+      const ampm = hours < 12 ? "AM" : "PM";
+      return {
+        time: `${h}:${minutes.toString().padStart(2, '0')}`,
+        seconds: seconds.toString().padStart(2, '0'),
+        ampm
+      };
+    }
+    return {
+      time: `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`,
+      seconds: seconds.toString().padStart(2, '0'),
+      ampm: null
+    };
+  };
+
+  // Calculate hand angles for analog clock
   const hours = currentTime.getHours() % 12;
   const minutes = currentTime.getMinutes();
   const seconds = currentTime.getSeconds();
@@ -26,13 +50,74 @@ export function ClockWidget({ variant = "full", className = "" }: ClockWidgetPro
   // Second hand: 6 degrees per second
   const secondAngle = seconds * 6;
 
-  const clockSize = variant === "compact" ? "w-32 h-32 md:w-40 md:h-40 lg:w-48 lg:h-48" : "w-64 h-64 md:w-80 md:h-80";
+  const digitalTime = formatDigitalTime();
 
+  // Digital clock display - scales to fill container
+  if (clockStyle === "digital") {
+    return (
+      <div className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
+        <div className="flex flex-col items-center justify-center flex-1 w-full">
+          {/* Main time display - scales to fit */}
+          <div className="flex items-baseline justify-center gap-2">
+            <span
+              className={`font-bold tabular-nums tracking-tight leading-none ${
+                variant === "compact"
+                  ? "text-6xl md:text-7xl lg:text-8xl"
+                  : "text-[12vw] md:text-[15vw] lg:text-[18vw]"
+              }`}
+              style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}
+            >
+              {digitalTime.time}
+            </span>
+            <div className="flex flex-col items-start">
+              <span
+                className={`font-medium tabular-nums text-muted-foreground ${
+                  variant === "compact"
+                    ? "text-2xl md:text-3xl"
+                    : "text-[4vw] md:text-[5vw]"
+                }`}
+              >
+                {digitalTime.seconds}
+              </span>
+              {digitalTime.ampm && (
+                <span
+                  className={`font-semibold text-primary ${
+                    variant === "compact"
+                      ? "text-lg md:text-xl"
+                      : "text-[3vw] md:text-[4vw]"
+                  }`}
+                >
+                  {digitalTime.ampm}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Date display below time */}
+        {variant === "compact" ? (
+          <div className="text-lg md:text-xl lg:text-2xl text-muted-foreground text-center font-medium mt-2" data-testid="text-date">
+            {date}
+          </div>
+        ) : (
+          <div className="text-2xl md:text-4xl lg:text-5xl text-muted-foreground text-center mt-4" data-testid="text-date">
+            {date}, {year}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Analog clock display - scales to fill container while maintaining aspect ratio
   return (
-    <div className={`flex flex-col items-center justify-center gap-3 ${className}`} data-testid="clock-widget">
-      {/* School Clock SVG */}
-      <div className={`${clockSize} relative`}>
-        <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-lg">
+    <div className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
+      {/* School Clock SVG - scales to fit container */}
+      <div className={`relative flex-1 w-full flex items-center justify-center ${variant === "compact" ? "max-h-48 md:max-h-56 lg:max-h-64" : ""}`}>
+        <svg
+          viewBox="0 0 200 200"
+          className="h-full w-auto max-w-full drop-shadow-lg"
+          style={{ aspectRatio: "1" }}
+        >
           {/* Clock frame - dark outer ring */}
           <circle cx="100" cy="100" r="98" fill="#2c2c2c" />
 
@@ -174,11 +259,11 @@ export function ClockWidget({ variant = "full", className = "" }: ClockWidgetPro
 
       {/* Date display below clock */}
       {variant === "compact" ? (
-        <div className="text-lg md:text-xl lg:text-2xl text-muted-foreground text-center font-medium" data-testid="text-date">
+        <div className="text-lg md:text-xl lg:text-2xl text-muted-foreground text-center font-medium mt-2" data-testid="text-date">
           {date}
         </div>
       ) : (
-        <div className="text-2xl md:text-3xl text-muted-foreground text-center" data-testid="text-date">
+        <div className="text-2xl md:text-3xl text-muted-foreground text-center mt-4" data-testid="text-date">
           {date}, {year}
         </div>
       )}

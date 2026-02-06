@@ -208,6 +208,7 @@ export const userSettingsSchema = z.object({
   location: locationSchema.optional(),
   temperatureUnit: z.enum(["celsius", "fahrenheit"]).default("celsius"),
   timeFormat: z.enum(["12h", "24h"]).default("24h"), // 24h is military time (default)
+  clockStyle: z.enum(["analog", "digital"]).default("analog"), // Clock display style
   googlePhotosConnected: z.boolean().default(false),
   selectedAlbums: z.array(z.string()).default([]), // Legacy - kept for compatibility
   pickerSessionId: z.string().optional(), // Current picker session ID

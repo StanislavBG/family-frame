@@ -143,7 +143,7 @@ export default function HomePage() {
         <Link href="/clock" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
           <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-clock">
             <CardContent className="h-full flex flex-col items-center justify-center p-6">
-              <ClockWidget variant="compact" />
+              <ClockWidget variant="compact" style="analog" />
             </CardContent>
           </Card>
         </Link>
