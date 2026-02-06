@@ -1,7 +1,7 @@
 import { ClockWidget } from "@/components/clock-widget";
-import { Button } from "@/components/ui/button";
+import { AppSettings, SettingsSection, SettingsRow } from "@/components/app-settings";
+import { Switch } from "@/components/ui/switch";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Clock, Watch } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { UserSettings } from "@shared/schema";
 
@@ -11,6 +11,7 @@ export default function ClockPage() {
   });
 
   const clockStyle = settings?.clockStyle || "analog";
+  const timeFormat = settings?.timeFormat || "24h";
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: Partial<UserSettings>) => {
@@ -21,12 +22,6 @@ export default function ClockPage() {
     },
   });
 
-  const toggleClockStyle = () => {
-    updateSettingsMutation.mutate({
-      clockStyle: clockStyle === "analog" ? "digital" : "analog",
-    });
-  };
-
   return (
     <div className="h-full w-full bg-background flex flex-col" data-testid="clock-page">
       {/* Clock display area - fills available space */}
@@ -34,28 +29,48 @@ export default function ClockPage() {
         <ClockWidget variant="full" />
       </div>
 
-      {/* Toggle button at bottom */}
-      <div className="flex justify-center pb-6 px-4">
-        <Button
-          variant="outline"
-          size="lg"
-          onClick={toggleClockStyle}
-          className="gap-2"
-          data-testid="button-toggle-clock-style"
-        >
-          {clockStyle === "analog" ? (
-            <>
-              <Watch className="h-5 w-5" />
-              Switch to Digital
-            </>
-          ) : (
-            <>
-              <Clock className="h-5 w-5" />
-              Switch to Analog
-            </>
-          )}
-        </Button>
-      </div>
+      {/* In-App Settings */}
+      <AppSettings title="Clock Settings" description="Configure how the clock is displayed">
+        <SettingsSection title="Display">
+          <SettingsRow
+            label="Clock Style"
+            description="Choose analog or digital display"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Analog</span>
+              <Switch
+                checked={clockStyle === "digital"}
+                onCheckedChange={(checked) =>
+                  updateSettingsMutation.mutate({
+                    clockStyle: checked ? "digital" : "analog",
+                  })
+                }
+                data-testid="switch-clock-style"
+              />
+              <span className="text-xs text-muted-foreground">Digital</span>
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            label="Time Format"
+            description="12-hour or 24-hour display"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">12h</span>
+              <Switch
+                checked={timeFormat === "24h"}
+                onCheckedChange={(checked) =>
+                  updateSettingsMutation.mutate({
+                    timeFormat: checked ? "24h" : "12h",
+                  })
+                }
+                data-testid="switch-time-format"
+              />
+              <span className="text-xs text-muted-foreground">24h</span>
+            </div>
+          </SettingsRow>
+        </SettingsSection>
+      </AppSettings>
     </div>
   );
 }
