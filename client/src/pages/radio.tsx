@@ -11,6 +11,7 @@ import { radioService, type RadioStation, type StreamMetadata } from "@/lib/radi
 import { useAppControls } from "@/components/app-controls";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { RadioStationValidator } from "@/components/radio-station-validator";
 
 type StationsByCountry = Record<string, RadioStation[]>;
 
@@ -312,6 +313,9 @@ export default function RadioPage() {
           <div className="text-sm text-muted-foreground">
             {currentStations.length} stations available
           </div>
+
+          {/* Stream Health Check */}
+          <RadioStationValidator />
 
           <ScrollArea className="flex-1">
             <div className="space-y-2 pr-2">
