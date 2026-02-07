@@ -105,13 +105,13 @@ export default function RadioPage() {
     }
   }, [countries, selectedCountry]);
 
-  const currentStations = useMemo(() => {
+  const currentStations: RadioStation[] = useMemo(() => {
     if (!selectedCountry) return [];
     const category = stationsByCountry[selectedCountry];
     if (!category) return [];
-    // API returns { icon, stations: [...] } but handle plain array for safety
-    if (Array.isArray(category)) return category;
-    return category.stations || [];
+    // API returns { icon, stations: [...] } — extract the array safely
+    const stations = Array.isArray(category) ? category : category.stations;
+    return Array.isArray(stations) ? stations : [];
   }, [selectedCountry, stationsByCountry]);
 
   const handleVolumeChange = (value: number[]) => {
