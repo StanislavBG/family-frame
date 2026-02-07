@@ -11,6 +11,7 @@ import {
   type OutdoorAdvice,
   type TrailAdvice,
 } from "@/lib/weather-utils";
+import { useScaleToFill } from "@/hooks/use-scale-to-fill";
 import {
   MapPin,
   Settings,
@@ -260,6 +261,89 @@ function TrailAdvisoryCompact({ advice }: { advice: TrailAdvice }) {
   );
 }
 
+// Extracted hero content with fixed reference sizes, scaled by useScaleToFill
+function WeatherHeroScaled({
+  focusLabel,
+  city,
+  weatherCode,
+  isDay,
+  temperature,
+  unit,
+  description,
+  focusDay,
+}: {
+  focusLabel: string;
+  city: string;
+  weatherCode: number;
+  isDay: boolean;
+  temperature: number;
+  unit: "celsius" | "fahrenheit";
+  description: string;
+  focusDay?: DailyForecast;
+}) {
+  const { containerRef, contentRef, ready } = useScaleToFill({ padding: 0.88 });
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full overflow-hidden flex items-center justify-center"
+    >
+      <div
+        ref={contentRef}
+        className="inline-flex flex-col items-center"
+        style={{
+          transformOrigin: "center center",
+          willChange: "transform",
+          opacity: ready ? 1 : 0,
+          transition: "opacity 150ms ease-out",
+        }}
+      >
+        {/* Location label */}
+        <div className="text-[16px] text-muted-foreground font-medium tracking-wide uppercase whitespace-nowrap">
+          {focusLabel} in {city}
+        </div>
+
+        {/* Icon + Temperature row — the widest element, drives the scale */}
+        <div className="flex items-center justify-center gap-6 mt-1">
+          <WeatherIcon
+            code={weatherCode}
+            isDay={isDay}
+            className="h-[120px] w-[120px] flex-shrink-0"
+          />
+          <div className="text-[160px] font-bold leading-[0.85] tracking-tight whitespace-nowrap">
+            {formatTemperature(temperature, unit)}
+          </div>
+        </div>
+
+        {/* Description */}
+        <div className="text-[32px] text-muted-foreground mt-1 whitespace-nowrap">
+          {description}
+        </div>
+
+        {/* Hi / Lo / Rain row */}
+        {focusDay && (
+          <div className="flex items-center gap-6 mt-2 text-[24px] whitespace-nowrap">
+            <span className="flex items-center gap-1">
+              <ArrowUp className="h-6 w-6 text-orange-500" />
+              {formatTemperature(focusDay.tempMax, unit)}
+            </span>
+            <span className="flex items-center gap-1">
+              <ArrowDown className="h-6 w-6 text-blue-500" />
+              {formatTemperature(focusDay.tempMin, unit)}
+            </span>
+            {focusDay.precipitationProbability > 0 && (
+              <span className="flex items-center gap-1">
+                <Droplets className="h-6 w-6 text-blue-400" />
+                {focusDay.precipitationProbability}%
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WeatherLightMode({
   weather,
   unit,
@@ -297,51 +381,23 @@ function WeatherLightMode({
 
   return (
     <div className="flex-1 flex flex-col gap-3 md:gap-4 p-4 md:p-0 overflow-y-auto md:overflow-hidden">
-      {/* Hero: Today's weather - maximize the space */}
+      {/* Hero: Today's weather - ScaleToFill dynamically scales content to fill card */}
       <Card className="flex-1 min-h-0" data-testid="widget-light-current">
-        <CardContent className="h-full flex flex-col items-center justify-center p-4 md:p-6">
-          <div className="text-base md:text-lg text-muted-foreground font-medium tracking-wide uppercase">
-            {focusLabel} in {location.city}
-          </div>
-
-          <div className="flex items-center justify-center gap-4 md:gap-8 mt-2">
-            <WeatherIcon
-              code={isAfterDark && focusDay ? focusDay.weatherCode : current.weatherCode}
-              isDay={!isAfterDark}
-              className="h-24 w-24 md:h-32 md:w-32 lg:h-40 lg:w-40 flex-shrink-0"
-            />
-            <div className="text-[22vw] md:text-[16vw] lg:text-[14vw] font-bold leading-[0.85] tracking-tight">
-              {isAfterDark && focusDay
-                ? formatTemperature(
-                    Math.round((focusDay.tempMax + focusDay.tempMin) / 2),
-                    unit
-                  )
-                : formatTemperature(current.temperature, unit)}
-            </div>
-          </div>
-
-          <div className="text-3xl md:text-4xl lg:text-5xl text-muted-foreground mt-2">
-            {focusDayInfo.description}
-          </div>
-
-          {focusDay && (
-            <div className="flex items-center gap-6 md:gap-8 mt-3 text-2xl md:text-3xl">
-              <span className="flex items-center gap-1">
-                <ArrowUp className="h-6 w-6 md:h-7 md:w-7 text-orange-500" />
-                {formatTemperature(focusDay.tempMax, unit)}
-              </span>
-              <span className="flex items-center gap-1">
-                <ArrowDown className="h-6 w-6 md:h-7 md:w-7 text-blue-500" />
-                {formatTemperature(focusDay.tempMin, unit)}
-              </span>
-              {focusDay.precipitationProbability > 0 && (
-                <span className="flex items-center gap-1">
-                  <Droplets className="h-6 w-6 md:h-7 md:w-7 text-blue-400" />
-                  {focusDay.precipitationProbability}%
-                </span>
-              )}
-            </div>
-          )}
+        <CardContent className="h-full p-4 md:p-6">
+          <WeatherHeroScaled
+            focusLabel={focusLabel}
+            city={location.city}
+            weatherCode={isAfterDark && focusDay ? focusDay.weatherCode : current.weatherCode}
+            isDay={!isAfterDark}
+            temperature={
+              isAfterDark && focusDay
+                ? Math.round((focusDay.tempMax + focusDay.tempMin) / 2)
+                : current.temperature
+            }
+            unit={unit}
+            description={focusDayInfo.description}
+            focusDay={focusDay}
+          />
         </CardContent>
       </Card>
 
