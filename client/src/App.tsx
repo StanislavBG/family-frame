@@ -30,7 +30,7 @@ import ScreensaverPage from "@/pages/screensaver";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, MessageSquare, Clock, Mail, StickyNote, Tv, BarChart3 } from "lucide-react";
-import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo } from "react";
+import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { AppControlsProvider, AppControlsWidget, HeaderControls } from "@/components/app-controls";
@@ -66,6 +66,67 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+// Per-route error boundary that auto-recovers by navigating home
+interface RouteErrorBoundaryProps {
+  children: ReactNode;
+  onError?: (error: Error) => void;
+}
+
+interface RouteErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
+  constructor(props: RouteErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): RouteErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("[RouteError]", error.message, errorInfo.componentStack);
+    this.props.onError?.(error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <RouteErrorRecovery error={this.state.error} onReset={() => this.setState({ hasError: false, error: null })} />;
+    }
+    return this.props.children;
+  }
+}
+
+function RouteErrorRecovery({ error, onReset }: { error: Error | null; onReset: () => void }) {
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    // Auto-navigate home after a short delay so the user sees the message
+    const timer = setTimeout(() => {
+      onReset();
+      navigate("/");
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [navigate, onReset]);
+
+  return (
+    <div className="h-full flex items-center justify-center p-8">
+      <div className="text-center max-w-md">
+        <p className="text-lg font-medium mb-1">This page hit an error</p>
+        <p className="text-sm text-muted-foreground mb-4">
+          {error?.message || "Unknown error"} — redirecting home...
+        </p>
+        <Button variant="outline" size="sm" onClick={() => { onReset(); navigate("/"); }}>
+          Go Home Now
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted p-8">
@@ -88,44 +149,51 @@ function LoadingScreen() {
 
 function ErrorFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted p-8">
-      <Card className="max-w-lg w-full">
-        <CardContent className="p-12 text-center">
-          <div className="w-20 h-20 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-6">
-            <Home className="h-10 w-10 text-destructive" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
-          <p className="text-muted-foreground mb-6">
-            We're having trouble loading the application. Please refresh the page.
-          </p>
-          <Button onClick={() => window.location.reload()} data-testid="button-retry">
-            Refresh Page
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="text-center">
+        <p className="text-lg font-medium mb-2">Unable to load Family Frame</p>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          Refresh
+        </Button>
+      </div>
     </div>
   );
+}
+
+// Wrap a page component in a per-route error boundary that reports to debug log
+function guarded(PageComponent: React.ComponentType) {
+  return function GuardedRoute() {
+    const { addDebugLog } = useAppControls();
+    const handleError = useCallback((error: Error) => {
+      addDebugLog("error", "Page crash", error.message);
+    }, [addDebugLog]);
+    return (
+      <RouteErrorBoundary onError={handleError}>
+        <PageComponent />
+      </RouteErrorBoundary>
+    );
+  };
 }
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={HomePage} />
-      <Route path="/clock" component={ClockPage} />
-      <Route path="/weather" component={WeatherPage} />
-      <Route path="/photos" component={PhotosPage} />
-      <Route path="/calendar" component={CalendarPage} />
-      <Route path="/chores" component={ChoresPage} />
-      <Route path="/recipes" component={RecipesPage} />
-      <Route path="/notepad" component={NotepadPage} />
-      <Route path="/messages" component={MessagesPage} />
-      <Route path="/radio" component={RadioPage} />
-      <Route path="/baby-songs" component={BabySongsPage} />
-      <Route path="/tv" component={TVPage} />
-      <Route path="/shopping" component={ShoppingPage} />
-      <Route path="/stocks" component={StocksPage} />
-      <Route path="/screensaver" component={ScreensaverPage} />
-      <Route path="/settings" component={SettingsPage} />
+      <Route path="/" component={guarded(HomePage)} />
+      <Route path="/clock" component={guarded(ClockPage)} />
+      <Route path="/weather" component={guarded(WeatherPage)} />
+      <Route path="/photos" component={guarded(PhotosPage)} />
+      <Route path="/calendar" component={guarded(CalendarPage)} />
+      <Route path="/chores" component={guarded(ChoresPage)} />
+      <Route path="/recipes" component={guarded(RecipesPage)} />
+      <Route path="/notepad" component={guarded(NotepadPage)} />
+      <Route path="/messages" component={guarded(MessagesPage)} />
+      <Route path="/radio" component={guarded(RadioPage)} />
+      <Route path="/baby-songs" component={guarded(BabySongsPage)} />
+      <Route path="/tv" component={guarded(TVPage)} />
+      <Route path="/shopping" component={guarded(ShoppingPage)} />
+      <Route path="/stocks" component={guarded(StocksPage)} />
+      <Route path="/screensaver" component={guarded(ScreensaverPage)} />
+      <Route path="/settings" component={guarded(SettingsPage)} />
       <Route component={NotFound} />
     </Switch>
   );
