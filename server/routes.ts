@@ -1416,6 +1416,137 @@ export async function registerRoutes(
     }
   });
 
+  // Radio stream validation endpoint - deep health check for all stations
+  app.get("/api/radio/validate", async (_req: Request, res: Response) => {
+    interface ValidationResult {
+      name: string;
+      url: string;
+      status: "ok" | "degraded" | "error";
+      responseTimeMs: number;
+      contentType: string | null;
+      httpStatus: number | null;
+      bytesReceived: number;
+      error: string | null;
+      checkedAt: string;
+    }
+
+    // All stations to validate (same source as /api/radio/stations Bulgaria category)
+    const stationsToValidate = [
+      { name: "BG Radio", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac" },
+      { name: "BG Radio (Low)", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_L.aac" },
+      { name: "Radio Energy", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/RADIO_ENERGYAAC_H.aac" },
+      { name: "Radio Energy (Low)", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/RADIO_ENERGYAAC_L.aac" },
+      { name: "Magic FM", url: "https://bss1.neterra.tv/magicfm/magicfm.m3u8" },
+      { name: "Avto Radio", url: "https://playerservices.streamtheworld.com/api/livestream-redirect/AVTORADIOAAC_H.aac" },
+      { name: "The Voice Radio", url: "https://bss.neterra.tv/rtplive/thevoiceradio_live.stream/playlist.m3u8" },
+      { name: "bTV Radio", url: "https://cdn.bweb.bg/radio/btv-radio.mp3" },
+    ];
+
+    async function validateStation(station: { name: string; url: string }): Promise<ValidationResult> {
+      const startTime = Date.now();
+      const result: ValidationResult = {
+        name: station.name,
+        url: station.url,
+        status: "error",
+        responseTimeMs: 0,
+        contentType: null,
+        httpStatus: null,
+        bytesReceived: 0,
+        error: null,
+        checkedAt: new Date().toISOString(),
+      };
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
+
+        const response = await fetch(station.url, {
+          method: "GET",
+          headers: {
+            "User-Agent": "FamilyFrame/1.0",
+            "Icy-MetaData": "1",
+          },
+          signal: controller.signal,
+          redirect: "follow",
+        });
+
+        result.httpStatus = response.status;
+        result.contentType = response.headers.get("content-type");
+        result.responseTimeMs = Date.now() - startTime;
+
+        if (response.status !== 200) {
+          clearTimeout(timeout);
+          result.error = `HTTP ${response.status}`;
+          // Close response body
+          if (response.body) {
+            try { const r = response.body.getReader(); await r.cancel(); } catch {}
+          }
+          return result;
+        }
+
+        // Try to read some bytes to verify the stream is actually delivering data
+        const reader = response.body?.getReader();
+        if (reader) {
+          try {
+            const { done, value } = await reader.read();
+            if (!done && value) {
+              result.bytesReceived = value.length;
+            }
+            await reader.cancel();
+          } catch {
+            // Stream read failed but connection was ok
+          }
+        }
+
+        clearTimeout(timeout);
+
+        // Determine status based on results
+        const isAudioContent = result.contentType?.includes("audio") ||
+          result.contentType?.includes("mpeg") ||
+          result.contentType?.includes("aac") ||
+          result.contentType?.includes("ogg") ||
+          result.contentType?.includes("mpegurl") ||
+          result.contentType?.includes("x-mpegurl") ||
+          result.contentType?.includes("octet-stream") ||
+          result.contentType?.includes("application/vnd.apple");
+
+        if (result.bytesReceived > 0 && isAudioContent) {
+          result.status = result.responseTimeMs > 3000 ? "degraded" : "ok";
+        } else if (result.bytesReceived > 0) {
+          // Got data but content type is unexpected (might still work for HLS playlists)
+          result.status = "degraded";
+          result.error = `Unexpected content-type: ${result.contentType}`;
+        } else {
+          result.status = "error";
+          result.error = "No audio data received";
+        }
+      } catch (err: any) {
+        result.responseTimeMs = Date.now() - startTime;
+        if (err.name === "AbortError") {
+          result.error = "Timeout (>6s)";
+        } else {
+          result.error = err.message || "Connection failed";
+        }
+      }
+
+      return result;
+    }
+
+    // Run all validations in parallel
+    const results = await Promise.all(
+      stationsToValidate.map(station => validateStation(station))
+    );
+
+    const summary = {
+      total: results.length,
+      ok: results.filter(r => r.status === "ok").length,
+      degraded: results.filter(r => r.status === "degraded").length,
+      error: results.filter(r => r.status === "error").length,
+    };
+
+    res.json({ summary, stations: results });
+  });
+
   // Radio metadata endpoint - fetches ICY stream metadata (now playing info)
   app.get("/api/radio/metadata", async (req: Request, res: Response) => {
     const streamUrl = req.query.url as string;
