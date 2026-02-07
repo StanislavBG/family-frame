@@ -13,6 +13,16 @@ import { PhotoSource } from "@shared/schema";
 
 const URL_EXPIRY_MS = 50 * 60 * 1000;
 
+// Fisher-Yates shuffle (returns a new array)
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 function PhotosSkeleton() {
   return (
     <div className="h-full flex items-center justify-center">
@@ -34,13 +44,14 @@ function getProxiedPhotoUrl(baseUrl: string): string {
 
 function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisplayProps) {
   const [, setLocation] = useLocation();
-  const [photos, setPhotos] = useState(initialPhotos);
+  const [photos, setPhotos] = useState(() => shuffleArray(initialPhotos));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState<string>(() =>
-    initialPhotos[0]?.baseUrl ? getProxiedPhotoUrl(initialPhotos[0].baseUrl) : ""
-  );
+  const [currentUrl, setCurrentUrl] = useState<string>(() => {
+    const shuffled = photos;
+    return shuffled[0]?.baseUrl ? getProxiedPhotoUrl(shuffled[0].baseUrl) : "";
+  });
   const refreshingPhotosRef = useRef<Set<string>>(new Set());
   const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({
     autoEnter: true,
@@ -48,11 +59,13 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
   });
 
   useEffect(() => {
-    setPhotos(initialPhotos);
-    if (!currentUrl && initialPhotos[0]?.baseUrl) {
-      setCurrentUrl(getProxiedPhotoUrl(initialPhotos[0].baseUrl));
+    const shuffled = shuffleArray(initialPhotos);
+    setPhotos(shuffled);
+    setCurrentIndex(0);
+    if (shuffled[0]?.baseUrl) {
+      setCurrentUrl(getProxiedPhotoUrl(shuffled[0].baseUrl));
     }
-  }, [initialPhotos, currentUrl]);
+  }, [initialPhotos]);
 
   const isUrlExpired = useCallback((photo: GooglePhotoItem) => {
     if (!photo.fetchedAt) return true;
@@ -126,7 +139,14 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
   const nextPhoto = useCallback(() => {
     setIsTransitioning(true);
     setTimeout(() => {
-      setCurrentIndex((prev) => (prev + 1) % photos.length);
+      setCurrentIndex((prev) => {
+        const next = (prev + 1) % photos.length;
+        // Re-shuffle when wrapping around for a fresh order each cycle
+        if (next === 0) {
+          setPhotos(p => shuffleArray(p));
+        }
+        return next;
+      });
       setIsTransitioning(false);
     }, 500);
   }, [photos.length]);
@@ -248,7 +268,7 @@ function PixabayPhotoDisplay({ interval }: PixabayPhotoDisplayProps) {
         photos: PixabayPhoto[];
         tag: string;
       };
-      setPhotos(result.photos);
+      setPhotos(shuffleArray(result.photos));
       setCurrentTag(result.tag);
       setCurrentIndex(0);
       setIsLoading(false);
