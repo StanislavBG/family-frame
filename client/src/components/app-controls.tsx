@@ -78,6 +78,23 @@ export function AppControlsProvider({ children }: { children: React.ReactNode })
     setDebugLogs(prev => [...prev.slice(-50), log]);
   }, []);
 
+  // Capture global unhandled errors and promise rejections into debug log
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      addDebugLog("error", event.message || "Unhandled error", event.filename ? `${event.filename}:${event.lineno}` : undefined);
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const msg = event.reason?.message || String(event.reason) || "Unhandled promise rejection";
+      addDebugLog("error", msg);
+    };
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleRejection);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleRejection);
+    };
+  }, [addDebugLog]);
+
   const clearDebugLogs = useCallback(() => {
     setDebugLogs([]);
   }, []);

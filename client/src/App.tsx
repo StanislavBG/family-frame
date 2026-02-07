@@ -30,7 +30,7 @@ import ScreensaverPage from "@/pages/screensaver";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, MessageSquare, Clock, Mail, StickyNote, Tv, BarChart3 } from "lucide-react";
-import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo } from "react";
+import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { AppControlsProvider, AppControlsWidget, HeaderControls } from "@/components/app-controls";
@@ -67,13 +67,18 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 // Per-route error boundary that auto-recovers by navigating home
+interface RouteErrorBoundaryProps {
+  children: ReactNode;
+  onError?: (error: Error) => void;
+}
+
 interface RouteErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
 
-class RouteErrorBoundary extends Component<{ children: ReactNode }, RouteErrorBoundaryState> {
-  constructor(props: { children: ReactNode }) {
+class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
+  constructor(props: RouteErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
@@ -84,6 +89,7 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, RouteErrorBo
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[RouteError]", error.message, errorInfo.componentStack);
+    this.props.onError?.(error);
   }
 
   render() {
@@ -154,11 +160,15 @@ function ErrorFallback() {
   );
 }
 
-// Wrap a page component in a per-route error boundary
+// Wrap a page component in a per-route error boundary that reports to debug log
 function guarded(PageComponent: React.ComponentType) {
   return function GuardedRoute() {
+    const { addDebugLog } = useAppControls();
+    const handleError = useCallback((error: Error) => {
+      addDebugLog("error", "Page crash", error.message);
+    }, [addDebugLog]);
     return (
-      <RouteErrorBoundary>
+      <RouteErrorBoundary onError={handleError}>
         <PageComponent />
       </RouteErrorBoundary>
     );
