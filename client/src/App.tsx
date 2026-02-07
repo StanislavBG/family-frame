@@ -33,7 +33,7 @@ import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, 
 import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useWakeLock } from "@/hooks/use-wake-lock";
-import { AppControlsProvider, AppControlsWidget, HeaderControls } from "@/components/app-controls";
+import { AppControlsProvider, AppControlsWidget, HeaderControls, useAppControls } from "@/components/app-controls";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
