@@ -13,7 +13,12 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { RadioStationValidator } from "@/components/radio-station-validator";
 
-type StationsByCountry = Record<string, RadioStation[]>;
+interface StationCategory {
+  icon?: string;
+  stations: RadioStation[];
+}
+
+type StationsByCountry = Record<string, StationCategory | RadioStation[]>;
 
 const COUNTRY_ORDER = ["Bulgaria", "Serbia", "Greece", "Russia"];
 
@@ -100,7 +105,14 @@ export default function RadioPage() {
     }
   }, [countries, selectedCountry]);
 
-  const currentStations = selectedCountry ? (stationsByCountry[selectedCountry] || []) : [];
+  const currentStations = useMemo(() => {
+    if (!selectedCountry) return [];
+    const category = stationsByCountry[selectedCountry];
+    if (!category) return [];
+    // API returns { icon, stations: [...] } but handle plain array for safety
+    if (Array.isArray(category)) return category;
+    return category.stations || [];
+  }, [selectedCountry, stationsByCountry]);
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
