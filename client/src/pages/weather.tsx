@@ -297,41 +297,46 @@ function WeatherLightMode({
 
   return (
     <div className="flex-1 flex flex-col gap-3 md:gap-4 p-4 md:p-0 overflow-y-auto md:overflow-hidden">
-      {/* Hero: Today's weather - takes up most of the space */}
+      {/* Hero: Today's weather - maximize the space */}
       <Card className="flex-1 min-h-0" data-testid="widget-light-current">
-        <CardContent className="h-full flex flex-col items-center justify-center p-6 md:p-8 text-center">
-          <div className="text-lg md:text-xl text-muted-foreground font-medium mb-2">
+        <CardContent className="h-full flex flex-col items-center justify-center p-4 md:p-6">
+          <div className="text-base md:text-lg text-muted-foreground font-medium tracking-wide uppercase">
             {focusLabel} in {location.city}
           </div>
-          <WeatherIcon
-            code={isAfterDark && focusDay ? focusDay.weatherCode : current.weatherCode}
-            isDay={!isAfterDark}
-            className="h-28 w-28 md:h-36 md:w-36 lg:h-44 lg:w-44"
-          />
-          <div className="text-[18vw] md:text-[11vw] lg:text-[9vw] font-bold leading-none mt-2">
-            {isAfterDark && focusDay
-              ? formatTemperature(
-                  Math.round((focusDay.tempMax + focusDay.tempMin) / 2),
-                  unit
-                )
-              : formatTemperature(current.temperature, unit)}
+
+          <div className="flex items-center justify-center gap-4 md:gap-8 mt-2">
+            <WeatherIcon
+              code={isAfterDark && focusDay ? focusDay.weatherCode : current.weatherCode}
+              isDay={!isAfterDark}
+              className="h-24 w-24 md:h-32 md:w-32 lg:h-40 lg:w-40 flex-shrink-0"
+            />
+            <div className="text-[22vw] md:text-[16vw] lg:text-[14vw] font-bold leading-[0.85] tracking-tight">
+              {isAfterDark && focusDay
+                ? formatTemperature(
+                    Math.round((focusDay.tempMax + focusDay.tempMin) / 2),
+                    unit
+                  )
+                : formatTemperature(current.temperature, unit)}
+            </div>
           </div>
-          <div className="text-2xl md:text-3xl text-muted-foreground mt-2">
+
+          <div className="text-3xl md:text-4xl lg:text-5xl text-muted-foreground mt-2">
             {focusDayInfo.description}
           </div>
+
           {focusDay && (
-            <div className="flex items-center gap-6 mt-3 text-xl md:text-2xl">
+            <div className="flex items-center gap-6 md:gap-8 mt-3 text-2xl md:text-3xl">
               <span className="flex items-center gap-1">
-                <ArrowUp className="h-5 w-5 md:h-6 md:w-6 text-orange-500" />
+                <ArrowUp className="h-6 w-6 md:h-7 md:w-7 text-orange-500" />
                 {formatTemperature(focusDay.tempMax, unit)}
               </span>
               <span className="flex items-center gap-1">
-                <ArrowDown className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
+                <ArrowDown className="h-6 w-6 md:h-7 md:w-7 text-blue-500" />
                 {formatTemperature(focusDay.tempMin, unit)}
               </span>
               {focusDay.precipitationProbability > 0 && (
                 <span className="flex items-center gap-1">
-                  <Droplets className="h-5 w-5 md:h-6 md:w-6 text-blue-400" />
+                  <Droplets className="h-6 w-6 md:h-7 md:w-7 text-blue-400" />
                   {focusDay.precipitationProbability}%
                 </span>
               )}
@@ -343,37 +348,52 @@ function WeatherLightMode({
       {/* Bottom bar: Advisories (compact) + Tomorrow peek */}
       <Card className="flex-shrink-0">
         <CardContent className="p-4 md:p-5">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 items-start">
             {/* Outdoor advisory */}
-            <OutdoorAdvisoryCompact advice={outdoorAdvice} />
+            <div>
+              <div className="text-[11px] md:text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 border-b pb-1">
+                Can I go outside?
+              </div>
+              <OutdoorAdvisoryCompact advice={outdoorAdvice} />
+            </div>
 
             {/* Trail advisory */}
-            <TrailAdvisoryCompact advice={trailAdvice} />
+            <div>
+              <div className="text-[11px] md:text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 border-b pb-1">
+                How are the trails?
+              </div>
+              <TrailAdvisoryCompact advice={trailAdvice} />
+            </div>
 
             {/* Tomorrow / Now peek */}
-            <div className="flex items-center gap-3" data-testid="widget-light-peek">
-              <WeatherIcon
-                code={
-                  isAfterDark
-                    ? current.weatherCode
-                    : (tomorrow?.weatherCode ?? current.weatherCode)
-                }
-                isDay={isAfterDark ? false : true}
-                className="h-8 w-8 md:h-10 md:w-10 flex-shrink-0"
-              />
-              <div className="min-w-0">
-                <div className="text-lg md:text-xl font-semibold leading-tight">
-                  {isAfterDark
-                    ? formatTemperature(current.temperature, unit)
-                    : tomorrow
-                      ? `${formatTemperature(tomorrow.tempMax, unit)} / ${formatTemperature(tomorrow.tempMin, unit)}`
-                      : "---"}
-                </div>
-                <div className="text-sm md:text-base text-muted-foreground">
-                  {isAfterDark ? "Right now" : "Tomorrow"}
-                  {!isAfterDark && tomorrow && tomorrow.precipitationProbability > 0
-                    ? ` \u00b7 ${tomorrow.precipitationProbability}% rain`
-                    : ""}
+            <div>
+              <div className="text-[11px] md:text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 border-b pb-1">
+                {isAfterDark ? "What's it like now?" : "What about tomorrow?"}
+              </div>
+              <div className="flex items-center gap-3" data-testid="widget-light-peek">
+                <WeatherIcon
+                  code={
+                    isAfterDark
+                      ? current.weatherCode
+                      : (tomorrow?.weatherCode ?? current.weatherCode)
+                  }
+                  isDay={isAfterDark ? false : true}
+                  className="h-8 w-8 md:h-10 md:w-10 flex-shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="text-lg md:text-xl font-semibold leading-tight">
+                    {isAfterDark
+                      ? formatTemperature(current.temperature, unit)
+                      : tomorrow
+                        ? `${formatTemperature(tomorrow.tempMax, unit)} / ${formatTemperature(tomorrow.tempMin, unit)}`
+                        : "---"}
+                  </div>
+                  <div className="text-sm md:text-base text-muted-foreground">
+                    {isAfterDark ? "Right now" : "Tomorrow"}
+                    {!isAfterDark && tomorrow && tomorrow.precipitationProbability > 0
+                      ? ` \u00b7 ${tomorrow.precipitationProbability}% rain`
+                      : ""}
+                  </div>
                 </div>
               </div>
             </div>
