@@ -33,10 +33,12 @@ interface MarketData {
   price: number;
   change: number;
   changePercent: number;
+  changeLabel?: string;
   change1Y?: number;
   change3Y?: number;
   change5Y?: number;
   change10Y?: number;
+  historicalPrices?: Array<{ t: number; p: number }>;
 }
 
 export default function HomePage() {
