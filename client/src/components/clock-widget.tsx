@@ -1,6 +1,7 @@
 import { useClock } from "@/hooks/use-clock";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, useEffect } from "react";
+import { ScaleCell } from "@/components/scale-cell";
 import type { UserSettings } from "@shared/schema";
 
 interface ClockWidgetProps {
@@ -77,58 +78,66 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
 
   const digitalTime = formatDigitalTime();
 
-  // Digital clock display - scales to fill container
+  // Digital clock display - ScaleCell zones fill container
   if (clockStyle === "digital") {
-    return (
-      <div ref={containerRef} className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
-        <div className="flex flex-col items-center justify-center flex-1 w-full">
-          {/* Main time display - scales to fit */}
+    if (variant === "compact") {
+      return (
+        <div ref={containerRef} className={`flex flex-col items-center justify-center h-full w-full ${className}`} data-testid="clock-widget">
           <div className="flex items-baseline justify-center gap-2">
             <span
-              className={`font-bold tabular-nums tracking-tight leading-none ${
-                variant === "compact"
-                  ? "text-6xl md:text-7xl lg:text-8xl"
-                  : "text-[12vw] md:text-[15vw] lg:text-[18vw]"
-              }`}
+              className="text-6xl md:text-7xl lg:text-8xl font-bold tabular-nums tracking-tight leading-none"
               style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}
             >
               {digitalTime.time}
             </span>
             <div className="flex flex-col items-start">
-              <span
-                className={`font-medium tabular-nums text-muted-foreground ${
-                  variant === "compact"
-                    ? "text-2xl md:text-3xl"
-                    : "text-[4vw] md:text-[5vw]"
-                }`}
-              >
+              <span className="text-2xl md:text-3xl font-medium tabular-nums text-muted-foreground">
                 {digitalTime.seconds}
               </span>
               {digitalTime.ampm && (
-                <span
-                  className={`font-semibold text-primary ${
-                    variant === "compact"
-                      ? "text-lg md:text-xl"
-                      : "text-[3vw] md:text-[4vw]"
-                  }`}
-                >
+                <span className="text-lg md:text-xl font-semibold text-primary">
                   {digitalTime.ampm}
                 </span>
               )}
             </div>
           </div>
-        </div>
-
-        {/* Date display below time */}
-        {variant === "compact" ? (
           <div className="text-lg md:text-xl lg:text-2xl text-muted-foreground text-center font-medium mt-2" data-testid="text-date">
             {date}
           </div>
-        ) : (
-          <div className="text-2xl md:text-4xl lg:text-5xl text-muted-foreground text-center mt-4" data-testid="text-date">
+        </div>
+      );
+    }
+
+    return (
+      <div ref={containerRef} className={`h-full w-full grid grid-rows-[3fr_1fr] gap-0 min-h-0 ${className}`} data-testid="clock-widget">
+        {/* Main zone: Time display (dominant) */}
+        <ScaleCell padding={0.9}>
+          <div className="inline-flex items-baseline gap-[0.1em] whitespace-nowrap">
+            <span
+              className="text-[140px] font-bold tabular-nums tracking-tight leading-[0.85]"
+              style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}
+            >
+              {digitalTime.time}
+            </span>
+            <div className="flex flex-col items-start">
+              <span className="text-[40px] font-medium tabular-nums text-muted-foreground">
+                {digitalTime.seconds}
+              </span>
+              {digitalTime.ampm && (
+                <span className="text-[32px] font-semibold text-primary">
+                  {digitalTime.ampm}
+                </span>
+              )}
+            </div>
+          </div>
+        </ScaleCell>
+
+        {/* Bottom zone: Date */}
+        <ScaleCell padding={0.85}>
+          <div className="text-[28px] text-muted-foreground whitespace-nowrap" data-testid="text-date">
             {date}, {year}
           </div>
-        )}
+        </ScaleCell>
       </div>
     );
   }

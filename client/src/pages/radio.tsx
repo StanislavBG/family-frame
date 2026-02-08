@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Radio, Volume2, VolumeX, Play, Pause, Check, Loader2, Music2, Disc3, Signal } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
+import { ScaleCell } from "@/components/scale-cell";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { UserSettings } from "@shared/schema";
 import { radioService, type RadioStation, type StreamMetadata } from "@/lib/radio-service";
@@ -172,70 +173,82 @@ export default function RadioPage() {
     <div className="h-full flex flex-col bg-background overflow-hidden">
       <div className="flex-1 flex px-8 py-6 gap-8 overflow-hidden">
         {/* Now Playing Area */}
-        <div className="flex-1 flex flex-col items-center justify-center gap-6">
-          <p className="text-2xl md:text-4xl lg:text-5xl text-muted-foreground uppercase tracking-[0.2em]">
-            Radio
-          </p>
+        <div className="flex-1 flex flex-col overflow-hidden gap-4">
+          {/* Station Display - fills available space with ScaleCell zones */}
+          <div className="flex-1 min-h-0 bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl border grid grid-rows-[1fr_2.5fr_1.5fr]">
+            {/* Top zone: "Radio" label */}
+            <ScaleCell padding={0.8}>
+              <p className="text-[16px] text-muted-foreground uppercase tracking-[0.2em] whitespace-nowrap">
+                Radio
+              </p>
+            </ScaleCell>
 
-          {/* Station Display */}
-          <div className="w-full max-w-md aspect-square bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl flex flex-col items-center justify-center p-8 border">
-            {currentStation?.logo ? (
-              <img
-                src={currentStation.logo}
-                alt={currentStation.name}
-                className="w-28 h-28 rounded-2xl object-cover mb-4"
-              />
-            ) : (
-              <Radio className="w-28 h-28 text-primary mb-4" />
-            )}
-
-            <p className="text-3xl md:text-4xl font-bold text-center" data-testid="text-station-name">
-              {currentStation?.name || "Select a Station"}
-            </p>
-
-            {selectedStation && radioState.isPlaying && (metadata?.nowPlaying || metadata?.title) ? (
-              <div className="mt-4 text-center max-w-full px-2">
-                <div className="flex items-center justify-center gap-2 text-primary mb-1">
-                  <Music2 className="h-4 w-4 animate-pulse" />
-                  <span className="text-sm font-medium uppercase tracking-wide">Now Playing</span>
-                </div>
-                {metadata.artist && (
-                  <p className="text-xl font-semibold truncate" data-testid="text-artist">
-                    {metadata.artist}
-                  </p>
+            {/* Middle zone: Station logo + name (dominant) */}
+            <ScaleCell padding={0.8}>
+              <div className="flex flex-col items-center gap-[0.3em] whitespace-nowrap">
+                {currentStation?.logo ? (
+                  <img
+                    src={currentStation.logo}
+                    alt={currentStation.name}
+                    className="w-[80px] h-[80px] rounded-2xl object-cover"
+                  />
+                ) : (
+                  <Radio className="w-[80px] h-[80px] text-primary" />
                 )}
-                <p className="text-lg text-muted-foreground truncate" data-testid="text-song-title">
-                  {metadata.title || metadata.nowPlaying}
+                <p className="text-[36px] font-bold text-center" data-testid="text-station-name">
+                  {currentStation?.name || "Select a Station"}
                 </p>
               </div>
-            ) : (
-              <p className="text-xl text-muted-foreground mt-3">
-                {radioState.isBuffering ? "Buffering..." :
-                 radioState.isPlaying ? "Now Playing" :
-                 selectedStation ? "Paused" : "Choose a station"}
-              </p>
-            )}
+            </ScaleCell>
 
-            {selectedStation && (metadata?.genre || metadata?.bitrate) && (
-              <div className="flex items-center gap-2 mt-4 flex-wrap justify-center">
-                {metadata.genre && (
-                  <Badge variant="secondary" className="gap-1">
-                    <Disc3 className="h-3 w-3" />
-                    {metadata.genre}
-                  </Badge>
+            {/* Bottom zone: Now playing metadata + badges */}
+            <ScaleCell padding={0.8}>
+              <div className="flex flex-col items-center gap-1 whitespace-nowrap">
+                {selectedStation && radioState.isPlaying && (metadata?.nowPlaying || metadata?.title) ? (
+                  <>
+                    <div className="flex items-center justify-center gap-2 text-primary">
+                      <Music2 className="h-4 w-4 animate-pulse" />
+                      <span className="text-[12px] font-medium uppercase tracking-wide">Now Playing</span>
+                    </div>
+                    {metadata.artist && (
+                      <p className="text-[18px] font-semibold" data-testid="text-artist">
+                        {metadata.artist}
+                      </p>
+                    )}
+                    <p className="text-[16px] text-muted-foreground" data-testid="text-song-title">
+                      {metadata.title || metadata.nowPlaying}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[18px] text-muted-foreground">
+                    {radioState.isBuffering ? "Buffering..." :
+                     radioState.isPlaying ? "Now Playing" :
+                     selectedStation ? "Paused" : "Choose a station"}
+                  </p>
                 )}
-                {metadata.bitrate && (
-                  <Badge variant="outline" className="gap-1">
-                    <Signal className="h-3 w-3" />
-                    {metadata.bitrate} kbps
-                  </Badge>
+
+                {selectedStation && (metadata?.genre || metadata?.bitrate) && (
+                  <div className="flex items-center gap-2 mt-1 flex-wrap justify-center">
+                    {metadata.genre && (
+                      <Badge variant="secondary" className="gap-1">
+                        <Disc3 className="h-3 w-3" />
+                        {metadata.genre}
+                      </Badge>
+                    )}
+                    {metadata.bitrate && (
+                      <Badge variant="outline" className="gap-1">
+                        <Signal className="h-3 w-3" />
+                        {metadata.bitrate} kbps
+                      </Badge>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+            </ScaleCell>
           </div>
 
           {/* Controls */}
-          <Card className="w-full max-w-lg p-6">
+          <Card className="flex-shrink-0 w-full p-6">
             <div className="flex items-center gap-4">
               <Button
                 size="icon"

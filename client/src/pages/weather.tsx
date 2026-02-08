@@ -11,7 +11,7 @@ import {
   type OutdoorAdvice,
   type TrailAdvice,
 } from "@/lib/weather-utils";
-import { useScaleToFill } from "@/hooks/use-scale-to-fill";
+import { ScaleCell } from "@/components/scale-cell";
 import {
   MapPin,
   Settings,
@@ -256,39 +256,6 @@ function TrailAdvisoryCompact({ advice }: { advice: TrailAdvice }) {
         <div className="text-sm md:text-base text-muted-foreground truncate">
           {advice.detail}
         </div>
-      </div>
-    </div>
-  );
-}
-
-// A cell that independently scales its content to fill available space
-function ScaleCell({
-  children,
-  className,
-  padding = 0.88,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  padding?: number;
-}) {
-  const { containerRef, contentRef, ready } = useScaleToFill({ padding });
-
-  return (
-    <div
-      ref={containerRef}
-      className={cn("overflow-hidden flex items-center justify-center", className)}
-    >
-      <div
-        ref={contentRef}
-        className="inline-flex flex-col items-center"
-        style={{
-          transformOrigin: "center center",
-          willChange: "transform",
-          opacity: ready ? 1 : 0,
-          transition: "opacity 150ms ease-out",
-        }}
-      >
-        {children}
       </div>
     </div>
   );
