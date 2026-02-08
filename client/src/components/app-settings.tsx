@@ -593,7 +593,7 @@ function TVPanel({ settings, update }: PanelProps) {
 }
 
 function StocksPanel({ settings, update }: PanelProps) {
-  const currentStocks = settings?.trackedStocks || ["DJI", "VNQ", "BTC"];
+  const currentStocks = settings?.trackedStocks || ["DJI", "SPX", "VNQ", "BTC", "GOLD"];
 
   return (
     <SettingsSection title="Tracked Stocks">

@@ -1668,13 +1668,15 @@ export async function registerRoutes(
   // Market data endpoint - fetches all requested stocks with historical performance
   app.get("/api/market", async (req: Request, res: Response) => {
     try {
-      const symbolsParam = req.query.symbols as string || "DJI,BTC";
+      const symbolsParam = req.query.symbols as string || "DJI,SPX,VNQ,BTC,GOLD";
       const symbols = symbolsParam.split(",").map(s => s.trim().toUpperCase());
 
       const stockConfig: Record<string, { yahooSymbol?: string; isCrypto?: boolean; name: string }> = {
         "DJI": { yahooSymbol: "^DJI", name: "Dow Jones" },
+        "SPX": { yahooSymbol: "^GSPC", name: "S&P 500" },
         "VNQ": { yahooSymbol: "VNQ", name: "Real Estate" },
         "BTC": { isCrypto: true, name: "Bitcoin" },
+        "GOLD": { yahooSymbol: "GC=F", name: "Gold" },
         "MSFT": { yahooSymbol: "MSFT", name: "Microsoft" },
         "CRM": { yahooSymbol: "CRM", name: "Salesforce" },
         "ISRG": { yahooSymbol: "ISRG", name: "Intuitive Surgical" },
@@ -1689,6 +1691,7 @@ export async function registerRoutes(
         change1Y?: number;
         change3Y?: number;
         change5Y?: number;
+        change10Y?: number;
       }
 
       const results: Record<string, MarketResult | null> = {};
@@ -1701,21 +1704,21 @@ export async function registerRoutes(
         if (!config) continue;
 
         if (config.isCrypto) {
-          // Fetch current price and historical data for Bitcoin
+          // Fetch current price and historical data for Bitcoin (max range for 10Y)
           fetchPromises.push(
             Promise.all([
               fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true")
                 .then(r => r.ok ? r.json() : null)
                 .catch(() => null),
-              fetch("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1825&interval=daily")
+              fetch("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=3650")
                 .then(r => r.ok ? r.json() : null)
                 .catch(() => null)
             ]).then(([data, historical]) => ({ symbol, data, historical }))
           );
         } else if (config.yahooSymbol) {
-          // Fetch 5 year data for historical analysis
+          // Fetch 10 year data for historical analysis
           fetchPromises.push(
-            fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(config.yahooSymbol)}?interval=1mo&range=5y`)
+            fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(config.yahooSymbol)}?interval=1mo&range=10y`)
               .then(r => r.ok ? r.json() : null)
               .then(data => ({ symbol, data }))
               .catch(() => ({ symbol, data: null }))
@@ -1749,8 +1752,9 @@ export async function registerRoutes(
             const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
             const threeYearsAgo = now - 3 * 365 * 24 * 60 * 60 * 1000;
             const fiveYearsAgo = now - 5 * 365 * 24 * 60 * 60 * 1000;
+            const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60 * 1000;
 
-            // Find prices closest to 1Y, 3Y, 5Y ago
+            // Find prices closest to 1Y, 3Y, 5Y, 10Y ago
             const findPriceAtTime = (targetTime: number) => {
               let closest = prices[0];
               for (const p of prices) {
@@ -1758,16 +1762,20 @@ export async function registerRoutes(
                   closest = p;
                 }
               }
+              // Only return if the closest data point is within 60 days of the target
+              if (Math.abs(closest[0] - targetTime) > 60 * 24 * 60 * 60 * 1000) return null;
               return closest[1];
             };
 
             const price1YAgo = findPriceAtTime(oneYearAgo);
             const price3YAgo = findPriceAtTime(threeYearsAgo);
-            const price5YAgo = prices[0]?.[1]; // First price in 5Y range
+            const price5YAgo = findPriceAtTime(fiveYearsAgo);
+            const price10YAgo = findPriceAtTime(tenYearsAgo);
 
             if (price1YAgo) result.change1Y = ((currentPrice - price1YAgo) / price1YAgo) * 100;
             if (price3YAgo) result.change3Y = ((currentPrice - price3YAgo) / price3YAgo) * 100;
             if (price5YAgo) result.change5Y = ((currentPrice - price5YAgo) / price5YAgo) * 100;
+            if (price10YAgo) result.change10Y = ((currentPrice - price10YAgo) / price10YAgo) * 100;
           }
 
           results[symbol.toLowerCase()] = result;
@@ -1795,8 +1803,9 @@ export async function registerRoutes(
               const oneYearAgo = now - 365 * 24 * 60 * 60;
               const threeYearsAgo = now - 3 * 365 * 24 * 60 * 60;
               const fiveYearsAgo = now - 5 * 365 * 24 * 60 * 60;
+              const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
 
-              // Find prices closest to 1Y, 3Y, 5Y ago
+              // Find prices closest to 1Y, 3Y, 5Y, 10Y ago (within 60 days tolerance)
               const findPriceAtTime = (targetTime: number) => {
                 let closestIdx = 0;
                 let closestDiff = Math.abs(timestamps[0] - targetTime);
@@ -1807,16 +1816,20 @@ export async function registerRoutes(
                     closestIdx = i;
                   }
                 }
+                // Only return if within 60 days of target
+                if (closestDiff > 60 * 24 * 60 * 60) return null;
                 return closes[closestIdx];
               };
 
               const price1YAgo = findPriceAtTime(oneYearAgo);
               const price3YAgo = findPriceAtTime(threeYearsAgo);
-              const price5YAgo = closes[0]; // First price in 5Y range
+              const price5YAgo = findPriceAtTime(fiveYearsAgo);
+              const price10YAgo = findPriceAtTime(tenYearsAgo);
 
               if (price1YAgo) result.change1Y = ((price - price1YAgo) / price1YAgo) * 100;
               if (price3YAgo) result.change3Y = ((price - price3YAgo) / price3YAgo) * 100;
               if (price5YAgo) result.change5Y = ((price - price5YAgo) / price5YAgo) * 100;
+              if (price10YAgo) result.change10Y = ((price - price10YAgo) / price10YAgo) * 100;
             }
 
             results[symbol.toLowerCase()] = result;

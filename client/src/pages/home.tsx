@@ -36,6 +36,7 @@ interface MarketData {
   change1Y?: number;
   change3Y?: number;
   change5Y?: number;
+  change10Y?: number;
 }
 
 export default function HomePage() {
@@ -57,7 +58,7 @@ export default function HomePage() {
     staleTime: 60 * 1000,
   });
 
-  const trackedStocks = settings?.trackedStocks || ["DJI", "VNQ", "BTC"];
+  const trackedStocks = settings?.trackedStocks || ["DJI", "SPX", "VNQ", "BTC", "GOLD"];
   
   const { data: marketData } = useQuery<Record<string, MarketData | null>>({
     queryKey: ["/api/market", trackedStocks.join(",")],
