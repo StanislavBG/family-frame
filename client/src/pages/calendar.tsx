@@ -30,15 +30,13 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Pencil, Trash2 } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import type { CalendarEvent, Person, InsertCalendarEvent, EventTypeValue } from "@shared/schema";
+import type { CalendarEvent, Person, InsertCalendarEvent, EventTypeValue, UserSettings } from "@shared/schema";
 import { Link } from "wouter";
 import { EventType } from "@shared/schema";
 import { useUser } from "@clerk/clerk-react";
@@ -193,12 +191,23 @@ function CalendarGrid({ currentDate, events, onDateClick, selectedDate, people =
           const birthdays = getBirthdaysForDate(date);
           const hasBirthday = birthdays.length > 0;
 
+          const allEntries: { label: string; color: string }[] = [];
+          if (hasBirthday) {
+            birthdays.forEach((p) => allEntries.push({ label: p.name, color: "text-fuchsia-500" }));
+          }
+          dateEvents.forEach((e) =>
+            allEntries.push({
+              label: e.title,
+              color: e.type === EventType.SHARED ? "text-cyan-500" : "text-violet-500",
+            })
+          );
+
           return (
             <button
               key={date.toISOString()}
               onClick={() => onDateClick(date)}
               className={cn(
-                "flex items-center justify-center rounded-lg text-lg md:text-2xl lg:text-3xl font-medium transition-all duration-200 hover-elevate relative",
+                "flex flex-col items-center justify-start pt-1 rounded-lg text-lg md:text-2xl lg:text-3xl font-medium transition-all duration-200 hover-elevate relative overflow-hidden",
                 isToday(date) && "ring-2 ring-primary ring-offset-2 ring-offset-background",
                 isSelected(date) && "bg-primary text-primary-foreground",
                 hasBirthday && !isSelected(date) && "bg-fuchsia-100 dark:bg-fuchsia-900/40",
@@ -208,11 +217,27 @@ function CalendarGrid({ currentDate, events, onDateClick, selectedDate, people =
               title={hasBirthday ? `Birthday: ${birthdays.map(p => p.name).join(", ")}` : undefined}
             >
               <span>{date.getDate()}</span>
-              {(hasSharedEvent || hasPrivateEvent || hasBirthday) && (
-                <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
-                  {hasBirthday && <div className="w-2 h-2 rounded-full bg-fuchsia-500" />}
-                  {hasSharedEvent && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
-                  {hasPrivateEvent && <div className="w-2 h-2 rounded-full bg-violet-500" />}
+              {allEntries.length > 0 && (
+                <div className="flex flex-col items-center gap-0 mt-0.5 w-full px-0.5 overflow-hidden">
+                  {allEntries.slice(0, 3).map((entry, i) => (
+                    <span
+                      key={i}
+                      className={cn(
+                        "text-[9px] md:text-[10px] leading-tight truncate w-full text-center font-normal",
+                        isSelected(date) ? "text-primary-foreground/80" : entry.color
+                      )}
+                    >
+                      {entry.label}
+                    </span>
+                  ))}
+                  {allEntries.length > 3 && (
+                    <span className={cn(
+                      "text-[8px] leading-tight font-normal",
+                      isSelected(date) ? "text-primary-foreground/60" : "text-muted-foreground"
+                    )}>
+                      +{allEntries.length - 3} more
+                    </span>
+                  )}
                 </div>
               )}
             </button>
@@ -331,7 +356,12 @@ export default function CalendarPage() {
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [editEventOpen, setEditEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
-  const [weekStartsMonday, setWeekStartsMonday] = useState(true);
+
+  const { data: settings } = useQuery<UserSettings>({
+    queryKey: ["/api/settings"],
+  });
+
+  const weekStartsMonday = settings?.weekStartsMonday ?? true;
 
   const { data: events, isLoading: eventsLoading } = useQuery<CalendarEvent[]>({
     queryKey: ["/api/calendar/events"],
@@ -523,12 +553,12 @@ export default function CalendarPage() {
                     </div>
                     <h3 className="font-medium mb-2">No People Added Yet</h3>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Add household members in Settings before creating events.
+                      Add household members in Global Config before creating events.
                     </p>
                     <Button asChild onClick={() => setCreateEventOpen(false)} data-testid="button-add-person-first">
                       <Link href="/settings">
                         <Users className="h-4 w-4 mr-2" />
-                        Go to Settings
+                        Go to Global Config
                       </Link>
                     </Button>
                   </div>
@@ -776,78 +806,74 @@ export default function CalendarPage() {
                 weekStartsMonday={weekStartsMonday}
               />
             </div>
-            <div className="flex items-center justify-between pt-2 border-t text-xs flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="week-start"
-                  checked={!weekStartsMonday}
-                  onCheckedChange={(checked) => setWeekStartsMonday(!checked)}
-                  data-testid="switch-week-start"
-                />
-                <Label htmlFor="week-start" className="text-muted-foreground cursor-pointer text-xs">
-                  {weekStartsMonday ? "Mon-Sun" : "Sun-Sat"}
-                </Label>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-fuchsia-500" />
-                  <span className="text-muted-foreground">Birthday</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-cyan-500" />
-                  <span className="text-muted-foreground">Shared</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-violet-500" />
-                  <span className="text-muted-foreground">Private</span>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
         <Card className="flex-shrink-0">
-          <CardContent className="py-2 px-4">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 flex-shrink-0">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Upcoming</span>
               </div>
-              {upcomingEvents.length > 0 ? (
-                <div className="flex-1 flex items-center gap-3 overflow-x-auto">
-                  {upcomingEvents.slice(0, 5).map((event) => {
-                    const startDate = parseLocalDate(event.startDate);
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const diffDays = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                    const dateLabel = diffDays === 0 ? "Today" : diffDays === 1 ? "Tomorrow" : startDate.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-                    
-                    return (
-                      <div
-                        key={event.id}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50 flex-shrink-0 cursor-pointer hover-elevate",
-                          event.type === EventType.SHARED ? "border-l-2 border-l-cyan-500" : "border-l-2 border-l-violet-500"
-                        )}
-                        onClick={() => handleEditEvent(event)}
-                        data-testid={`upcoming-event-${event.id}`}
-                      >
-                        <span className="text-xs text-muted-foreground">{dateLabel}</span>
-                        <span className="text-sm font-medium truncate max-w-[150px]">{event.title}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <span className="text-sm text-muted-foreground">No upcoming events</span>
-              )}
-              <Button variant="outline" size="sm" asChild className="flex-shrink-0" data-testid="button-manage-people">
-                <Link href="/settings">
+              <Button variant="outline" size="sm" asChild data-testid="button-manage-people">
+                <Link href="/settings?section=people">
                   <Users className="h-4 w-4 mr-1" />
                   People
                 </Link>
               </Button>
             </div>
+            {upcomingEvents.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {upcomingEvents.map((event) => {
+                  const startDate = parseLocalDate(event.startDate);
+                  const endDate = parseLocalDate(event.endDate);
+                  const isMultiDay = startDate.toDateString() !== endDate.toDateString();
+                  const todayRef = new Date();
+                  todayRef.setHours(0, 0, 0, 0);
+                  const diffDays = Math.ceil((startDate.getTime() - todayRef.getTime()) / (1000 * 60 * 60 * 24));
+                  const dateLabel = diffDays === 0 ? "Today" : diffDays === 1 ? "Tomorrow" : startDate.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                  const eventPeople = (people || []).filter((p) => (event.people || []).includes(p.id));
+
+                  return (
+                    <div
+                      key={event.id}
+                      className={cn(
+                        "flex flex-col gap-0.5 px-3 py-2 rounded-md bg-muted/50 cursor-pointer hover-elevate min-w-[180px] flex-1 max-w-[300px]",
+                        event.type === EventType.SHARED ? "border-l-2 border-l-cyan-500" : "border-l-2 border-l-violet-500"
+                      )}
+                      onClick={() => handleEditEvent(event)}
+                      data-testid={`upcoming-event-${event.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium truncate">{event.title}</span>
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
+                        >
+                          {event.type}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>{dateLabel}</span>
+                        {isMultiDay && (
+                          <span>- {endDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                        )}
+                      </div>
+                      {eventPeople.length > 0 && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="h-3 w-3" />
+                          <span className="truncate">{eventPeople.map(p => p.name).join(", ")}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">No upcoming events</span>
+            )}
           </CardContent>
         </Card>
       </div>
