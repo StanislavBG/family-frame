@@ -144,8 +144,8 @@ export function ClockWidget({ variant = "full", style, className = "" }: ClockWi
 
   // Rectangular analog clock - fills entire container
   const { width, height } = dimensions;
-  const padding = 8;
-  const frameWidth = 12;
+  const padding = 2;
+  const frameWidth = 10;
 
   // Inner dimensions (clock face)
   const innerWidth = width - (padding + frameWidth) * 2;
