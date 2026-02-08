@@ -12,6 +12,7 @@ interface MarketData {
   change1Y?: number;
   change3Y?: number;
   change5Y?: number;
+  change10Y?: number;
 }
 
 interface StockWidgetProps {
@@ -61,7 +62,7 @@ function PercentBadge({ value, label }: { value: number | undefined; label: stri
 }
 
 export function StockWidget({ symbol, name, data, variant = "full", className = "" }: StockWidgetProps) {
-  const isCrypto = symbol === "BTC";
+  const showDollarSign = symbol === "BTC" || symbol === "GOLD";
 
   if (variant === "ticker") {
     return (
@@ -73,7 +74,7 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
           {data ? (
             <>
               <div className="text-lg font-bold flex items-center gap-1">
-                {isCrypto ? '$' : ''}{formatPrice(data.price)}
+                {showDollarSign ? '$' : ''}{formatPrice(data.price)}
                 <TrendIcon change={data.change} size="small" />
               </div>
               <div className={`text-sm ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -100,7 +101,7 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
           </span>
           {data ? (
             <span className="text-2xl font-bold flex items-center gap-2">
-              {isCrypto ? '$' : ''}{formatPrice(data.price)}
+              {showDollarSign ? '$' : ''}{formatPrice(data.price)}
               <TrendIcon change={data.change} size="small" />
             </span>
           ) : (
@@ -133,7 +134,7 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
             <ScaleCell padding={0.88}>
               <div className="inline-flex items-center gap-[0.15em] whitespace-nowrap">
                 <span className="text-[64px] font-bold text-primary leading-[0.9]">
-                  {isCrypto ? '$' : ''}{formatPrice(data.price)}
+                  {showDollarSign ? '$' : ''}{formatPrice(data.price)}
                 </span>
                 <TrendIcon change={data.change} />
                 <span className={`text-[24px] font-semibold ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -148,6 +149,7 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
                 <PercentBadge value={data.change1Y} label="1Y" />
                 <PercentBadge value={data.change3Y} label="3Y" />
                 <PercentBadge value={data.change5Y} label="5Y" />
+                <PercentBadge value={data.change10Y} label="10Y" />
               </div>
             </ScaleCell>
           </div>

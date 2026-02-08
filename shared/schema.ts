@@ -148,8 +148,10 @@ export const defaultRadioStations: RadioStation[] = flattenRadioTree(defaultRadi
 // Available stocks for tracking
 export const availableStocks = [
   { symbol: "DJI", name: "Dow Jones", yahooSymbol: "^DJI" },
+  { symbol: "SPX", name: "S&P 500", yahooSymbol: "^GSPC" },
   { symbol: "VNQ", name: "Real Estate", yahooSymbol: "VNQ" },
   { symbol: "BTC", name: "Bitcoin", isCrypto: true },
+  { symbol: "GOLD", name: "Gold", yahooSymbol: "GC=F" },
   { symbol: "MSFT", name: "Microsoft", yahooSymbol: "MSFT" },
   { symbol: "CRM", name: "Salesforce", yahooSymbol: "CRM" },
   { symbol: "ISRG", name: "Intuitive Surgical", yahooSymbol: "ISRG" },
@@ -217,7 +219,7 @@ export const userSettingsSchema = z.object({
   radioEnabled: z.boolean().default(false),
   radioVolume: z.number().min(0).max(100).default(50),
   radioStation: z.string().default("https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac"),
-  trackedStocks: z.array(z.string()).default(["DJI", "BTC"]), // Default to Dow and Bitcoin
+  trackedStocks: z.array(z.string()).default(["DJI", "SPX", "VNQ", "BTC", "GOLD"]), // Default market trackers
   // App picker settings
   visibleApps: z.array(z.string()).optional(), // If undefined, all apps visible
   appOrder: z.array(z.string()).optional(), // Custom app order (excludes fixed apps)
