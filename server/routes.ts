@@ -2997,8 +2997,7 @@ export async function registerRoutes(
   // ===== MESSAGING ENDPOINTS =====
 
   // Get all messages for the user
-  app.get("/api/messages", async (req: Request, res: Response) => {
-    try {
+  app.get("/api/messages", asyncHandler(async (req: Request, res: Response) => {
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
@@ -3008,18 +3007,11 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-      
-      // Handle messages as either array or object (Firebase may convert arrays to objects)
-      let messages: Message[] = [];
-      if (Array.isArray(userData.messages)) {
-        messages = userData.messages;
-      } else if (userData.messages && typeof userData.messages === 'object') {
-        messages = Object.values(userData.messages);
-      }
-      
+      const messages = toArray<Message>(userData.messages as any);
+
       // Filter out any invalid messages and ensure they have required fields
       const validMessages = messages.filter((m: any) => m && m.id && m.createdAt);
-      
+
       // Sort by createdAt descending (newest first)
       const sortedMessages = [...validMessages].sort((a: Message, b: Message) => {
         const dateA = new Date(a.createdAt || 0).getTime();
@@ -3028,15 +3020,10 @@ export async function registerRoutes(
       });
 
       res.json(sortedMessages);
-    } catch (error) {
-      console.error("Get messages error:", error);
-      res.status(500).json({ error: "Internal server error", details: String(error) });
-    }
-  });
+  }));
 
   // Get unread message count
-  app.get("/api/messages/unread-count", async (req: Request, res: Response) => {
-    try {
+  app.get("/api/messages/unread-count", asyncHandler(async (req: Request, res: Response) => {
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
@@ -3046,27 +3033,14 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-      
-      // Handle messages as either array or object
-      let messages: Message[] = [];
-      if (Array.isArray(userData.messages)) {
-        messages = userData.messages;
-      } else if (userData.messages && typeof userData.messages === 'object') {
-        messages = Object.values(userData.messages);
-      }
-      
+      const messages = toArray<Message>(userData.messages as any);
       const unreadCount = messages.filter((m: Message) => !m.isRead).length;
 
       res.json({ count: unreadCount });
-    } catch (error) {
-      console.error("Get unread count error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  }));
 
   // Send a message to a connected user
-  app.post("/api/messages", async (req: Request, res: Response) => {
-    try {
+  app.post("/api/messages", asyncHandler(async (req: Request, res: Response) => {
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
@@ -3083,22 +3057,8 @@ export async function registerRoutes(
 
       const { toUserId, toUsername, content, linkedNoteId } = validatedData.data;
 
-      let userData;
-      try {
-        userData = await getOrCreateUser(userId, username);
-      } catch (firebaseError: any) {
-        console.error("Firebase error getting sender data:", firebaseError?.message || firebaseError);
-        res.status(500).json({ error: "Database error" });
-        return;
-      }
-
-      // Handle connections as either array or object (Firebase may convert arrays to objects)
-      let connections: string[] = [];
-      if (Array.isArray(userData.connections)) {
-        connections = userData.connections;
-      } else if (userData.connections && typeof userData.connections === 'object') {
-        connections = Object.values(userData.connections);
-      }
+      const userData = await getOrCreateUser(userId, username);
+      const connections = toArray<string>(userData.connections as any);
 
       // Check if recipient is a connected user
       if (!connections.includes(toUserId)) {
@@ -3108,7 +3068,7 @@ export async function registerRoutes(
 
       const now = new Date().toISOString();
       const messageId = randomUUID();
-      
+
       // Message for recipient (unread)
       // Note: Firebase doesn't allow undefined values, so only include linkedNoteId if defined
       const recipientMessage: Message = {
@@ -3138,37 +3098,18 @@ export async function registerRoutes(
 
       // Add message to recipient's inbox
       const recipientData = await getOrCreateUser(toUserId, toUsername);
-
-      // Handle messages as either array or object
-      let recipientMsgs: Message[] = [];
-      if (Array.isArray(recipientData.messages)) {
-        recipientMsgs = [...recipientData.messages];
-      } else if (recipientData.messages && typeof recipientData.messages === 'object') {
-        recipientMsgs = [...(Object.values(recipientData.messages) as Message[])];
-      }
-      recipientMsgs.push(recipientMessage);
+      const recipientMsgs = [...toArray<Message>(recipientData.messages as any), recipientMessage];
       await updateUserData(toUserId, { messages: recipientMsgs });
 
       // Add sent copy to sender's messages
-      let senderMsgs: Message[] = [];
-      if (Array.isArray(userData.messages)) {
-        senderMsgs = [...userData.messages];
-      } else if (userData.messages && typeof userData.messages === 'object') {
-        senderMsgs = [...(Object.values(userData.messages) as Message[])];
-      }
-      senderMsgs.push(senderMessage);
+      const senderMsgs = [...toArray<Message>(userData.messages as any), senderMessage];
       await updateUserData(userId, { messages: senderMsgs });
 
       res.status(201).json(senderMessage);
-    } catch (error: any) {
-      console.error("Send message error:", error?.message || error, error?.stack);
-      res.status(500).json({ error: "Internal server error", debug: error?.message || String(error) });
-    }
-  });
+  }));
 
   // Mark a message as read
-  app.patch("/api/messages/:messageId/read", async (req: Request, res: Response) => {
-    try {
+  app.patch("/api/messages/:messageId/read", asyncHandler(async (req: Request, res: Response) => {
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
       const { messageId } = req.params;
@@ -3179,15 +3120,7 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-      
-      // Handle messages as either array or object
-      let messages: Message[] = [];
-      if (Array.isArray(userData.messages)) {
-        messages = userData.messages;
-      } else if (userData.messages && typeof userData.messages === 'object') {
-        messages = Object.values(userData.messages);
-      }
-      
+      const messages = toArray<Message>(userData.messages as any);
       const messageIndex = messages.findIndex((m: Message) => m.id === messageId);
 
       if (messageIndex === -1) {
@@ -3199,15 +3132,10 @@ export async function registerRoutes(
       await updateUserData(userId, { messages });
 
       res.json(messages[messageIndex]);
-    } catch (error) {
-      console.error("Mark message read error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  }));
 
   // Mark all messages as read
-  app.post("/api/messages/mark-all-read", async (req: Request, res: Response) => {
-    try {
+  app.post("/api/messages/mark-all-read", asyncHandler(async (req: Request, res: Response) => {
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
 
@@ -3217,16 +3145,7 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-      
-      // Handle messages as either array or object
-      let rawMessages: Message[] = [];
-      if (Array.isArray(userData.messages)) {
-        rawMessages = userData.messages;
-      } else if (userData.messages && typeof userData.messages === 'object') {
-        rawMessages = Object.values(userData.messages);
-      }
-      
-      const messages = rawMessages.map((m: Message) => ({
+      const messages = toArray<Message>(userData.messages as any).map((m: Message) => ({
         ...m,
         isRead: true,
       }));
@@ -3234,15 +3153,10 @@ export async function registerRoutes(
       await updateUserData(userId, { messages });
 
       res.json({ success: true });
-    } catch (error) {
-      console.error("Mark all read error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  }));
 
   // Delete a message
-  app.delete("/api/messages/:messageId", async (req: Request, res: Response) => {
-    try {
+  app.delete("/api/messages/:messageId", asyncHandler(async (req: Request, res: Response) => {
       const userId = req.headers["x-clerk-user-id"] as string;
       const username = req.headers["x-clerk-username"] as string || "user";
       const { messageId } = req.params;
@@ -3253,25 +3167,12 @@ export async function registerRoutes(
       }
 
       const userData = await getOrCreateUser(userId, username);
-
-      // Handle messages as either array or object
-      let rawMessages: Message[] = [];
-      if (Array.isArray(userData.messages)) {
-        rawMessages = userData.messages;
-      } else if (userData.messages && typeof userData.messages === 'object') {
-        rawMessages = Object.values(userData.messages);
-      }
-
-      const messages = rawMessages.filter((m: Message) => m.id !== messageId);
+      const messages = toArray<Message>(userData.messages as any).filter((m: Message) => m.id !== messageId);
 
       await updateUserData(userId, { messages });
 
       res.json({ success: true });
-    } catch (error) {
-      console.error("Delete message error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  }));
 
   // ===== CHORES ENDPOINTS =====
 

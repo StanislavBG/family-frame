@@ -121,10 +121,16 @@ export function useCreateMutation<TData = unknown, TVariables = unknown>(
 
 /**
  * Hook to create a PATCH mutation with standard patterns.
+ *
+ * When `getEndpoint` is a function, variables are used for URL construction only
+ * and NOT sent as the request body (use `getBody` to explicitly provide body data).
+ * When `getEndpoint` is a static string, variables are sent as the request body.
  */
 export function useUpdateMutation<TData = unknown, TVariables = unknown>(
   getEndpoint: string | ((variables: TVariables) => string),
-  options: MutationOptions<TData, TVariables> = {}
+  options: MutationOptions<TData, TVariables> & {
+    getBody?: (variables: TVariables) => unknown;
+  } = {}
 ) {
   const { toast } = useToast();
   const {
@@ -133,12 +139,18 @@ export function useUpdateMutation<TData = unknown, TVariables = unknown>(
     invalidateKeys = [],
     onSuccess,
     onError,
+    getBody,
   } = options;
 
   return useMutation({
     mutationFn: async (data: TVariables): Promise<TData> => {
       const endpoint = typeof getEndpoint === "function" ? getEndpoint(data) : getEndpoint;
-      return apiRequest<TData>("PATCH", endpoint, data);
+      // Dynamic endpoints: variables are URL params only, no body unless getBody is provided.
+      // Static endpoints: variables are the request body.
+      const body = getBody
+        ? getBody(data)
+        : typeof getEndpoint === "string" ? data : undefined;
+      return apiRequest<TData>("PATCH", endpoint, body);
     },
     onSuccess: (data, variables) => {
       if (invalidateKeys.length > 0) {
@@ -162,10 +174,16 @@ export function useUpdateMutation<TData = unknown, TVariables = unknown>(
 
 /**
  * Hook to create a PUT mutation with standard patterns.
+ *
+ * When `getEndpoint` is a function, variables are used for URL construction only
+ * and NOT sent as the request body (use `getBody` to explicitly provide body data).
+ * When `getEndpoint` is a static string, variables are sent as the request body.
  */
 export function usePutMutation<TData = unknown, TVariables = unknown>(
   getEndpoint: string | ((variables: TVariables) => string),
-  options: MutationOptions<TData, TVariables> = {}
+  options: MutationOptions<TData, TVariables> & {
+    getBody?: (variables: TVariables) => unknown;
+  } = {}
 ) {
   const { toast } = useToast();
   const {
@@ -174,12 +192,16 @@ export function usePutMutation<TData = unknown, TVariables = unknown>(
     invalidateKeys = [],
     onSuccess,
     onError,
+    getBody,
   } = options;
 
   return useMutation({
     mutationFn: async (data: TVariables): Promise<TData> => {
       const endpoint = typeof getEndpoint === "function" ? getEndpoint(data) : getEndpoint;
-      return apiRequest<TData>("PUT", endpoint, data);
+      const body = getBody
+        ? getBody(data)
+        : typeof getEndpoint === "string" ? data : undefined;
+      return apiRequest<TData>("PUT", endpoint, body);
     },
     onSuccess: (data, variables) => {
       if (invalidateKeys.length > 0) {
