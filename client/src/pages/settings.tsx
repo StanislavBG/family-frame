@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,22 +21,18 @@ import {
   Settings,
   Home,
   MapPin,
-  Camera,
   Users,
   Check,
   X,
   Plus,
   Trash2,
-  RefreshCw,
   Image,
   Link as LinkIcon,
   UserPlus,
-  ExternalLink,
   Pencil,
   LayoutGrid,
   ChevronUp,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Clock,
   Cloud,
@@ -49,67 +45,17 @@ import {
   ShoppingCart,
   BarChart3,
   Search,
-  TrendingUp,
-  Thermometer,
   PanelLeftClose,
   PanelLeft,
   Wrench,
-  AppWindow,
   Baby,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import type { UserSettings, ConnectedUser, Person, ConnectionRequest } from "@shared/schema";
-import { PhotoSource, availableStocks, defaultAppList, BABY_AGE_RANGES, TV_CHANNELS } from "@shared/schema";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-
-interface PickerSession {
-  id: string;
-  pickerUri?: string;
-  mediaItemsSet?: boolean;
-}
-
-interface IntervalSliderProps {
-  value: number;
-  onCommit: (value: number) => void;
-}
-
-function IntervalSlider({ value, onCommit }: IntervalSliderProps) {
-  const [localValue, setLocalValue] = useState(value);
-
-  useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label>Slideshow Interval</Label>
-        <span className="text-sm font-medium text-muted-foreground">
-          {localValue} seconds
-        </span>
-      </div>
-      <Slider
-        value={[localValue]}
-        onValueChange={(vals) => setLocalValue(vals[0])}
-        onValueCommit={(vals) => onCommit(vals[0])}
-        min={5}
-        max={60}
-        step={5}
-        className="w-full"
-        data-testid="slider-photo-interval"
-      />
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>5s</span>
-        <span>30s</span>
-        <span>60s</span>
-      </div>
-    </div>
-  );
-}
+import { defaultAppList } from "@shared/schema";
 
 function SettingsSkeleton() {
   return (
@@ -281,26 +227,20 @@ const appIconMap: Record<string, React.ComponentType<{ className?: string }>> = 
   stocks: BarChart3,
 };
 
-type NavSection = "household" | "location" | "people" | "connections" | "weather" | "picture-frame" | "baby-songs" | "tv" | "stocks" | "apps";
+type NavSection = "household" | "location" | "people" | "connections" | "apps";
 
 interface NavItem {
   id: NavSection;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  isSystem: boolean;
 }
 
 const navItems: NavItem[] = [
-  { id: "household", label: "Household Identity", icon: Home, isSystem: true },
-  { id: "location", label: "Location", icon: MapPin, isSystem: true },
-  { id: "people", label: "People", icon: Users, isSystem: true },
-  { id: "connections", label: "Connections", icon: LinkIcon, isSystem: true },
-  { id: "weather", label: "Weather", icon: Cloud, isSystem: false },
-  { id: "picture-frame", label: "Picture Frame", icon: Image, isSystem: false },
-  { id: "baby-songs", label: "Baby Songs", icon: Baby, isSystem: false },
-  { id: "tv", label: "TV", icon: Tv, isSystem: false },
-  { id: "stocks", label: "Stocks", icon: TrendingUp, isSystem: false },
-  { id: "apps", label: "App Picker", icon: LayoutGrid, isSystem: false },
+  { id: "household", label: "Household Identity", icon: Home },
+  { id: "location", label: "Location", icon: MapPin },
+  { id: "people", label: "People", icon: Users },
+  { id: "connections", label: "Connections", icon: LinkIcon },
+  { id: "apps", label: "App Picker", icon: LayoutGrid },
 ];
 
 export default function SettingsPage() {
@@ -308,7 +248,7 @@ export default function SettingsPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const sectionFromUrl = urlParams.get("section");
-  const validSections: NavSection[] = ["household", "location", "people", "connections", "weather", "picture-frame", "baby-songs", "tv", "stocks", "apps"];
+  const validSections: NavSection[] = ["household", "location", "people", "connections", "apps"];
   const initialSection = sectionFromUrl && validSections.includes(sectionFromUrl as NavSection) 
     ? sectionFromUrl as NavSection 
     : "household";
@@ -328,57 +268,15 @@ export default function SettingsPage() {
   const [editPersonBirthday, setEditPersonBirthday] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [systemExpanded, setSystemExpanded] = useState(true);
-  const [appsExpanded, setAppsExpanded] = useState(true);
-  
+
   useEffect(() => {
     if (sectionFromUrl && validSections.includes(sectionFromUrl as NavSection)) {
       setActiveSection(sectionFromUrl as NavSection);
     }
   }, [sectionFromUrl]);
 
-  useEffect(() => {
-    const success = urlParams.get("success");
-    const error = urlParams.get("error");
-    
-    if (success === "google_connected") {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-      toast({ title: "Google Photos connected successfully!" });
-      setActiveSection("picture-frame");
-      window.history.replaceState({}, "", "/settings?section=picture-frame");
-    }
-    
-    if (error) {
-      toast({ 
-        title: "Failed to connect Google Photos", 
-        description: error === "token_exchange_failed" ? "Could not complete authorization" : "Please try again",
-        variant: "destructive" 
-      });
-      window.history.replaceState({}, "", "/settings?section=picture-frame");
-    }
-  }, []);
-
   const { data: settings, isLoading: settingsLoading } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
-  });
-
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [pollingSession, setPollingSession] = useState<string | null>(null);
-  const [localTvVolume, setLocalTvVolume] = useState(50);
-  const tvVolumeInitialized = useRef(false);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (settings && !tvVolumeInitialized.current) {
-      setLocalTvVolume(settings.tvVolume ?? 50);
-      tvVolumeInitialized.current = true;
-    }
-  }, [settings]);
-
-  const { data: pickerSessionData, refetch: refetchPickerSession } = useQuery<{ hasSession: boolean; photoCount: number; session?: PickerSession }>({
-    queryKey: ["/api/google/picker/current"],
-    enabled: settings?.googlePhotosConnected === true,
-    staleTime: 0,
   });
 
   const { data: connectedUsers } = useQuery<ConnectedUser[]>({
@@ -409,107 +307,6 @@ export default function SettingsPage() {
       toast({ title: "Failed to update settings", description: error.message, variant: "destructive" });
     },
   });
-
-  const connectGoogleMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("GET", "/api/google/auth-url");
-      return response as { url: string };
-    },
-    onSuccess: (data) => {
-      window.location.href = data.url;
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to connect Google Photos", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const disconnectGoogleMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("DELETE", "/api/google/disconnect");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/google/albums/separated"] });
-      toast({ title: "Google Photos disconnected" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to disconnect", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const createPickerSessionMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", "/api/google/picker/session") as Promise<PickerSession>;
-    },
-    onSuccess: (session) => {
-      if (session.pickerUri) {
-        window.open(session.pickerUri, "_blank", "width=800,height=600");
-        setIsPickerOpen(true);
-        setPollingSession(session.id);
-        toast({ 
-          title: "Photo Picker opened", 
-          description: "Select your photos in the new window, then come back here." 
-        });
-      }
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to open photo picker", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const clearPhotosMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("DELETE", "/api/photos/all") as Promise<{ success: boolean; count: number }>;
-    },
-    onSuccess: () => {
-      toast({ title: "Photos cleared" });
-      queryClient.invalidateQueries({ queryKey: ["/api/google/picker/current"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/photos"] });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to clear photos", description: error.message, variant: "destructive" });
-    },
-  });
-
-  useEffect(() => {
-    if (!pollingSession) return;
-
-    const pollSession = async () => {
-      try {
-        const response = await apiRequest("GET", `/api/google/picker/session/${pollingSession}`) as PickerSession;
-        if (response.mediaItemsSet) {
-          setIsPickerOpen(false);
-          setPollingSession(null);
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
-          queryClient.invalidateQueries({ queryKey: ["/api/google/picker/current"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/photos"] });
-          toast({ title: "Photos selected!", description: "Your photos are ready for the Picture Frame." });
-        }
-      } catch (error) {
-        console.error("Polling error:", error);
-      }
-    };
-
-    pollingRef.current = setInterval(pollSession, 3000);
-    
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, [pollingSession]);
-
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
-    };
-  }, []);
 
   const connectUserMutation = useMutation({
     mutationFn: async (username: string) => {
@@ -630,12 +427,9 @@ export default function SettingsPage() {
     });
   };
 
-  const filteredNavItems = navItems.filter(item => 
+  const filteredNavItems = navItems.filter(item =>
     item.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const systemItems = filteredNavItems.filter(item => item.isSystem);
-  const appItems = filteredNavItems.filter(item => !item.isSystem);
 
   const handleNavClick = (section: NavSection) => {
     setActiveSection(section);
@@ -657,8 +451,8 @@ export default function SettingsPage() {
         className={cn(
           "w-full flex items-center rounded-md text-left transition-all duration-200",
           collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
-          isActive 
-            ? "bg-primary/10 text-primary font-medium" 
+          isActive
+            ? "bg-primary/10 text-primary font-medium"
             : "hover-elevate text-muted-foreground hover:text-foreground"
         )}
         data-testid={`nav-${item.id}`}
@@ -666,48 +460,6 @@ export default function SettingsPage() {
       >
         <Icon className="h-4 w-4 shrink-0" />
         {!collapsed && <span className="truncate">{item.label}</span>}
-      </button>
-    );
-  };
-
-  const renderSectionHeader = (
-    label: string, 
-    icon: React.ComponentType<{ className?: string }>,
-    expanded: boolean, 
-    onToggle: () => void, 
-    itemCount: number,
-    collapsed: boolean = false
-  ) => {
-    const Icon = icon;
-    if (collapsed) {
-      return (
-        <button
-          onClick={onToggle}
-          className="w-full flex items-center justify-center p-2 rounded-md hover-elevate text-muted-foreground"
-          title={`${label} (${itemCount})`}
-          data-testid={`toggle-${label.toLowerCase()}-collapsed`}
-        >
-          <Icon className="h-4 w-4" />
-        </button>
-      );
-    }
-    return (
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-3 py-2 rounded-md hover-elevate text-muted-foreground group"
-        data-testid={`toggle-${label.toLowerCase()}`}
-      >
-        <div className="flex items-center gap-2">
-          {expanded ? (
-            <ChevronDown className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
-          )}
-          <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
-          {!expanded && (
-            <span className="text-xs">({itemCount})</span>
-          )}
-        </div>
       </button>
     );
   };
@@ -926,451 +678,6 @@ export default function SettingsPage() {
           </div>
         );
 
-      case "weather":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-1">Weather Settings</h2>
-              <p className="text-muted-foreground">Configure how weather is displayed</p>
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <Thermometer className="h-4 w-4" />
-                      <Label>Temperature Unit</Label>
-                    </div>
-                    <p className="text-sm text-muted-foreground">Choose your preferred unit</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">°C</span>
-                    <Switch
-                      checked={settings?.temperatureUnit === "fahrenheit"}
-                      onCheckedChange={(checked) =>
-                        updateSettingsMutation.mutate({
-                          temperatureUnit: checked ? "fahrenheit" : "celsius",
-                        })
-                      }
-                      data-testid="switch-temp-unit"
-                    />
-                    <span className="text-sm">°F</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" />
-                      <Label>Time Format</Label>
-                    </div>
-                    <p className="text-sm text-muted-foreground">Choose 12-hour or 24-hour (military) time</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">12h</span>
-                    <Switch
-                      checked={settings?.timeFormat === "24h"}
-                      onCheckedChange={(checked) =>
-                        updateSettingsMutation.mutate({
-                          timeFormat: checked ? "24h" : "12h",
-                        })
-                      }
-                      data-testid="switch-time-format"
-                    />
-                    <span className="text-sm">24h</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case "picture-frame":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-1">Picture Frame</h2>
-              <p className="text-muted-foreground">Manage your photo sources and slideshow settings</p>
-            </div>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Camera className="h-5 w-5" />
-                  Google Photos
-                </CardTitle>
-                <CardDescription>
-                  Connect your Google Photos to display shared memories
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {settings?.googlePhotosConnected ? (
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
-                          <Check className="h-5 w-5 text-green-600 dark:text-green-400" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-green-700 dark:text-green-300">Connected</p>
-                          <p className="text-sm text-green-600 dark:text-green-400">
-                            Google Photos is linked to your account
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => disconnectGoogleMutation.mutate()}
-                        disabled={disconnectGoogleMutation.isPending}
-                        data-testid="button-disconnect-google"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        {disconnectGoogleMutation.isPending ? "Disconnecting..." : "Disconnect"}
-                      </Button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium">Photo Selection</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {pickerSessionData?.hasSession && pickerSessionData.session?.mediaItemsSet
-                              ? "Photos selected for your Picture Frame"
-                              : "Choose photos to display on your Picture Frame"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {isPickerOpen ? (
-                        <div className="p-6 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
-                          <div className="flex items-center gap-3">
-                            <div className="animate-spin">
-                              <RefreshCw className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-amber-700 dark:text-amber-300">Waiting for selection...</p>
-                              <p className="text-sm text-amber-600 dark:text-amber-400">
-                                Select photos in the Google Photos picker window, then close it to continue.
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-4"
-                            onClick={() => {
-                              setIsPickerOpen(false);
-                              setPollingSession(null);
-                              if (pollingRef.current) {
-                                clearInterval(pollingRef.current);
-                                pollingRef.current = null;
-                              }
-                            }}
-                            data-testid="button-cancel-picker"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : pickerSessionData?.hasSession && pickerSessionData.photoCount > 0 ? (
-                        <div className="p-6 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
-                          <div className="flex items-center justify-between flex-wrap gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
-                                <Image className="h-5 w-5 text-green-600 dark:text-green-400" />
-                              </div>
-                              <div>
-                                <p className="font-medium text-green-700 dark:text-green-300">
-                                  {pickerSessionData.photoCount} {pickerSessionData.photoCount === 1 ? "Photo" : "Photos"} Selected
-                                </p>
-                                <p className="text-sm text-green-600 dark:text-green-400">
-                                  Add more photos or clear the collection
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                onClick={() => createPickerSessionMutation.mutate()}
-                                disabled={createPickerSessionMutation.isPending}
-                                data-testid="button-add-more-photos"
-                              >
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add More
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => clearPhotosMutation.mutate()}
-                                disabled={clearPhotosMutation.isPending}
-                                data-testid="button-clear-photos"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 border-2 border-dashed rounded-lg">
-                          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                            <Image className="h-8 w-8 text-muted-foreground" />
-                          </div>
-                          <h3 className="font-medium mb-2">No Photos Selected</h3>
-                          <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-                            Click below to open the Google Photos picker and choose which photos to display
-                          </p>
-                          <Button
-                            onClick={() => createPickerSessionMutation.mutate()}
-                            disabled={createPickerSessionMutation.isPending}
-                            data-testid="button-select-photos"
-                          >
-                            <Camera className="h-4 w-4 mr-2" />
-                            {createPickerSessionMutation.isPending ? "Opening..." : "Select Photos"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                      <Camera className="h-10 w-10 text-primary" />
-                    </div>
-                    <h3 className="text-lg font-medium mb-2">Connect Google Photos</h3>
-                    <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                      Link your Google Photos account to display your shared albums on the Picture Frame
-                    </p>
-                    <Button
-                      onClick={() => connectGoogleMutation.mutate()}
-                      disabled={connectGoogleMutation.isPending}
-                      size="lg"
-                      data-testid="button-connect-google"
-                    >
-                      <ExternalLink className="h-5 w-5 mr-2" />
-                      {connectGoogleMutation.isPending ? "Connecting..." : "Connect Google Photos"}
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Image className="h-5 w-5" />
-                  Display Settings
-                </CardTitle>
-                <CardDescription>
-                  Choose your photo source and slideshow timing
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-3">
-                  <Label>Photo Source</Label>
-                  <Select
-                    value={settings?.photoSource || PhotoSource.PIXABAY}
-                    onValueChange={(value) => 
-                      updateSettingsMutation.mutate({ photoSource: value as typeof PhotoSource.GOOGLE_PHOTOS | typeof PhotoSource.PIXABAY })
-                    }
-                    data-testid="select-photo-source"
-                  >
-                    <SelectTrigger data-testid="select-photo-source-trigger">
-                      <SelectValue placeholder="Select photo source" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={PhotoSource.GOOGLE_PHOTOS} data-testid="option-google-photos">
-                        <div className="flex items-center gap-2">
-                          <Camera className="h-4 w-4" />
-                          Google Photos
-                        </div>
-                      </SelectItem>
-                      <SelectItem value={PhotoSource.PIXABAY} data-testid="option-pixabay">
-                        <div className="flex items-center gap-2">
-                          <Image className="h-4 w-4" />
-                          Pixabay Ambient
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    {settings?.photoSource === PhotoSource.PIXABAY 
-                      ? "Beautiful, high-quality ambient photos from Pixabay"
-                      : "Display photos from your selected Google Photos albums"}
-                  </p>
-                </div>
-
-                {settings?.photoSource === PhotoSource.GOOGLE_PHOTOS && !settings?.googlePhotosConnected && (
-                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                      Connect your Google Photos account above to use this source.
-                    </p>
-                  </div>
-                )}
-
-                <IntervalSlider 
-                  value={settings?.photoInterval || 10}
-                  onCommit={(value) => updateSettingsMutation.mutate({ photoInterval: value })}
-                />
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case "baby-songs":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-1">Baby Songs</h2>
-              <p className="text-muted-foreground">Set the age for age-appropriate content</p>
-            </div>
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="space-y-2">
-                  <Label>Child's Age Group</Label>
-                  <Select
-                    value={(() => {
-                      const ageMonths = settings?.babyAgeMonths ?? 12;
-                      const group = BABY_AGE_RANGES.find(
-                        (r) => ageMonths >= r.minMonths && ageMonths < r.maxMonths
-                      );
-                      return group?.id || BABY_AGE_RANGES[BABY_AGE_RANGES.length - 1].id;
-                    })()}
-                    onValueChange={(value) => {
-                      const range = BABY_AGE_RANGES.find((r) => r.id === value);
-                      if (range) {
-                        updateSettingsMutation.mutate({ babyAgeMonths: range.defaultAge });
-                      }
-                    }}
-                  >
-                    <SelectTrigger data-testid="select-baby-age-settings">
-                      <SelectValue placeholder="Select age group" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BABY_AGE_RANGES.map((range) => (
-                        <SelectItem key={range.id} value={range.id}>
-                          {range.label} ({range.description})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Content is filtered based on the selected age group. Songs and stories appropriate for the selected age will be shown.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case "tv":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-1">TV Settings</h2>
-              <p className="text-muted-foreground">Configure your Bulgarian TV experience</p>
-            </div>
-            <Card>
-              <CardContent className="pt-6 space-y-6">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Default Volume</Label>
-                    <span className="text-sm font-medium text-muted-foreground">
-                      {localTvVolume}%
-                    </span>
-                  </div>
-                  <Slider
-                    value={[localTvVolume]}
-                    onValueChange={(vals) => setLocalTvVolume(vals[0])}
-                    onValueCommit={(vals) => updateSettingsMutation.mutate({ tvVolume: vals[0] })}
-                    min={0}
-                    max={100}
-                    step={5}
-                    className="w-full"
-                    data-testid="slider-tv-volume"
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Default Channel</Label>
-                  <Select
-                    value={settings?.lastTvChannel || ""}
-                    onValueChange={(value) => updateSettingsMutation.mutate({ lastTvChannel: value })}
-                  >
-                    <SelectTrigger data-testid="select-default-channel">
-                      <SelectValue placeholder="No default channel" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TV_CHANNELS.map((channel) => (
-                        <SelectItem key={channel.url} value={channel.url}>
-                          <div className="flex items-center gap-2">
-                            {channel.logo && (
-                              <img src={channel.logo} alt="" className="w-5 h-5 object-contain rounded" />
-                            )}
-                            <span>{channel.name}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    This channel will be pre-selected when you open the TV app
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case "stocks":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-1">Stock Tracker</h2>
-              <p className="text-muted-foreground">Select stocks to display on your home dashboard</p>
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-2 gap-3">
-                  {availableStocks.map((stock) => {
-                    const currentStocks = settings?.trackedStocks || ["DJI", "VNQ", "BTC"];
-                    const isTracked = currentStocks.includes(stock.symbol);
-                    return (
-                      <div 
-                        key={stock.symbol}
-                        className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                      >
-                        <div>
-                          <p className="font-medium">{stock.name}</p>
-                          <p className="text-sm text-muted-foreground">{stock.symbol}</p>
-                        </div>
-                        <Switch
-                          checked={isTracked}
-                          onCheckedChange={(checked) => {
-                            let newStocks: string[];
-                            if (checked) {
-                              newStocks = currentStocks.includes(stock.symbol) 
-                                ? currentStocks 
-                                : [...currentStocks, stock.symbol];
-                            } else {
-                              newStocks = currentStocks.filter(s => s !== stock.symbol);
-                            }
-                            updateSettingsMutation.mutate({ trackedStocks: newStocks });
-                          }}
-                          data-testid={`switch-stock-${stock.symbol.toLowerCase()}`}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
       case "apps":
         return (
           <div className="space-y-6">
@@ -1558,11 +865,7 @@ export default function SettingsPage() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => {
-                setSidebarCollapsed(false);
-                setSystemExpanded(true);
-                setAppsExpanded(true);
-              }}
+              onClick={() => setSidebarCollapsed(false)}
               className="w-full"
               title="Search settings"
               data-testid="button-search-collapsed"
@@ -1584,20 +887,8 @@ export default function SettingsPage() {
         </div>
 
         <ScrollArea className="flex-1">
-          <div className={cn("space-y-4 transition-all duration-300", sidebarCollapsed ? "p-2" : "p-4")}>
-            {systemItems.length > 0 && (
-              <div className="space-y-1">
-                {renderSectionHeader("System", Wrench, systemExpanded, () => setSystemExpanded(!systemExpanded), systemItems.length, sidebarCollapsed)}
-                {systemExpanded && systemItems.map(item => renderNavItem(item, sidebarCollapsed))}
-              </div>
-            )}
-
-            {appItems.length > 0 && (
-              <div className="space-y-1">
-                {renderSectionHeader("Applications", AppWindow, appsExpanded, () => setAppsExpanded(!appsExpanded), appItems.length, sidebarCollapsed)}
-                {appsExpanded && appItems.map(item => renderNavItem(item, sidebarCollapsed))}
-              </div>
-            )}
+          <div className={cn("space-y-1 transition-all duration-300", sidebarCollapsed ? "p-2" : "p-4")}>
+            {filteredNavItems.map(item => renderNavItem(item, sidebarCollapsed))}
 
             {filteredNavItems.length === 0 && searchQuery && !sidebarCollapsed && (
               <p className="text-sm text-muted-foreground text-center py-4">
@@ -1612,15 +903,7 @@ export default function SettingsPage() {
           <Button
             variant="ghost"
             size={sidebarCollapsed ? "icon" : "default"}
-            onClick={() => {
-              if (sidebarCollapsed) {
-                setSidebarCollapsed(false);
-                setSystemExpanded(true);
-                setAppsExpanded(true);
-              } else {
-                setSidebarCollapsed(true);
-              }
-            }}
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className={cn("w-full", sidebarCollapsed && "justify-center")}
             data-testid="button-toggle-sidebar"
             title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}

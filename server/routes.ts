@@ -1936,10 +1936,10 @@ export async function registerRoutes(
         settings: { ...userData.settings, googlePhotosConnected: true, photoSource: "google_photos" },
       });
 
-      res.redirect("/settings?success=google_connected");
+      res.redirect("/photos?success=google_connected");
     } catch (error) {
       console.error("Google callback error:", error);
-      res.redirect("/settings?error=callback_failed");
+      res.redirect("/photos?error=callback_failed");
     }
   });
 

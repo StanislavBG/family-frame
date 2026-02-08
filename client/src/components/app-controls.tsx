@@ -1,15 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Bug, Maximize, Minimize, X, RotateCw, Volume2, Pause, MessageSquare, Settings, ExternalLink } from "lucide-react";
+import { Bug, Maximize, Minimize, X, RotateCw, Volume2, Pause, MessageSquare, Settings } from "lucide-react";
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from "react";
 import { useLocation } from "wouter";
 import { radioService } from "@/lib/radio-service";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
-import type { UserSettings } from "@shared/schema";
+import { AppSettingsSheet, routeToAppId } from "@/components/app-settings";
 
 interface AppControlsContextType {
   showDebug: boolean;
@@ -183,105 +179,6 @@ export function AppControlsWidget() {
   );
 }
 
-// Map current route to the corresponding settings section
-const routeToSettingsSection: Record<string, string> = {
-  "/weather": "weather",
-  "/photos": "picture-frame",
-  "/radio": "picture-frame",
-  "/baby-songs": "baby-songs",
-  "/tv": "tv",
-  "/stocks": "stocks",
-  "/clock": "household",
-  "/calendar": "household",
-  "/messages": "household",
-  "/notepad": "household",
-  "/shopping": "household",
-  "/chores": "household",
-  "/recipes": "household",
-};
-
-// Routes that have inline settings controls in the popover
-const routesWithInlineSettings = new Set(["/weather", "/calendar"]);
-
-// Helper to update a single setting
-async function patchSetting(patch: Partial<UserSettings>) {
-  await fetch("/api/settings", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
-  });
-  queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-}
-
-function CalendarSettingsPanel({ settings }: { settings: UserSettings | undefined }) {
-  const weekStartsMonday = settings?.weekStartsMonday ?? true;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Label htmlFor="popover-week-start-toggle" className="text-sm font-medium">
-          Week starts on
-        </Label>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Mon</span>
-          <Switch
-            id="popover-week-start-toggle"
-            checked={!weekStartsMonday}
-            onCheckedChange={(checked) =>
-              patchSetting({ weekStartsMonday: !checked })
-            }
-            data-testid="switch-week-start-setting"
-          />
-          <span className="text-xs text-muted-foreground">Sun</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WeatherSettingsPanel({ settings }: { settings: UserSettings | undefined }) {
-  const unit = settings?.temperatureUnit || "celsius";
-  const displayMode = settings?.weatherDisplayMode || "dense";
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Label htmlFor="popover-mode-toggle" className="text-sm font-medium">
-          Display mode
-        </Label>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Dense</span>
-          <Switch
-            id="popover-mode-toggle"
-            checked={displayMode === "light"}
-            onCheckedChange={(checked) =>
-              patchSetting({ weatherDisplayMode: checked ? "light" : "dense" })
-            }
-            data-testid="switch-weather-display-mode"
-          />
-          <span className="text-xs text-muted-foreground">Light</span>
-        </div>
-      </div>
-      <div className="flex items-center justify-between">
-        <Label htmlFor="popover-unit-toggle" className="text-sm font-medium">
-          Temperature
-        </Label>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">°C</span>
-          <Switch
-            id="popover-unit-toggle"
-            checked={unit === "fahrenheit"}
-            onCheckedChange={(checked) =>
-              patchSetting({ temperatureUnit: checked ? "fahrenheit" : "celsius" })
-            }
-            data-testid="switch-temperature-unit"
-          />
-          <span className="text-xs text-muted-foreground">°F</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function HeaderControls() {
   const {
@@ -293,17 +190,11 @@ export function HeaderControls() {
 
   const [location, setLocation] = useLocation();
   const [radioState, setRadioState] = useState(radioService.getState());
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
 
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],
     refetchInterval: 30000,
-  });
-
-  // Settings data (used by inline settings panels)
-  const hasInlineSettings = routesWithInlineSettings.has(location);
-  const { data: settings } = useQuery<UserSettings>({
-    queryKey: ["/api/settings"],
-    enabled: hasInlineSettings,
   });
 
   const unreadCount = unreadData?.count || 0;
@@ -334,8 +225,8 @@ export function HeaderControls() {
       ? radioService.getStationByUrl(radioState.currentStation)?.name || "Radio"
       : null;
 
-  const settingsSection = routeToSettingsSection[location];
-  const showSettingsGear = location !== "/" && location !== "/settings";
+  // Show the gear icon only for apps that have an in-app settings panel
+  const hasAppSettings = !!routeToAppId[location];
 
   return (
     <div className="flex items-center gap-2">
@@ -374,56 +265,20 @@ export function HeaderControls() {
         </Button>
       )}
 
-      {/* Context-aware settings gear */}
-      {showSettingsGear && (
-        hasInlineSettings ? (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                data-testid="button-app-settings"
-                title="App Settings"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72">
-              {location === "/weather" && (
-                <WeatherSettingsPanel settings={settings} />
-              )}
-              {location === "/calendar" && (
-                <CalendarSettingsPanel settings={settings} />
-              )}
-              <div className="mt-4 pt-3 border-t">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-between text-muted-foreground"
-                  onClick={() => setLocation(
-                    settingsSection ? `/settings?section=${settingsSection}` : "/settings"
-                  )}
-                >
-                  All settings
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setLocation(
-              settingsSection ? `/settings?section=${settingsSection}` : "/settings"
-            )}
-            data-testid="button-app-settings"
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
-        )
+      {/* App settings gear - opens right-side panel */}
+      {hasAppSettings && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setAppSettingsOpen(true)}
+          data-testid="button-app-settings"
+          title="App Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
       )}
+
+      <AppSettingsSheet open={appSettingsOpen} onOpenChange={setAppSettingsOpen} />
 
       <Button
         variant="ghost"
