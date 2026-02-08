@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScaleCell } from "@/components/scale-cell";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface MarketData {
@@ -115,37 +116,45 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
     );
   }
 
-  // Full variant - redesigned with historical performance
+  // Full variant - vertical ScaleCell zones fill available space
   return (
     <Card className={`h-full ${className}`} data-testid={`stock-widget-${symbol.toLowerCase()}`}>
-      <CardContent className="h-full flex flex-col items-center justify-center p-6">
-        {/* Name at top */}
-        <div className="text-sm md:text-base text-muted-foreground uppercase tracking-widest mb-2">
-          {name}
-        </div>
-
+      <CardContent className="h-full p-4 md:p-6">
         {data ? (
-          <>
-            {/* Current price with trend icon and change on same line */}
-            <div className="flex items-center gap-3">
-              <span className="text-4xl md:text-5xl lg:text-6xl font-bold text-primary">
-                {isCrypto ? '$' : ''}{formatPrice(data.price)}
-              </span>
-              <TrendIcon change={data.change} />
-              <span className={`text-xl md:text-2xl font-semibold ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
-              </span>
-            </div>
+          <div className="h-full grid grid-rows-[1fr_3fr_1.2fr] gap-0 min-h-0">
+            {/* Top zone: Stock name */}
+            <ScaleCell padding={0.85}>
+              <div className="text-[14px] text-muted-foreground uppercase tracking-widest whitespace-nowrap">
+                {name}
+              </div>
+            </ScaleCell>
 
-            {/* Historical performance row */}
-            <div className="flex items-center justify-center gap-6 md:gap-8 mt-4 pt-4 border-t w-full max-w-xs">
-              <PercentBadge value={data.change1Y} label="1Y" />
-              <PercentBadge value={data.change3Y} label="3Y" />
-              <PercentBadge value={data.change5Y} label="5Y" />
-            </div>
-          </>
+            {/* Middle zone: Price + trend + change (dominant) */}
+            <ScaleCell padding={0.88}>
+              <div className="inline-flex items-center gap-[0.15em] whitespace-nowrap">
+                <span className="text-[64px] font-bold text-primary leading-[0.9]">
+                  {isCrypto ? '$' : ''}{formatPrice(data.price)}
+                </span>
+                <TrendIcon change={data.change} />
+                <span className={`text-[24px] font-semibold ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+                </span>
+              </div>
+            </ScaleCell>
+
+            {/* Bottom zone: Historical performance */}
+            <ScaleCell padding={0.85}>
+              <div className="inline-flex items-center gap-6 whitespace-nowrap">
+                <PercentBadge value={data.change1Y} label="1Y" />
+                <PercentBadge value={data.change3Y} label="3Y" />
+                <PercentBadge value={data.change5Y} label="5Y" />
+              </div>
+            </ScaleCell>
+          </div>
         ) : (
-          <Skeleton className="h-16 w-32" />
+          <div className="h-full flex items-center justify-center">
+            <Skeleton className="h-16 w-32" />
+          </div>
         )}
       </CardContent>
     </Card>
