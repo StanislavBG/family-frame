@@ -1782,16 +1782,16 @@ export async function registerRoutes(
         } else if (data.chart?.result?.[0]) {
           const chart = data.chart.result[0];
           const price = chart.meta?.regularMarketPrice;
-          const prevClose = chart.meta?.previousClose || chart.meta?.chartPreviousClose;
+          const prevClose = chart.meta?.previousClose;
 
-          if (price && prevClose) {
-            const change = price - prevClose;
+          if (price) {
+            const change = prevClose ? price - prevClose : 0;
             const result: MarketResult = {
               symbol,
               name: config.name,
               price,
               change,
-              changePercent: (change / prevClose) * 100
+              changePercent: prevClose ? (change / prevClose) * 100 : 0
             };
 
             // Calculate historical changes from Yahoo Finance monthly data
