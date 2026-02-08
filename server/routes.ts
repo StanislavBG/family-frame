@@ -1688,10 +1688,12 @@ export async function registerRoutes(
         price: number;
         change: number;
         changePercent: number;
+        changeLabel: string; // "1D", "1M" etc. to indicate what period the change covers
         change1Y?: number;
         change3Y?: number;
         change5Y?: number;
         change10Y?: number;
+        historicalPrices?: Array<{ t: number; p: number }>; // ms timestamp + price for chart
       }
 
       const results: Record<string, MarketResult | null> = {};
@@ -1737,17 +1739,19 @@ export async function registerRoutes(
 
         if (config.isCrypto && data.bitcoin) {
           const currentPrice = data.bitcoin.usd;
+          const dailyChange = data.bitcoin.usd_24h_change || 0;
           const result: MarketResult = {
             symbol,
             name: config.name,
             price: currentPrice,
-            change: data.bitcoin.usd_24h_change || 0,
-            changePercent: data.bitcoin.usd_24h_change || 0
+            change: dailyChange,
+            changePercent: dailyChange,
+            changeLabel: "1D"
           };
 
           // Calculate historical changes from CoinGecko market_chart data
           if (historical?.prices && historical.prices.length > 0) {
-            const prices = historical.prices;
+            const prices = historical.prices as Array<[number, number]>;
             const now = Date.now();
             const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
             const threeYearsAgo = now - 3 * 365 * 24 * 60 * 60 * 1000;
@@ -1776,6 +1780,23 @@ export async function registerRoutes(
             if (price3YAgo) result.change3Y = ((currentPrice - price3YAgo) / price3YAgo) * 100;
             if (price5YAgo) result.change5Y = ((currentPrice - price5YAgo) / price5YAgo) * 100;
             if (price10YAgo) result.change10Y = ((currentPrice - price10YAgo) / price10YAgo) * 100;
+
+            // If daily change is 0, fall back to comparing last two data points
+            if (result.changePercent === 0 && prices.length >= 2) {
+              const lastPrice = prices[prices.length - 1][1];
+              const prevPrice = prices[prices.length - 2][1];
+              if (prevPrice !== 0) {
+                result.change = lastPrice - prevPrice;
+                result.changePercent = ((lastPrice - prevPrice) / prevPrice) * 100;
+                result.changeLabel = "prev";
+              }
+            }
+
+            // Downsample historical prices for chart (keep ~120 points max)
+            const step = Math.max(1, Math.floor(prices.length / 120));
+            result.historicalPrices = prices
+              .filter((_: [number, number], i: number) => i % step === 0 || i === prices.length - 1)
+              .map((p: [number, number]) => ({ t: p[0], p: p[1] }));
           }
 
           results[symbol.toLowerCase()] = result;
@@ -1786,12 +1807,14 @@ export async function registerRoutes(
 
           if (price) {
             const change = prevClose ? price - prevClose : 0;
+            const changePercent = prevClose ? (change / prevClose) * 100 : 0;
             const result: MarketResult = {
               symbol,
               name: config.name,
               price,
               change,
-              changePercent: prevClose ? (change / prevClose) * 100 : 0
+              changePercent,
+              changeLabel: "1D"
             };
 
             // Calculate historical changes from Yahoo Finance monthly data
@@ -1830,6 +1853,29 @@ export async function registerRoutes(
               if (price3YAgo) result.change3Y = ((price - price3YAgo) / price3YAgo) * 100;
               if (price5YAgo) result.change5Y = ((price - price5YAgo) / price5YAgo) * 100;
               if (price10YAgo) result.change10Y = ((price - price10YAgo) / price10YAgo) * 100;
+
+              // If daily change is 0, fall back to last two monthly close prices
+              if (result.changePercent === 0) {
+                // Find last two valid (non-null) closes
+                let lastValid = -1;
+                let prevValid = -1;
+                for (let i = closes.length - 1; i >= 0; i--) {
+                  if (closes[i] != null) {
+                    if (lastValid === -1) lastValid = i;
+                    else if (prevValid === -1) { prevValid = i; break; }
+                  }
+                }
+                if (lastValid >= 0 && prevValid >= 0 && closes[prevValid] !== 0) {
+                  result.change = closes[lastValid] - closes[prevValid];
+                  result.changePercent = ((closes[lastValid] - closes[prevValid]) / closes[prevValid]) * 100;
+                  result.changeLabel = "1M";
+                }
+              }
+
+              // Build historical prices for chart
+              result.historicalPrices = timestamps
+                .map((ts: number, i: number) => closes[i] != null ? { t: ts * 1000, p: closes[i] } : null)
+                .filter((d: { t: number; p: number } | null): d is { t: number; p: number } => d !== null);
             }
 
             results[symbol.toLowerCase()] = result;

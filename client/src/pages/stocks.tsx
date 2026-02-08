@@ -9,10 +9,12 @@ interface MarketData {
   price: number;
   change: number;
   changePercent: number;
+  changeLabel?: string;
   change1Y?: number;
   change3Y?: number;
   change5Y?: number;
   change10Y?: number;
+  historicalPrices?: Array<{ t: number; p: number }>;
 }
 
 export default function StocksPage() {
@@ -34,11 +36,18 @@ export default function StocksPage() {
   });
 
   // Dynamic grid columns based on number of tracked stocks
-  const gridColsClass = trackedStocks.length <= 3
-    ? "md:grid-cols-3"
-    : trackedStocks.length === 4
-      ? "md:grid-cols-4"
-      : "md:grid-cols-5";
+  // 1-5: single row with N columns, 6: 3x2, 7-8: 4x2
+  const gridColsMap: Record<number, string> = {
+    1: "md:grid-cols-1",
+    2: "md:grid-cols-2",
+    3: "md:grid-cols-3",
+    4: "md:grid-cols-4",
+    5: "md:grid-cols-5",
+    6: "md:grid-cols-3",
+    7: "md:grid-cols-4",
+    8: "md:grid-cols-4",
+  };
+  const gridColsClass = gridColsMap[trackedStocks.length] || "md:grid-cols-4";
 
   return (
     <div className="h-full bg-background overflow-y-auto md:overflow-hidden md:flex md:flex-col md:p-6 snap-y snap-mandatory md:snap-none">
