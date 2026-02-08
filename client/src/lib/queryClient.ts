@@ -12,15 +12,19 @@ export async function apiRequest<T = unknown>(
   url: string,
   data?: unknown | undefined,
 ): Promise<T> {
+  // Only send plain objects/arrays as JSON body. Primitives (strings, numbers, booleans)
+  // are not valid top-level JSON for Express strict mode and indicate a caller error.
+  const hasBody = data !== null && data !== undefined
+    && typeof data === "object";
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
+    headers: hasBody ? { "Content-Type": "application/json" } : {},
+    body: hasBody ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
 
   await throwIfResNotOk(res);
-  
+
   const contentType = res.headers.get("content-type");
   if (contentType && contentType.includes("application/json")) {
     return res.json();
