@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Image, Settings, Play, Pause, SkipForward, Camera, Sparkles, Maximize, Minimize } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Link, useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { Link, useLocation, useSearch } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useFullscreen } from "@/hooks/use-fullscreen";
+import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/empty-state";
 import type { GooglePhotoItem, UserSettings, PixabayPhoto } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
@@ -433,9 +434,34 @@ interface PhotosResponse {
 }
 
 export default function PhotosPage() {
+  const { toast } = useToast();
+  const searchString = useSearch();
+
   const { data: settings, isLoading: settingsLoading } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
   });
+
+  // Handle Google OAuth callback redirect
+  useEffect(() => {
+    const urlParams = new URLSearchParams(searchString);
+    const success = urlParams.get("success");
+    const error = urlParams.get("error");
+
+    if (success === "google_connected") {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      toast({ title: "Google Photos connected successfully!" });
+      window.history.replaceState({}, "", "/photos");
+    }
+
+    if (error) {
+      toast({
+        title: "Failed to connect Google Photos",
+        description: error === "token_exchange_failed" ? "Could not complete authorization" : "Please try again",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", "/photos");
+    }
+  }, []);
 
   const photoSource = settings?.photoSource || PhotoSource.PIXABAY;
   const photoInterval = settings?.photoInterval || 10;
