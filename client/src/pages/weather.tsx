@@ -294,7 +294,7 @@ function ScaleCell({
   );
 }
 
-// 3-zone grid hero: Icon | Temperature | Details — each zone scales independently
+// 3-row vertical hero: Label | Icon+Temp | Description+Stats — each row scales independently
 function WeatherHeroScaled({
   focusLabel,
   city,
@@ -315,51 +315,51 @@ function WeatherHeroScaled({
   focusDay?: DailyForecast;
 }) {
   return (
-    <div className="w-full h-full grid grid-cols-[1fr_2fr_1.2fr] gap-0 min-h-0">
-      {/* Left zone: Weather icon */}
-      <ScaleCell padding={0.75}>
-        <WeatherIcon
-          code={weatherCode}
-          isDay={isDay}
-          className="h-[100px] w-[100px] flex-shrink-0"
-        />
-      </ScaleCell>
-
-      {/* Center zone: Temperature (dominant) */}
-      <ScaleCell padding={0.92}>
-        <div className="text-[140px] font-bold leading-[0.85] tracking-tight whitespace-nowrap">
-          {formatTemperature(temperature, unit)}
+    <div className="w-full h-full grid grid-rows-[1fr_3fr_1.5fr] gap-0 min-h-0">
+      {/* Top zone: Location label */}
+      <ScaleCell padding={0.85}>
+        <div className="text-[16px] font-medium text-muted-foreground uppercase tracking-widest whitespace-nowrap">
+          {focusLabel} in {city}
         </div>
       </ScaleCell>
 
-      {/* Right zone: Location, description, hi/lo details */}
-      <ScaleCell className="items-start justify-center" padding={0.85}>
-        <div className="flex flex-col gap-1 whitespace-nowrap">
-          <div className="text-[14px] font-medium text-muted-foreground uppercase tracking-widest">
-            {focusLabel} in {city}
+      {/* Middle zone: Icon + Temperature (dominant) */}
+      <ScaleCell padding={0.9}>
+        <div className="inline-flex items-center gap-[0.3em] whitespace-nowrap">
+          <WeatherIcon
+            code={weatherCode}
+            isDay={isDay}
+            className="h-[100px] w-[100px] flex-shrink-0"
+          />
+          <div className="text-[140px] font-bold leading-[0.85] tracking-tight">
+            {formatTemperature(temperature, unit)}
           </div>
+        </div>
+      </ScaleCell>
+
+      {/* Bottom zone: Description + Hi/Lo + Precipitation */}
+      <ScaleCell padding={0.85}>
+        <div className="flex flex-col items-center gap-1 whitespace-nowrap">
           <div className="text-[28px] font-semibold leading-tight">
             {description}
           </div>
           {focusDay && (
-            <>
-              <div className="flex items-center gap-4 text-[20px] mt-1">
-                <span className="flex items-center gap-1">
-                  <ArrowUp className="h-5 w-5 text-orange-500" />
-                  {formatTemperature(focusDay.tempMax, unit)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <ArrowDown className="h-5 w-5 text-blue-500" />
-                  {formatTemperature(focusDay.tempMin, unit)}
-                </span>
-              </div>
+            <div className="flex items-center gap-6 text-[20px] mt-1">
+              <span className="flex items-center gap-1">
+                <ArrowUp className="h-5 w-5 text-orange-500" />
+                {formatTemperature(focusDay.tempMax, unit)}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowDown className="h-5 w-5 text-blue-500" />
+                {formatTemperature(focusDay.tempMin, unit)}
+              </span>
               {focusDay.precipitationProbability > 0 && (
-                <div className="flex items-center gap-1 text-[18px] text-muted-foreground">
+                <span className="flex items-center gap-1 text-muted-foreground">
                   <Droplets className="h-5 w-5 text-blue-400" />
-                  {focusDay.precipitationProbability}% rain
-                </div>
+                  {focusDay.precipitationProbability}%
+                </span>
               )}
-            </>
+            </div>
           )}
         </div>
       </ScaleCell>
