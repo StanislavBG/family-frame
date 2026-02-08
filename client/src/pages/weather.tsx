@@ -261,7 +261,40 @@ function TrailAdvisoryCompact({ advice }: { advice: TrailAdvice }) {
   );
 }
 
-// Extracted hero content with fixed reference sizes, scaled by useScaleToFill
+// A cell that independently scales its content to fill available space
+function ScaleCell({
+  children,
+  className,
+  padding = 0.88,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  padding?: number;
+}) {
+  const { containerRef, contentRef, ready } = useScaleToFill({ padding });
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn("overflow-hidden flex items-center justify-center", className)}
+    >
+      <div
+        ref={contentRef}
+        className="inline-flex flex-col items-center"
+        style={{
+          transformOrigin: "center center",
+          willChange: "transform",
+          opacity: ready ? 1 : 0,
+          transition: "opacity 150ms ease-out",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// 3-zone grid hero: Icon | Temperature | Details — each zone scales independently
 function WeatherHeroScaled({
   focusLabel,
   city,
@@ -281,65 +314,55 @@ function WeatherHeroScaled({
   description: string;
   focusDay?: DailyForecast;
 }) {
-  const { containerRef, contentRef, ready } = useScaleToFill({ padding: 0.88 });
-
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full overflow-hidden flex items-center justify-center"
-    >
-      <div
-        ref={contentRef}
-        className="inline-flex flex-col items-center"
-        style={{
-          transformOrigin: "center center",
-          willChange: "transform",
-          opacity: ready ? 1 : 0,
-          transition: "opacity 150ms ease-out",
-        }}
-      >
-        {/* Location label */}
-        <div className="text-[16px] text-muted-foreground font-medium tracking-wide uppercase whitespace-nowrap">
-          {focusLabel} in {city}
-        </div>
+    <div className="w-full h-full grid grid-cols-[1fr_2fr_1.2fr] gap-0 min-h-0">
+      {/* Left zone: Weather icon */}
+      <ScaleCell padding={0.75}>
+        <WeatherIcon
+          code={weatherCode}
+          isDay={isDay}
+          className="h-[100px] w-[100px] flex-shrink-0"
+        />
+      </ScaleCell>
 
-        {/* Icon + Temperature row — the widest element, drives the scale */}
-        <div className="flex items-center justify-center gap-6 mt-1">
-          <WeatherIcon
-            code={weatherCode}
-            isDay={isDay}
-            className="h-[120px] w-[120px] flex-shrink-0"
-          />
-          <div className="text-[160px] font-bold leading-[0.85] tracking-tight whitespace-nowrap">
-            {formatTemperature(temperature, unit)}
+      {/* Center zone: Temperature (dominant) */}
+      <ScaleCell padding={0.92}>
+        <div className="text-[140px] font-bold leading-[0.85] tracking-tight whitespace-nowrap">
+          {formatTemperature(temperature, unit)}
+        </div>
+      </ScaleCell>
+
+      {/* Right zone: Location, description, hi/lo details */}
+      <ScaleCell className="items-start justify-center" padding={0.85}>
+        <div className="flex flex-col gap-1 whitespace-nowrap">
+          <div className="text-[14px] font-medium text-muted-foreground uppercase tracking-widest">
+            {focusLabel} in {city}
           </div>
-        </div>
-
-        {/* Description */}
-        <div className="text-[32px] text-muted-foreground mt-1 whitespace-nowrap">
-          {description}
-        </div>
-
-        {/* Hi / Lo / Rain row */}
-        {focusDay && (
-          <div className="flex items-center gap-6 mt-2 text-[24px] whitespace-nowrap">
-            <span className="flex items-center gap-1">
-              <ArrowUp className="h-6 w-6 text-orange-500" />
-              {formatTemperature(focusDay.tempMax, unit)}
-            </span>
-            <span className="flex items-center gap-1">
-              <ArrowDown className="h-6 w-6 text-blue-500" />
-              {formatTemperature(focusDay.tempMin, unit)}
-            </span>
-            {focusDay.precipitationProbability > 0 && (
-              <span className="flex items-center gap-1">
-                <Droplets className="h-6 w-6 text-blue-400" />
-                {focusDay.precipitationProbability}%
-              </span>
-            )}
+          <div className="text-[28px] font-semibold leading-tight">
+            {description}
           </div>
-        )}
-      </div>
+          {focusDay && (
+            <>
+              <div className="flex items-center gap-4 text-[20px] mt-1">
+                <span className="flex items-center gap-1">
+                  <ArrowUp className="h-5 w-5 text-orange-500" />
+                  {formatTemperature(focusDay.tempMax, unit)}
+                </span>
+                <span className="flex items-center gap-1">
+                  <ArrowDown className="h-5 w-5 text-blue-500" />
+                  {formatTemperature(focusDay.tempMin, unit)}
+                </span>
+              </div>
+              {focusDay.precipitationProbability > 0 && (
+                <div className="flex items-center gap-1 text-[18px] text-muted-foreground">
+                  <Droplets className="h-5 w-5 text-blue-400" />
+                  {focusDay.precipitationProbability}% rain
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </ScaleCell>
     </div>
   );
 }
