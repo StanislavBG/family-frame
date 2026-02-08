@@ -1518,10 +1518,10 @@ export default function SettingsPage() {
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <Settings className="h-5 w-5 text-primary" />
           </div>
-          <h1 className="text-lg font-semibold">Settings</h1>
+          <h1 className="text-lg font-semibold">Global Config</h1>
         </div>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="sm"
           onClick={() => setMobileNavOpen(!mobileNavOpen)}
           data-testid="button-mobile-nav"
@@ -1552,7 +1552,7 @@ export default function SettingsPage() {
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
               <Settings className="h-5 w-5 text-primary" />
             </div>
-            {!sidebarCollapsed && <h1 className="text-lg font-semibold">Settings</h1>}
+            {!sidebarCollapsed && <h1 className="text-lg font-semibold">Global Config</h1>}
           </div>
           {sidebarCollapsed ? (
             <Button

@@ -201,7 +201,7 @@ const routeToSettingsSection: Record<string, string> = {
 };
 
 // Routes that have inline settings controls in the popover
-const routesWithInlineSettings = new Set(["/weather"]);
+const routesWithInlineSettings = new Set(["/weather", "/calendar"]);
 
 // Helper to update a single setting
 async function patchSetting(patch: Partial<UserSettings>) {
@@ -211,6 +211,32 @@ async function patchSetting(patch: Partial<UserSettings>) {
     body: JSON.stringify(patch),
   });
   queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+}
+
+function CalendarSettingsPanel({ settings }: { settings: UserSettings | undefined }) {
+  const weekStartsMonday = settings?.weekStartsMonday ?? true;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Label htmlFor="popover-week-start-toggle" className="text-sm font-medium">
+          Week starts on
+        </Label>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Mon</span>
+          <Switch
+            id="popover-week-start-toggle"
+            checked={!weekStartsMonday}
+            onCheckedChange={(checked) =>
+              patchSetting({ weekStartsMonday: !checked })
+            }
+            data-testid="switch-week-start-setting"
+          />
+          <span className="text-xs text-muted-foreground">Sun</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function WeatherSettingsPanel({ settings }: { settings: UserSettings | undefined }) {
@@ -365,6 +391,9 @@ export function HeaderControls() {
             <PopoverContent align="end" className="w-72">
               {location === "/weather" && (
                 <WeatherSettingsPanel settings={settings} />
+              )}
+              {location === "/calendar" && (
+                <CalendarSettingsPanel settings={settings} />
               )}
               <div className="mt-4 pt-3 border-t">
                 <Button
