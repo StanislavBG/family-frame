@@ -168,7 +168,7 @@ export interface AppItem {
 // Default app list for app picker (id must match url path)
 export const defaultAppList: AppItem[] = [
   { id: "home", title: "Home", url: "/", fixed: true },
-  { id: "settings", title: "Settings", url: "/settings", fixed: true },
+  { id: "settings", title: "Global Config", url: "/settings", fixed: true },
   { id: "clock", title: "Clock", url: "/clock" },
   { id: "weather", title: "Weather", url: "/weather" },
   { id: "photos", title: "Picture Frame", url: "/photos" },
@@ -237,6 +237,8 @@ export const userSettingsSchema = z.object({
   sleepStartTime: z.string().default("22:00"), // 24h format
   sleepEndTime: z.string().default("07:00"),
   sleepDimLevel: z.number().min(10).max(50).default(20), // Percentage brightness
+  // Calendar settings
+  weekStartsMonday: z.boolean().default(true),
   // Weather display mode
   weatherDisplayMode: z.enum(["dense", "light"]).default("dense"),
   // Weather alerts
