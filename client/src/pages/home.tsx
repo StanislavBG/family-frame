@@ -49,6 +49,7 @@ export default function HomePage() {
   const { data: connections } = useQuery<ConnectionWithWeather[]>({
     queryKey: ["/api/connections/weather"],
     staleTime: 5 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
   });
 
   const { data: unreadData } = useQuery<{ count: number }>({

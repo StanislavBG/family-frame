@@ -88,12 +88,14 @@ export function useWeatherData(): UseWeatherDataResult {
     queryKey: ["/api/weather/coords", coords?.lat, coords?.lon],
     enabled: !!coords,
     staleTime: 5 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
   });
 
   const { data: weatherFromSettings, isLoading: isLoadingSettings } = useQuery<WeatherResponse>({
     queryKey: ["/api/weather", settings?.location?.city, settings?.location?.country],
     enabled: !!useSettingsLocation,
     staleTime: 5 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
   });
 
   const weather = coords ? weatherFromCoords : weatherFromSettings;
