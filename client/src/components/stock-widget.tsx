@@ -46,179 +46,18 @@ function formatPercent(value: number | undefined) {
   return `${sign}${value.toFixed(1)}%`;
 }
 
-/** SVG area chart for historical price data with period callouts */
-function PriceChart({
-  data,
-  symbol,
-  change1Y,
-  change3Y,
-  change5Y,
-  change10Y,
-}: {
-  data: Array<{ t: number; p: number }>;
-  symbol: string;
-  change1Y?: number;
-  change3Y?: number;
-  change5Y?: number;
-  change10Y?: number;
-}) {
-  const chart = useMemo(() => {
-    if (!data || data.length < 2) return null;
-
-    const W = 500;
-    const H = 220;
-    const pad = { top: 8, right: 12, bottom: 42, left: 12 };
-    const cw = W - pad.left - pad.right;
-    const ch = H - pad.top - pad.bottom;
-
-    const prices = data.map(d => d.p);
-    const minP = Math.min(...prices);
-    const maxP = Math.max(...prices);
-    const range = maxP - minP || 1;
-    const minT = data[0].t;
-    const maxT = data[data.length - 1].t;
-    const tRange = maxT - minT || 1;
-
-    const x = (t: number) => pad.left + ((t - minT) / tRange) * cw;
-    const y = (p: number) => pad.top + (1 - (p - minP) / range) * ch;
-
-    // Build SVG path
-    const points = data.map(d => `${x(d.t).toFixed(1)},${y(d.p).toFixed(1)}`);
-    const linePath = `M${points.join("L")}`;
-    const areaPath = `${linePath}L${x(maxT).toFixed(1)},${(pad.top + ch).toFixed(1)}L${x(minT).toFixed(1)},${(pad.top + ch).toFixed(1)}Z`;
-
-    // Period callouts
-    const now = maxT;
-    const periods = [
-      { label: "10Y", ago: 10 * 365.25 * 86400000, change: change10Y },
-      { label: "5Y", ago: 5 * 365.25 * 86400000, change: change5Y },
-      { label: "3Y", ago: 3 * 365.25 * 86400000, change: change3Y },
-      { label: "1Y", ago: 1 * 365.25 * 86400000, change: change1Y },
-    ];
-
-    const annotations = periods
-      .filter(p => p.change !== undefined && p.change !== null)
-      .map(p => {
-        const targetT = now - p.ago;
-        if (targetT < minT) return null;
-        // Find closest data point
-        let closest = data[0];
-        for (const d of data) {
-          if (Math.abs(d.t - targetT) < Math.abs(closest.t - targetT)) {
-            closest = d;
-          }
-        }
-        return {
-          label: p.label,
-          change: p.change!,
-          x: x(closest.t),
-          y: y(closest.p),
-          price: closest.p,
-        };
-      })
-      .filter((a): a is NonNullable<typeof a> => a !== null);
-
-    // Current price point (rightmost)
-    const lastPoint = data[data.length - 1];
-    const currentDot = { x: x(lastPoint.t), y: y(lastPoint.p) };
-
-    return { W, H, pad, ch, linePath, areaPath, annotations, currentDot };
-  }, [data, change1Y, change3Y, change5Y, change10Y]);
-
-  if (!chart) return null;
-  const gradId = `grad-${symbol}`;
-  const isPositiveOverall = (data[data.length - 1]?.p ?? 0) >= (data[0]?.p ?? 0);
-  const trendColor = isPositiveOverall ? "rgb(34,197,94)" : "rgb(239,68,68)";
-
-  return (
-    <svg
-      viewBox={`0 0 ${chart.W} ${chart.H}`}
-      preserveAspectRatio="none"
-      className="w-full h-full"
-      style={{ display: "block" }}
-    >
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={trendColor} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={trendColor} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-
-      {/* Area fill */}
-      <path d={chart.areaPath} fill={`url(#${gradId})`} />
-
-      {/* Line */}
-      <path
-        d={chart.linePath}
-        fill="none"
-        stroke={trendColor}
-        strokeWidth="2"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-
-      {/* Annotation lines and labels */}
-      {chart.annotations.map(a => (
-        <g key={a.label}>
-          {/* Vertical dashed line */}
-          <line
-            x1={a.x}
-            y1={chart.pad.top}
-            x2={a.x}
-            y2={chart.pad.top + chart.ch}
-            stroke="hsl(var(--muted-foreground))"
-            strokeWidth="0.5"
-            strokeDasharray="3,3"
-            opacity="0.3"
-          />
-          {/* Dot on the line */}
-          <circle
-            cx={a.x}
-            cy={a.y}
-            r="3"
-            fill={trendColor}
-            stroke="hsl(var(--card))"
-            strokeWidth="1.5"
-          />
-          {/* Period label below chart */}
-          <text
-            x={a.x}
-            y={chart.pad.top + chart.ch + 14}
-            textAnchor="middle"
-            fill="hsl(var(--muted-foreground))"
-            fontSize="10"
-          >
-            {a.label}
-          </text>
-          {/* Change value */}
-          <text
-            x={a.x}
-            y={chart.pad.top + chart.ch + 28}
-            textAnchor="middle"
-            fill={a.change >= 0 ? "rgb(34,197,94)" : "rgb(239,68,68)"}
-            fontSize="11"
-            fontWeight="600"
-          >
-            {formatPercent(a.change)}
-          </text>
-        </g>
-      ))}
-
-      {/* Current price dot */}
-      <circle
-        cx={chart.currentDot.x}
-        cy={chart.currentDot.y}
-        r="3.5"
-        fill={trendColor}
-        stroke="hsl(var(--card))"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
 export function StockWidget({ symbol, name, data, variant = "full", className = "" }: StockWidgetProps) {
   const showDollarSign = symbol === "BTC" || symbol === "GOLD";
+
+  const priceRange = useMemo(() => {
+    if (!data?.historicalPrices || data.historicalPrices.length < 2) return null;
+    const prices = data.historicalPrices.map(d => d.p);
+    const low = Math.min(...prices);
+    const high = Math.max(...prices);
+    if (high === low) return null;
+    const position = ((data.price - low) / (high - low)) * 100;
+    return { low, high, position: Math.max(0, Math.min(100, position)) };
+  }, [data?.historicalPrices, data?.price]);
 
   if (variant === "ticker") {
     return (
@@ -273,56 +112,72 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
     );
   }
 
-  // Full variant - name/price header, chart filling middle, annotations in chart
-  const hasChart = data?.historicalPrices && data.historicalPrices.length >= 2;
+  // Full variant — numbers only, no chart
+  const periods = [
+    { label: "1Y", value: data?.change1Y },
+    { label: "3Y", value: data?.change3Y },
+    { label: "5Y", value: data?.change5Y },
+    { label: "10Y", value: data?.change10Y },
+  ].filter(p => p.value !== undefined && p.value !== null);
 
   return (
     <Card className={`h-full ${className}`} data-testid={`stock-widget-${symbol.toLowerCase()}`}>
       <CardContent className="h-full p-4 md:p-6">
         {data ? (
           <div className="h-full flex flex-col min-h-0">
-            {/* Header: name + price + change */}
-            <ScaleCell padding={0.85} className="shrink-0 basis-[15%]">
-              <div className="flex flex-col items-center gap-[0.1em] whitespace-nowrap">
-                <div className="text-[12px] text-muted-foreground uppercase tracking-widest">
+            {/* Top: Name + Price + Daily change */}
+            <ScaleCell padding={0.88} className="shrink-0 basis-[35%]">
+              <div className="flex flex-col items-center whitespace-nowrap">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-[0.2em]">
                   {name}
                 </div>
-                <div className="inline-flex items-center gap-[0.2em]">
-                  <span className="text-[40px] font-bold text-primary leading-none">
-                    {showDollarSign ? '$' : ''}{formatPrice(data.price)}
-                  </span>
+                <div className="text-[56px] font-bold text-primary leading-none mt-[0.05em]">
+                  {showDollarSign ? '$' : ''}{formatPrice(data.price)}
+                </div>
+                <div className="inline-flex items-center gap-[0.25em] mt-[0.15em]">
                   <TrendIcon change={data.change} size="small" />
-                  <span className={`text-[18px] font-semibold ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  <span className={`text-[20px] font-semibold ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
                   </span>
                 </div>
               </div>
             </ScaleCell>
 
-            {/* Chart area - fills remaining space */}
-            {hasChart ? (
-              <div className="flex-1 min-h-0 pt-2">
-                <PriceChart
-                  data={data.historicalPrices!}
-                  symbol={symbol}
-                  change1Y={data.change1Y}
-                  change3Y={data.change3Y}
-                  change5Y={data.change5Y}
-                  change10Y={data.change10Y}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 min-h-0 flex items-center justify-center">
-                <ScaleCell padding={0.85}>
-                  <div className="inline-flex items-center gap-6 whitespace-nowrap">
-                    <PercentBadge value={data.change1Y} label="1Y" />
-                    <PercentBadge value={data.change3Y} label="3Y" />
-                    <PercentBadge value={data.change5Y} label="5Y" />
-                    <PercentBadge value={data.change10Y} label="10Y" />
+            {/* Middle: Period returns — 2x2 grid */}
+            <ScaleCell padding={0.85} className="flex-1 min-h-0">
+              <div className="flex flex-col items-center gap-[0.6em] whitespace-nowrap">
+                <div className="grid grid-cols-2 gap-x-[2em] gap-y-[0.5em]">
+                  {periods.map(p => (
+                    <div key={p.label} className="text-center">
+                      <div className="text-[11px] text-muted-foreground uppercase tracking-[0.15em]">
+                        {p.label}
+                      </div>
+                      <div className={`text-[32px] font-bold leading-tight ${
+                        p.value! >= 0 ? 'text-green-500' : 'text-red-500'
+                      }`}>
+                        {formatPercent(p.value)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Range bar */}
+                {priceRange && (
+                  <div className="w-full max-w-[14em] flex flex-col gap-[0.15em]">
+                    <div className="relative h-[4px] w-full rounded-full bg-muted-foreground/20">
+                      <div
+                        className="absolute top-1/2 -translate-y-1/2 h-[10px] w-[10px] rounded-full bg-primary border-2 border-card"
+                        style={{ left: `${priceRange.position}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[9px] text-muted-foreground tabular-nums">
+                      <span>{showDollarSign ? '$' : ''}{formatPrice(priceRange.low)}</span>
+                      <span>{showDollarSign ? '$' : ''}{formatPrice(priceRange.high)}</span>
+                    </div>
                   </div>
-                </ScaleCell>
+                )}
               </div>
-            )}
+            </ScaleCell>
           </div>
         ) : (
           <div className="h-full flex items-center justify-center">
@@ -331,23 +186,5 @@ export function StockWidget({ symbol, name, data, variant = "full", className = 
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function PercentBadge({ value, label }: { value: number | undefined; label: string }) {
-  if (value === undefined || value === null) {
-    return (
-      <div className="text-center">
-        <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-        <div className="text-sm text-muted-foreground">—</div>
-      </div>
-    );
-  }
-  const color = value >= 0 ? "text-green-500" : "text-red-500";
-  return (
-    <div className="text-center">
-      <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-      <div className={`text-sm font-medium ${color}`}>{formatPercent(value)}</div>
-    </div>
   );
 }
