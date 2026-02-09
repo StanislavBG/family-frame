@@ -810,21 +810,9 @@ export default function CalendarPage() {
         </Card>
 
         <Card className="flex-shrink-0">
-          <CardContent className="py-3 px-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Upcoming</span>
-              </div>
-              <Button variant="outline" size="sm" asChild data-testid="button-manage-people">
-                <Link href="/settings?section=people">
-                  <Users className="h-4 w-4 mr-1" />
-                  People
-                </Link>
-              </Button>
-            </div>
+          <CardContent className="py-2 px-4">
             {upcomingEvents.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 items-stretch">
                 {upcomingEvents.map((event) => {
                   const startDate = parseLocalDate(event.startDate);
                   const endDate = parseLocalDate(event.endDate);
@@ -872,7 +860,10 @@ export default function CalendarPage() {
                 })}
               </div>
             ) : (
-              <span className="text-sm text-muted-foreground">No upcoming events</span>
+              <div className="flex items-center gap-2 py-1">
+                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">No upcoming events</span>
+              </div>
             )}
           </CardContent>
         </Card>

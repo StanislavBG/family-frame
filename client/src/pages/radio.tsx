@@ -175,34 +175,23 @@ export default function RadioPage() {
         {/* Now Playing Area */}
         <div className="flex-1 flex flex-col overflow-hidden gap-4">
           {/* Station Display - fills available space with ScaleCell zones */}
-          <div className="flex-1 min-h-0 bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl border grid grid-rows-[1fr_2.5fr_1.5fr]">
-            {/* Top zone: "Radio" label */}
-            <ScaleCell padding={0.8}>
-              <p className="text-[16px] text-muted-foreground uppercase tracking-[0.2em] whitespace-nowrap">
-                Radio
-              </p>
-            </ScaleCell>
-
-            {/* Middle zone: Station logo + name (dominant) */}
-            <ScaleCell padding={0.8}>
-              <div className="flex flex-col items-center gap-[0.3em] whitespace-nowrap">
-                {currentStation?.logo ? (
-                  <img
-                    src={currentStation.logo}
-                    alt={currentStation.name}
-                    className="w-[80px] h-[80px] rounded-2xl object-cover"
-                  />
-                ) : (
-                  <Radio className="w-[80px] h-[80px] text-primary" />
-                )}
-                <p className="text-[36px] font-bold text-center" data-testid="text-station-name">
+          <div className="flex-1 min-h-0 bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl border grid grid-rows-[2fr_1fr] gap-0">
+            {/* Main zone: Station name + status (dominant) */}
+            <ScaleCell padding={0.85}>
+              <div className="flex flex-col items-center gap-[0.2em] whitespace-nowrap">
+                <p className="text-[42px] font-bold text-center leading-tight" data-testid="text-station-name">
                   {currentStation?.name || "Select a Station"}
+                </p>
+                <p className="text-[20px] text-muted-foreground">
+                  {radioState.isBuffering ? "Buffering..." :
+                   radioState.isPlaying ? "Now Playing" :
+                   selectedStation ? "Paused" : "Choose a station"}
                 </p>
               </div>
             </ScaleCell>
 
             {/* Bottom zone: Now playing metadata + badges */}
-            <ScaleCell padding={0.8}>
+            <ScaleCell padding={0.85}>
               <div className="flex flex-col items-center gap-1 whitespace-nowrap">
                 {selectedStation && radioState.isPlaying && (metadata?.nowPlaying || metadata?.title) ? (
                   <>
@@ -220,11 +209,11 @@ export default function RadioPage() {
                     </p>
                   </>
                 ) : (
-                  <p className="text-[18px] text-muted-foreground">
-                    {radioState.isBuffering ? "Buffering..." :
-                     radioState.isPlaying ? "Now Playing" :
-                     selectedStation ? "Paused" : "Choose a station"}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <Radio className="h-6 w-6 text-primary/40" />
+                    <span className="text-[14px] text-muted-foreground/60 uppercase tracking-widest">Radio</span>
+                    <Radio className="h-6 w-6 text-primary/40" />
+                  </div>
                 )}
 
                 {selectedStation && (metadata?.genre || metadata?.bitrate) && (

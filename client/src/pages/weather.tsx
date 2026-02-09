@@ -52,7 +52,7 @@ function WeatherDenseMode({
   weather: WeatherResponse;
   unit: "celsius" | "fahrenheit";
 }) {
-  const { current, daily, location } = weather;
+  const { current, daily } = weather;
   const today = daily[0];
   const weatherInfo = getWeatherInfo(current.weatherCode);
 
@@ -66,21 +66,20 @@ function WeatherDenseMode({
           data-testid="widget-current-weather"
         >
           <CardContent className="h-full flex flex-col items-center justify-center p-6">
-            <WeatherIcon
-              code={current.weatherCode}
-              isDay={current.isDay}
-              className="h-32 w-32 md:h-40 md:w-40 lg:h-48 lg:w-48"
-            />
-            <div
-              className="text-[20vw] md:text-[12vw] lg:text-[10vw] font-bold leading-none mt-4"
-              data-testid="text-current-temp"
-            >
-              {formatTemperature(current.temperature, unit)}
+            <div className="flex items-center gap-6">
+              <WeatherIcon
+                code={current.weatherCode}
+                isDay={current.isDay}
+                className="h-28 w-28 md:h-36 md:w-36 lg:h-44 lg:w-44"
+              />
+              <div
+                className="text-[18vw] md:text-[10vw] lg:text-[9vw] font-bold leading-none"
+                data-testid="text-current-temp"
+              >
+                {formatTemperature(current.temperature, unit)}
+              </div>
             </div>
-            <div className="text-3xl md:text-4xl lg:text-5xl text-muted-foreground mt-2">
-              {location.city}
-            </div>
-            <div className="text-xl md:text-2xl lg:text-3xl text-muted-foreground mt-2">
+            <div className="text-2xl md:text-3xl lg:text-4xl text-muted-foreground mt-3">
               {weatherInfo.description}
             </div>
           </CardContent>
@@ -261,10 +260,9 @@ function TrailAdvisoryCompact({ advice }: { advice: TrailAdvice }) {
   );
 }
 
-// 3-row vertical hero: Label | Icon+Temp | Description+Stats — each row scales independently
+// 2-row vertical hero: Icon+Temp | Description+Stats — each row scales independently
 function WeatherHeroScaled({
   focusLabel,
-  city,
   weatherCode,
   isDay,
   temperature,
@@ -273,7 +271,6 @@ function WeatherHeroScaled({
   focusDay,
 }: {
   focusLabel: string;
-  city: string;
   weatherCode: number;
   isDay: boolean;
   temperature: number;
@@ -282,11 +279,11 @@ function WeatherHeroScaled({
   focusDay?: DailyForecast;
 }) {
   return (
-    <div className="w-full h-full grid grid-rows-[1fr_3fr_1.5fr] gap-0 min-h-0">
-      {/* Top zone: Location label */}
+    <div className="w-full h-full grid grid-rows-[auto_1fr_auto] gap-0 min-h-0">
+      {/* Top zone: Day label */}
       <ScaleCell padding={0.85}>
         <div className="text-[16px] font-medium text-muted-foreground uppercase tracking-widest whitespace-nowrap">
-          {focusLabel} in {city}
+          {focusLabel}
         </div>
       </ScaleCell>
 
@@ -341,7 +338,7 @@ function WeatherLightMode({
   weather: WeatherResponse;
   unit: "celsius" | "fahrenheit";
 }) {
-  const { current, daily, hourly, location } = weather;
+  const { current, daily, hourly } = weather;
   const isAfterDark = !current.isDay;
 
   // Time-aware: show today or tomorrow
@@ -376,7 +373,6 @@ function WeatherLightMode({
         <CardContent className="h-full p-4 md:p-6">
           <WeatherHeroScaled
             focusLabel={focusLabel}
-            city={location.city}
             weatherCode={isAfterDark && focusDay ? focusDay.weatherCode : current.weatherCode}
             isDay={!isAfterDark}
             temperature={
