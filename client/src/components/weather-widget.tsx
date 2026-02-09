@@ -54,8 +54,9 @@ function WeatherWidgetRenderer({
   if (variant === "compact") {
     const weatherInfo = getWeatherInfo(weather.current.weatherCode);
     return (
-      <div className={`flex flex-col items-center justify-center h-full w-full gap-2 ${className}`} data-testid="weather-widget">
-        <div className="flex items-center gap-4">
+      <div className={`flex flex-col h-full w-full ${className}`} data-testid="weather-widget">
+        {/* Icon + Temperature - main section */}
+        <div className="flex-[3] flex items-center justify-center gap-4 min-h-0">
           <WeatherIcon
             code={weather.current.weatherCode}
             isDay={weather.current.isDay}
@@ -65,10 +66,14 @@ function WeatherWidgetRenderer({
             {formatTemperature(weather.current.temperature)}
           </div>
         </div>
-        <div className="text-xl md:text-2xl lg:text-3xl text-muted-foreground">
-          {weatherInfo.description}
+        {/* Weather description */}
+        <div className="flex-1 flex items-center justify-center min-h-0">
+          <div className="text-xl md:text-2xl lg:text-3xl text-muted-foreground">
+            {weatherInfo.description}
+          </div>
         </div>
-        <div className="flex items-center gap-6 md:gap-8 mt-1">
+        {/* Stats row */}
+        <div className="flex-1 flex items-center justify-center gap-6 md:gap-8 min-h-0">
           <div className="flex items-center gap-1.5 text-lg md:text-xl text-muted-foreground">
             <ThermometerSun className="h-5 w-5 md:h-6 md:w-6 text-amber-500" />
             <span>{formatTemperature(weather.current.feelsLike ?? weather.current.temperature)}</span>
