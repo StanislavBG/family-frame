@@ -152,8 +152,8 @@ export default function HomePage() {
         {/* Large Widget 2: Weather - self-contained WeatherWidget */}
         <Link href="/weather" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
           <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-weather">
-            <CardContent className="h-full flex flex-col items-center justify-center p-6">
-              <WeatherWidget 
+            <CardContent className="h-full p-0">
+              <WeatherWidget
                 selfContained={true}
                 variant="compact"
               />
