@@ -2,15 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Radio, Calendar, Home as HomeIcon, BarChart3, Music2 } from "lucide-react";
+import { MessageSquare, Radio, Music2 } from "lucide-react";
 import { Link } from "wouter";
 import { WeatherIcon } from "@/components/weather-icon";
 import { ClockWidget } from "@/components/clock-widget";
-import { WeatherWidget } from "@/components/weather-widget";
+import { WeatherTile } from "@/components/weather-tile";
+import { CalendarTile } from "@/components/calendar-tile";
 import { StockWidget } from "@/components/stock-widget";
 import { radioService, type StreamMetadata } from "@/lib/radio-service";
 import { formatTemperature } from "@/lib/weather-utils";
-import type { UserSettings, CalendarEvent, WeatherData } from "@shared/schema";
+import type { UserSettings, WeatherData } from "@shared/schema";
 import { availableStocks } from "@shared/schema";
 
 interface WeatherResponse {
@@ -56,13 +57,8 @@ export default function HomePage() {
     queryKey: ["/api/messages/unread-count"],
   });
 
-  const { data: events } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/calendar/events"],
-    staleTime: 60 * 1000,
-  });
-
   const trackedStocks = settings?.trackedStocks || ["DJI", "SPX", "VNQ", "BTC", "GOLD"];
-  
+
   const { data: marketData } = useQuery<Record<string, MarketData | null>>({
     queryKey: ["/api/market", trackedStocks.join(",")],
     queryFn: async () => {
@@ -104,14 +100,6 @@ export default function HomePage() {
       unsubscribeMetadata();
     };
   }, []);
-  
-  const upcomingEvents = events?.filter(e => {
-    const eventDate = new Date(e.startDate);
-    const now = new Date();
-    const nextWeek = new Date(now);
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    return eventDate >= now && eventDate <= nextWeek;
-  }).slice(0, 3) || [];
 
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
@@ -120,9 +108,9 @@ export default function HomePage() {
   }, []);
 
   const formatHomeTime = (timezone: string) => {
-    return currentTime.toLocaleTimeString('en-US', { 
+    return currentTime.toLocaleTimeString('en-US', {
       timeZone: timezone,
-      hour: '2-digit', 
+      hour: '2-digit',
       minute: '2-digit',
       hour12: timeFormat === "12h"
     });
@@ -130,17 +118,10 @@ export default function HomePage() {
 
   return (
     <div className="h-full bg-background overflow-y-auto md:overflow-hidden md:flex md:flex-col md:p-6 md:gap-4 snap-y snap-mandatory md:snap-none">
-      {/* 
-        HOME PAGE LAYOUT (per App-Specific Rules):
-        - Row 1: 3 Large Widgets (Clock, Weather, Connected Households OR Stock Index fallback)
-        - Row 2: 1 Horizontal Widget (mixed secondary info)
-        - Mobile: Each large widget is a snap-scroll section (100dvh)
-      */}
-      
-      {/* Row 1: 3 Large Widgets */}
+      {/* Row 1: 3 Large Tiles - Clock, Weather, Calendar */}
       <div className="md:flex-1 md:grid md:grid-cols-3 md:gap-4 md:min-h-0">
-        
-        {/* Large Widget 1: Clock - self-contained ClockWidget */}
+
+        {/* Tile 1: Clock */}
         <Link href="/clock" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
           <Card className="h-full hover-elevate cursor-pointer overflow-hidden" data-testid="widget-clock">
             <CardContent className="h-full p-0">
@@ -149,123 +130,81 @@ export default function HomePage() {
           </Card>
         </Link>
 
-        {/* Large Widget 2: Weather - self-contained WeatherWidget */}
+        {/* Tile 2: Weather - iOS-style tile with hourly forecast */}
         <Link href="/weather" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
           <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-weather">
             <CardContent className="h-full p-0">
-              <WeatherWidget
-                selfContained={true}
-                variant="compact"
-              />
+              <WeatherTile />
             </CardContent>
           </Card>
         </Link>
 
-        {/* Large Widget 3: Connected Households OR Stock Index Fallback */}
-        {hasConnections ? (
-          <div className="min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
-            <Card className="h-full" data-testid="widget-connected-households">
-              <CardContent className="h-full flex flex-col p-6">
-                <div className="flex items-center gap-2 text-lg text-muted-foreground mb-4">
-                  <HomeIcon className="h-5 w-5" />
-                  <span>Connected Households</span>
-                </div>
-                <div className="flex-1 grid grid-cols-1 gap-4 overflow-y-auto content-start">
-                  {connections.map((conn) => (
-                    <Card 
-                      key={conn.id} 
-                      className="bg-gradient-to-br from-muted/40 to-muted/20 border-muted/50 hover-elevate"
-                      data-testid={`home-tile-${conn.id}`}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between gap-4">
-                          {/* Left side: Name and Time */}
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="text-sm uppercase tracking-wider text-muted-foreground truncate">
-                              {conn.recipientHomeName || conn.recipientName}
-                            </span>
-                            {conn.timezone && (
-                              <span className="text-4xl lg:text-5xl font-bold tracking-tight mt-1" data-testid={`home-time-${conn.id}`}>
-                                {formatHomeTime(conn.timezone)}
-                              </span>
-                            )}
-                          </div>
-                          {/* Right side: Weather */}
-                          {conn.weather?.current && (
-                            <div className="flex flex-col items-center flex-shrink-0">
-                              <WeatherIcon 
-                                code={conn.weather.current.weatherCode} 
-                                isDay={conn.weather.current.isDay} 
-                                className="h-12 w-12 lg:h-14 lg:w-14" 
-                              />
-                              <span className="text-2xl lg:text-3xl font-bold mt-1" data-testid={`home-temp-${conn.id}`}>
-                                {formatTemperature(conn.weather.current.temperature, temperatureUnit)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          /* Stock Index Fallback - manifests StockWidget */
-          <Link href="/stocks" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
-            <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-stock-index">
-              <CardContent className="h-full flex flex-col p-6">
-                <div className="flex items-center gap-2 text-lg text-muted-foreground mb-4">
-                  <BarChart3 className="h-5 w-5" />
-                  <span>Market Overview</span>
-                </div>
-                <div className="flex-1 flex flex-col justify-center gap-4">
-                  {trackedStocks.map((symbol) => {
-                    const stockInfo = availableStocks.find(s => s.symbol === symbol);
-                    const data = marketData?.[symbol.toLowerCase()] || null;
-                    
-                    return (
-                      <StockWidget
-                        key={symbol}
-                        symbol={symbol}
-                        name={stockInfo?.name || symbol}
-                        data={data}
-                        variant="compact"
-                      />
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        )}
+        {/* Tile 3: Calendar - iOS-style tile with mini grid + upcoming events */}
+        <Link href="/calendar" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
+          <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-calendar">
+            <CardContent className="h-full p-0">
+              <CalendarTile />
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
-      {/* Row 2: Horizontal Widget - Mixed Secondary Info */}
+      {/* Row 2: Horizontal Widget Bar - Connections, Stocks, Radio, Messages */}
       <div className="min-h-[100dvh] md:min-h-0 md:h-28 snap-start md:snap-align-none p-4 md:p-0">
         <div className="h-full flex gap-3 overflow-x-auto overflow-y-hidden pb-2 md:pb-0">
-          
-          {/* Stock Tickers (only if we showed Connected Households above) */}
-          {hasConnections && (
-            <Link href="/stocks" className="flex gap-3 flex-shrink-0" data-testid="stock-ticker-group">
-              {trackedStocks.slice(0, 3).map((symbol) => {
-                const stockInfo = availableStocks.find(s => s.symbol === symbol);
-                const data = marketData?.[symbol.toLowerCase()] || null;
-                
-                return (
-                  <StockWidget
-                    key={symbol}
-                    symbol={symbol}
-                    name={stockInfo?.name || symbol}
-                    data={data}
-                    variant="ticker"
-                    className="w-36"
-                  />
-                );
-              })}
-            </Link>
-          )}
+
+          {/* Connected Households */}
+          {hasConnections && connections.map((conn) => (
+            <Card
+              key={conn.id}
+              className="h-full flex-shrink-0 hover-elevate bg-gradient-to-br from-muted/40 to-muted/20 border-muted/50"
+              data-testid={`home-tile-${conn.id}`}
+            >
+              <CardContent className="h-full flex items-center gap-3 p-3 min-w-48">
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
+                    {conn.recipientHomeName || conn.recipientName}
+                  </span>
+                  {conn.timezone && (
+                    <span className="text-2xl font-bold tracking-tight" data-testid={`home-time-${conn.id}`}>
+                      {formatHomeTime(conn.timezone)}
+                    </span>
+                  )}
+                </div>
+                {conn.weather?.current && (
+                  <div className="flex flex-col items-center flex-shrink-0">
+                    <WeatherIcon
+                      code={conn.weather.current.weatherCode}
+                      isDay={conn.weather.current.isDay}
+                      className="h-8 w-8"
+                    />
+                    <span className="text-sm font-bold" data-testid={`home-temp-${conn.id}`}>
+                      {formatTemperature(conn.weather.current.temperature, temperatureUnit)}
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+
+          {/* Stock Tickers */}
+          <Link href="/stocks" className="flex gap-3 flex-shrink-0" data-testid="stock-ticker-group">
+            {trackedStocks.slice(0, 3).map((symbol) => {
+              const stockInfo = availableStocks.find(s => s.symbol === symbol);
+              const data = marketData?.[symbol.toLowerCase()] || null;
+
+              return (
+                <StockWidget
+                  key={symbol}
+                  symbol={symbol}
+                  name={stockInfo?.name || symbol}
+                  data={data}
+                  variant="ticker"
+                  className="w-36"
+                />
+              );
+            })}
+          </Link>
 
           {/* Radio Status */}
           {radioEnabled && (
@@ -276,13 +215,12 @@ export default function HomePage() {
                   <div className="text-sm font-medium mt-1" data-testid="text-radio-station">
                     {radioState.stationName || "Radio Playing"}
                   </div>
-                  {/* Show now playing info if available */}
                   {radioState.isPlaying && (radioMetadata?.nowPlaying || radioMetadata?.title) && (
                     <div className="mt-1 text-center max-w-40">
                       <div className="flex items-center justify-center gap-1 text-xs text-primary/80" data-testid="text-radio-now-playing">
                         <Music2 className="h-3 w-3" />
                         <span className="truncate">
-                          {radioMetadata.artist 
+                          {radioMetadata.artist
                             ? `${radioMetadata.artist} - ${radioMetadata.title}`
                             : (radioMetadata.title || radioMetadata.nowPlaying)
                           }
@@ -309,23 +247,8 @@ export default function HomePage() {
             </Link>
           )}
 
-          {/* Upcoming Events */}
-          {upcomingEvents.map((event) => (
-            <Link href="/calendar" key={event.id} className="flex-shrink-0">
-              <Card className="h-full w-44 hover-elevate cursor-pointer" data-testid={`widget-event-${event.id}`}>
-                <CardContent className="h-full flex flex-col items-center justify-center p-3">
-                  <Calendar className="h-6 w-6 text-blue-500 mb-1" />
-                  <div className="text-sm font-medium text-center line-clamp-1">{event.title}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-
-          {/* Empty state hint when nothing to show */}
-          {!radioEnabled && unreadCount === 0 && upcomingEvents.length === 0 && !hasConnections && (
+          {/* Empty state hint when nothing else to show */}
+          {!radioEnabled && unreadCount === 0 && !hasConnections && (
             <div className="flex items-center justify-center w-full text-muted-foreground">
               <span className="text-lg">Your activity will appear here</span>
             </div>
