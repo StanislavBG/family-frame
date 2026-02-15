@@ -6,6 +6,8 @@ import { EventType } from "@shared/schema";
 
 interface CalendarTileProps {
   className?: string;
+  /** "vertical" stacks grid above events, "horizontal" puts them side by side */
+  layout?: "vertical" | "horizontal";
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -109,7 +111,7 @@ function MiniCalendarGrid({
   );
 }
 
-function UpcomingEventsList({ events }: { events: CalendarEvent[] }) {
+function UpcomingEventsList({ events, compact }: { events: CalendarEvent[]; compact?: boolean }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -120,7 +122,7 @@ function UpcomingEventsList({ events }: { events: CalendarEvent[] }) {
         parseLocalDate(a.startDate).getTime() -
         parseLocalDate(b.startDate).getTime()
     )
-    .slice(0, 3);
+    .slice(0, compact ? 5 : 3);
 
   if (upcoming.length === 0) {
     return (
@@ -129,7 +131,7 @@ function UpcomingEventsList({ events }: { events: CalendarEvent[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {upcoming.map((event) => {
         const start = parseLocalDate(event.startDate);
         const diffDays = Math.ceil(
@@ -168,7 +170,7 @@ function UpcomingEventsList({ events }: { events: CalendarEvent[] }) {
   );
 }
 
-export function CalendarTile({ className = "" }: CalendarTileProps) {
+export function CalendarTile({ className = "", layout = "vertical" }: CalendarTileProps) {
   const { data: settings } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
   });
@@ -192,6 +194,39 @@ export function CalendarTile({ className = "" }: CalendarTileProps) {
     );
   }
 
+  if (layout === "horizontal") {
+    return (
+      <div
+        className={cn("flex flex-col h-full w-full p-4 md:p-5", className)}
+        data-testid="calendar-tile"
+      >
+        {/* Month name header */}
+        <div className="text-base md:text-lg font-bold text-primary leading-tight mb-2">
+          {monthName}
+        </div>
+
+        {/* Horizontal: grid left, events right */}
+        <div className="flex-1 flex gap-4 min-h-0">
+          <div className="flex-1 min-w-0">
+            <MiniCalendarGrid
+              now={now}
+              events={events || []}
+              weekStartsMonday={weekStartsMonday}
+            />
+          </div>
+          <div className="w-px bg-border/40 flex-shrink-0" />
+          <div className="flex-1 min-w-0 overflow-y-auto">
+            <div className="text-[10px] md:text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">
+              Upcoming
+            </div>
+            <UpcomingEventsList events={events || []} compact />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Default vertical layout
   return (
     <div
       className={cn("flex flex-col h-full w-full p-4 md:p-5", className)}

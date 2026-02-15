@@ -89,13 +89,8 @@ function WeatherTileContent({
 
   return (
     <div className="flex flex-col h-full w-full p-4 md:p-5" data-testid="weather-tile">
-      {/* City name */}
-      <div className="text-sm md:text-base font-semibold text-foreground/80 truncate">
-        {weather.location?.city || "My Location"}
-      </div>
-
       {/* Large temperature + icon row */}
-      <div className="flex items-center gap-3 mt-1">
+      <div className="flex items-center gap-3">
         <div className="text-5xl md:text-6xl lg:text-7xl font-light leading-none tracking-tight">
           {formatTemp(weather.current.temperature, temperatureUnit)}
         </div>

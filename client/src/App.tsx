@@ -34,6 +34,7 @@ import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo, useCallb
 import { motion, useReducedMotion } from "framer-motion";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { AppControlsProvider, AppControlsWidget, HeaderControls, useAppControls } from "@/components/app-controls";
+import { RadioFAB } from "@/components/radio-fab";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -235,6 +236,7 @@ function AuthenticatedLayout() {
             </main>
           </div>
           <AppControlsWidget />
+          <RadioFAB />
         </div>
       </SidebarProvider>
     </AppControlsProvider>

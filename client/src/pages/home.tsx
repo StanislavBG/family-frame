@@ -2,14 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Radio, Music2 } from "lucide-react";
+import { MessageSquare, Home as HomeIcon } from "lucide-react";
 import { Link } from "wouter";
 import { WeatherIcon } from "@/components/weather-icon";
 import { ClockWidget } from "@/components/clock-widget";
 import { WeatherTile } from "@/components/weather-tile";
 import { CalendarTile } from "@/components/calendar-tile";
-import { StockWidget } from "@/components/stock-widget";
-import { radioService, type StreamMetadata } from "@/lib/radio-service";
+import { StockTicker } from "@/components/stock-ticker";
 import { formatTemperature } from "@/lib/weather-utils";
 import type { UserSettings, WeatherData } from "@shared/schema";
 import { availableStocks } from "@shared/schema";
@@ -70,36 +69,9 @@ export default function HomePage() {
   });
 
   const unreadCount = unreadData?.count || 0;
-  const radioEnabled = settings?.radioEnabled ?? false;
   const hasConnections = connections && connections.length > 0;
   const temperatureUnit = settings?.temperatureUnit || "celsius";
   const timeFormat = settings?.timeFormat || "24h";
-
-  // Radio metadata state
-  const [radioMetadata, setRadioMetadata] = useState<StreamMetadata | null>(null);
-  const [radioState, setRadioState] = useState(radioService.getState());
-
-  useEffect(() => {
-    const unsubscribeState = radioService.subscribe("stateChange", (state) => {
-      setRadioState(state);
-      if (state.metadata) {
-        setRadioMetadata(state.metadata);
-      }
-    });
-    const unsubscribeMetadata = radioService.subscribe("metadataChange", (data: StreamMetadata) => {
-      setRadioMetadata(data);
-    });
-    // Initialize from current state
-    const initialState = radioService.getState();
-    setRadioState(initialState);
-    if (initialState.metadata) {
-      setRadioMetadata(initialState.metadata);
-    }
-    return () => {
-      unsubscribeState();
-      unsubscribeMetadata();
-    };
-  }, []);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
@@ -108,152 +80,144 @@ export default function HomePage() {
   }, []);
 
   const formatHomeTime = (timezone: string) => {
-    return currentTime.toLocaleTimeString('en-US', {
+    return currentTime.toLocaleTimeString("en-US", {
       timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: timeFormat === "12h"
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: timeFormat === "12h",
     });
   };
 
   return (
-    <div className="h-full bg-background overflow-y-auto md:overflow-hidden md:flex md:flex-col md:p-6 md:gap-4 snap-y snap-mandatory md:snap-none">
-      {/* Row 1: 3 Large Tiles - Clock, Weather, Calendar */}
-      <div className="md:flex-1 md:grid md:grid-cols-3 md:gap-4 md:min-h-0">
+    <div className="h-full bg-background flex flex-col overflow-hidden">
+      {/*
+        LAYOUT (Option B):
+        ┌──────────────────┬───────────────────────┐
+        │  Digital Clock   │                       │
+        │──────────────────│  Connected Homes       │
+        │  Weather Tile    │  (+ unread badge)      │
+        ├──────────────────┴───────────────────────┤
+        │  Calendar (horizontal: grid | events)    │
+        ├──────────────────────────────────────────┤
+        │  DJI ▲0.5%  ·  SPX ▲1.2%  ·  BTC ▼2.1% │
+        └──────────────────────────────────────────┘
+      */}
 
-        {/* Tile 1: Clock */}
-        <Link href="/clock" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
-          <Card className="h-full hover-elevate cursor-pointer overflow-hidden" data-testid="widget-clock">
-            <CardContent className="h-full p-0">
-              <ClockWidget variant="compact" style="analog" />
+      {/* Main area: 2 columns */}
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 md:p-6 min-h-0 overflow-y-auto md:overflow-hidden">
+
+        {/* Left column: Clock stacked above Weather */}
+        <div className="flex flex-col gap-4 min-h-0">
+          {/* Digital Clock */}
+          <Link href="/clock" className="block flex-shrink-0">
+            <Card className="hover-elevate cursor-pointer overflow-hidden" data-testid="widget-clock">
+              <CardContent className="p-4 md:p-6">
+                <ClockWidget variant="compact" style="digital" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Weather Tile */}
+          <Link href="/weather" className="block flex-1 min-h-0">
+            <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-weather">
+              <CardContent className="h-full p-0">
+                <WeatherTile />
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+
+        {/* Right column: Connected Homes */}
+        <div className="min-h-0">
+          <Card className="h-full" data-testid="widget-connected-households">
+            <CardContent className="h-full flex flex-col p-4 md:p-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <HomeIcon className="h-4 w-4" />
+                  <span className="font-medium">Connected Homes</span>
+                </div>
+                {unreadCount > 0 && (
+                  <Link href="/messages">
+                    <Badge variant="destructive" className="cursor-pointer" data-testid="widget-unread-messages">
+                      <MessageSquare className="h-3 w-3 mr-1" />
+                      {unreadCount}
+                    </Badge>
+                  </Link>
+                )}
+              </div>
+
+              {hasConnections ? (
+                <div className="flex-1 grid grid-cols-1 gap-3 overflow-y-auto content-start">
+                  {connections.map((conn) => (
+                    <Card
+                      key={conn.id}
+                      className="bg-gradient-to-br from-muted/40 to-muted/20 border-muted/50"
+                      data-testid={`home-tile-${conn.id}`}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="text-xs uppercase tracking-wider text-muted-foreground truncate">
+                              {conn.recipientHomeName || conn.recipientName}
+                            </span>
+                            {conn.timezone && (
+                              <span
+                                className="text-3xl lg:text-4xl font-bold tracking-tight mt-0.5"
+                                data-testid={`home-time-${conn.id}`}
+                              >
+                                {formatHomeTime(conn.timezone)}
+                              </span>
+                            )}
+                          </div>
+                          {conn.weather?.current && (
+                            <div className="flex flex-col items-center flex-shrink-0">
+                              <WeatherIcon
+                                code={conn.weather.current.weatherCode}
+                                isDay={conn.weather.current.isDay}
+                                className="h-10 w-10 lg:h-12 lg:w-12"
+                              />
+                              <span
+                                className="text-lg lg:text-xl font-bold mt-0.5"
+                                data-testid={`home-temp-${conn.id}`}
+                              >
+                                {formatTemperature(conn.weather.current.temperature, temperatureUnit)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <HomeIcon className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Connect with family homes in Settings</p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
-        </Link>
+        </div>
+      </div>
 
-        {/* Tile 2: Weather - iOS-style tile with hourly forecast */}
-        <Link href="/weather" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
-          <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-weather">
-            <CardContent className="h-full p-0">
-              <WeatherTile />
-            </CardContent>
-          </Card>
-        </Link>
-
-        {/* Tile 3: Calendar - iOS-style tile with mini grid + upcoming events */}
-        <Link href="/calendar" className="block min-h-[100dvh] md:min-h-0 md:col-span-1 snap-start md:snap-align-none p-4 md:p-0">
-          <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-calendar">
-            <CardContent className="h-full p-0">
-              <CalendarTile />
+      {/* Calendar row - full width, horizontal layout */}
+      <div className="flex-shrink-0 px-4 md:px-6 pb-2">
+        <Link href="/calendar" className="block">
+          <Card className="hover-elevate cursor-pointer" data-testid="widget-calendar">
+            <CardContent className="p-0">
+              <CalendarTile layout="horizontal" />
             </CardContent>
           </Card>
         </Link>
       </div>
 
-      {/* Row 2: Horizontal Widget Bar - Connections, Stocks, Radio, Messages */}
-      <div className="min-h-[100dvh] md:min-h-0 md:h-28 snap-start md:snap-align-none p-4 md:p-0">
-        <div className="h-full flex gap-3 overflow-x-auto overflow-y-hidden pb-2 md:pb-0">
-
-          {/* Connected Households */}
-          {hasConnections && connections.map((conn) => (
-            <Card
-              key={conn.id}
-              className="h-full flex-shrink-0 hover-elevate bg-gradient-to-br from-muted/40 to-muted/20 border-muted/50"
-              data-testid={`home-tile-${conn.id}`}
-            >
-              <CardContent className="h-full flex items-center gap-3 p-3 min-w-48">
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
-                    {conn.recipientHomeName || conn.recipientName}
-                  </span>
-                  {conn.timezone && (
-                    <span className="text-2xl font-bold tracking-tight" data-testid={`home-time-${conn.id}`}>
-                      {formatHomeTime(conn.timezone)}
-                    </span>
-                  )}
-                </div>
-                {conn.weather?.current && (
-                  <div className="flex flex-col items-center flex-shrink-0">
-                    <WeatherIcon
-                      code={conn.weather.current.weatherCode}
-                      isDay={conn.weather.current.isDay}
-                      className="h-8 w-8"
-                    />
-                    <span className="text-sm font-bold" data-testid={`home-temp-${conn.id}`}>
-                      {formatTemperature(conn.weather.current.temperature, temperatureUnit)}
-                    </span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-
-          {/* Stock Tickers */}
-          <Link href="/stocks" className="flex gap-3 flex-shrink-0" data-testid="stock-ticker-group">
-            {trackedStocks.slice(0, 3).map((symbol) => {
-              const stockInfo = availableStocks.find(s => s.symbol === symbol);
-              const data = marketData?.[symbol.toLowerCase()] || null;
-
-              return (
-                <StockWidget
-                  key={symbol}
-                  symbol={symbol}
-                  name={stockInfo?.name || symbol}
-                  data={data}
-                  variant="ticker"
-                  className="w-36"
-                />
-              );
-            })}
-          </Link>
-
-          {/* Radio Status */}
-          {radioEnabled && (
-            <Link href="/radio" className="flex-shrink-0">
-              <Card className="h-full hover-elevate cursor-pointer bg-primary/10" data-testid="widget-radio-status">
-                <CardContent className="h-full flex flex-col items-center justify-center p-3 min-w-36">
-                  <Radio className="h-7 w-7 text-primary animate-pulse" />
-                  <div className="text-sm font-medium mt-1" data-testid="text-radio-station">
-                    {radioState.stationName || "Radio Playing"}
-                  </div>
-                  {radioState.isPlaying && (radioMetadata?.nowPlaying || radioMetadata?.title) && (
-                    <div className="mt-1 text-center max-w-40">
-                      <div className="flex items-center justify-center gap-1 text-xs text-primary/80" data-testid="text-radio-now-playing">
-                        <Music2 className="h-3 w-3" />
-                        <span className="truncate">
-                          {radioMetadata.artist
-                            ? `${radioMetadata.artist} - ${radioMetadata.title}`
-                            : (radioMetadata.title || radioMetadata.nowPlaying)
-                          }
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </Link>
-          )}
-
-          {/* Unread Messages */}
-          {unreadCount > 0 && (
-            <Link href="/messages" className="flex-shrink-0">
-              <Card className="h-full w-36 hover-elevate cursor-pointer" data-testid="widget-unread-messages">
-                <CardContent className="h-full flex flex-col items-center justify-center p-3">
-                  <MessageSquare className="h-8 w-8 text-violet-500" />
-                  <Badge variant="destructive" className="mt-1">
-                    {unreadCount} unread
-                  </Badge>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
-
-          {/* Empty state hint when nothing else to show */}
-          {!radioEnabled && unreadCount === 0 && !hasConnections && (
-            <div className="flex items-center justify-center w-full text-muted-foreground">
-              <span className="text-lg">Your activity will appear here</span>
-            </div>
-          )}
-        </div>
+      {/* Stock ticker tape - thin bottom strip */}
+      <div className="flex-shrink-0">
+        <Link href="/stocks">
+          <StockTicker stocks={trackedStocks} marketData={marketData} />
+        </Link>
       </div>
     </div>
   );
