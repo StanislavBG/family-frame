@@ -552,6 +552,36 @@ function LandingPage() {
             </Button>
           </SignInButton>
         </section>
+
+        {/* Google Data Usage Disclosure */}
+        <section className="px-4 md:px-6 pb-6" aria-labelledby="data-use-heading">
+          <div className="max-w-3xl mx-auto bg-muted/40 rounded-xl p-5 md:p-6 text-sm">
+            <h3 id="data-use-heading" className="font-semibold text-base mb-3">How We Use Your Google Data</h3>
+            <p className="text-muted-foreground mb-3 leading-relaxed">
+              Family Frame integrates with Google Photos to display your cherished memories on your family frame display. Here's exactly what we do with your data:
+            </p>
+            <ul className="space-y-2 text-muted-foreground list-disc pl-5 mb-3">
+              <li><strong className="text-foreground">Read-only access:</strong> We only request permission to view your Google Photos albums (photoslibrary.readonly scope)</li>
+              <li><strong className="text-foreground">Your choice:</strong> You select which specific albums to display — we never access albums you haven't chosen</li>
+              <li><strong className="text-foreground">No storage:</strong> Your photos are streamed directly from Google Photos and are NOT stored on our servers</li>
+              <li><strong className="text-foreground">No sharing:</strong> We never share your Google data with third parties</li>
+              <li><strong className="text-foreground">No advertising:</strong> Your data is never used for advertising purposes</li>
+              <li><strong className="text-foreground">Revocable:</strong> You can disconnect Google Photos at any time from your account settings</li>
+            </ul>
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Our use of Google APIs adheres to the{" "}
+              <a
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Google API Services User Data Policy
+              </a>
+              , including the Limited Use requirements.
+            </p>
+          </div>
+        </section>
       </main>
 
       {/* Footer */}

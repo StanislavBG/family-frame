@@ -98,30 +98,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static HTML pages for SEO, Google verification, and no-JS fallback
-// These are served for all requests - the pages include JS to redirect to SPA for authenticated users
+// Serve static HTML pages for SEO (privacy and terms only)
 const staticPagesPath = path.resolve(currentDir, "static-pages");
-app.get(["/", "/privacy", "/terms"], (req, res, next) => {
-  // Skip if this is an API request or has session cookie (authenticated user)
-  const hasSession = req.cookies?.__session || req.cookies?.__clerk_db_jwt;
-  const bypassStatic = req.cookies?.__static_bypass;
-  
-  // For authenticated users or users who clicked sign-in, let the SPA handle it
-  if (req.path === "/" && (hasSession || bypassStatic)) {
-    next();
-    return;
-  }
-  
-  let fileName = "index.html";
-  if (req.path === "/privacy") fileName = "privacy.html";
-  else if (req.path === "/terms") fileName = "terms.html";
-  
+app.get(["/privacy", "/terms"], (req, res, next) => {
+  const fileName = req.path === "/privacy" ? "privacy.html" : "terms.html";
   const staticFilePath = path.resolve(staticPagesPath, fileName);
   if (fs.existsSync(staticFilePath)) {
     res.sendFile(staticFilePath);
     return;
   }
-  
   next();
 });
 
