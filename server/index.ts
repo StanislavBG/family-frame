@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import fs from "fs";
 import path from "path";
 import { registerRoutes } from "./routes";
+import { registerAppVisibilityRoutes } from "./app-visibility";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { createClerkClient, verifyToken } from "@clerk/express";
@@ -103,6 +104,7 @@ app.get(["/privacy", "/terms"], (req, res, next) => {
 });
 
 (async () => {
+  registerAppVisibilityRoutes(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
