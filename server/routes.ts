@@ -33,7 +33,7 @@ import type {
   GooglePhotoItem,
   StoredPhoto,
 } from "@shared/schema";
-import { insertCalendarEventSchema, insertPersonSchema, insertNoteSchema, insertMessageSchema, ConnectionStatus, PhotoSource, EventType } from "@shared/schema";
+import { insertCalendarEventSchema, insertPersonSchema, insertNoteSchema, insertMessageSchema, ConnectionStatus, PhotoSource, EventType, updateUserSettingsSchema, updatePersonSchema, isValidConnectionUserId } from "@shared/schema";
 
 // Detect if running in production deployment
 const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
@@ -196,8 +196,14 @@ export async function registerRoutes(
       return;
     }
 
+    const parsed = updateUserSettingsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid settings" });
+      return;
+    }
+
     const userData = await getOrCreateUser(userId, username);
-    const updatedSettings = { ...userData.settings, ...req.body };
+    const updatedSettings = { ...userData.settings, ...parsed.data };
 
     await updateUserData(userId, { settings: updatedSettings });
 
@@ -312,16 +318,28 @@ export async function registerRoutes(
       return;
     }
 
-    const { name, birthday } = req.body;
-    if (!name || typeof name !== "string") {
-      res.status(400).json({ error: "Name is required" });
+    // An empty birthday means "clear it"
+    const body = req.body && typeof req.body === "object" ? { ...req.body } : req.body;
+    const clearBirthday = body && body.birthday === "";
+    if (clearBirthday) delete body.birthday;
+
+    const parsed = updatePersonSchema.safeParse(body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid person" });
       return;
     }
 
     const userData = await getOrCreateUser(userId, username);
+    if (!(userData.people || []).some((p) => p.id === personId)) {
+      res.status(404).json({ error: "Person not found" });
+      return;
+    }
+
     const updatedPeople = (userData.people || []).map((p) => {
       if (p.id === personId) {
-        return { ...p, name, birthday: birthday || undefined };
+        const merged = { ...p, ...parsed.data };
+        if (clearBirthday) delete merged.birthday;
+        return merged;
       }
       return p;
     });
@@ -701,7 +719,16 @@ export async function registerRoutes(
         return;
       }
 
+      if (!isValidConnectionUserId(targetUserId)) {
+        res.status(400).json({ error: "Invalid user id" });
+        return;
+      }
+
       const userData = await getOrCreateUser(userId, username);
+      if (!(userData.connections || []).includes(targetUserId)) {
+        res.status(404).json({ error: "Connection not found" });
+        return;
+      }
       const updatedConnections = (userData.connections || []).filter((id) => id !== targetUserId);
       await updateUserData(userId, { connections: updatedConnections });
 

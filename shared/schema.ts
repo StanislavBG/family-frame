@@ -26,6 +26,13 @@ export const personSchema = z.object({
 
 export const insertPersonSchema = personSchema.omit({ id: true });
 
+export const BIRTHDAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export const updatePersonSchema = insertPersonSchema
+  .extend({ birthday: z.string().regex(BIRTHDAY_PATTERN, "Birthday must be YYYY-MM-DD").optional() })
+  .partial()
+  .strict();
+
 export type Person = z.infer<typeof personSchema>;
 export type InsertPerson = z.infer<typeof insertPersonSchema>;
 
@@ -254,6 +261,34 @@ export const userSettingsSchema = z.object({
 });
 
 export type UserSettings = z.infer<typeof userSettingsSchema>;
+
+// Keys the server owns; clients may never set them through PATCH /api/settings
+export const SERVER_OWNED_SETTINGS_KEYS = [
+  "selectedPhotos",
+  "pickerSessionId",
+  "googlePhotosConnected",
+  "googleTokens",
+] as const;
+
+export const updateUserSettingsSchema = userSettingsSchema
+  .omit({
+    selectedPhotos: true,
+    pickerSessionId: true,
+    googlePhotosConnected: true,
+  })
+  .extend({
+    radioStation: z.string().url().refine((u) => /^https?:\/\//i.test(u), "radioStation must be an http(s) URL"),
+  })
+  .partial()
+  .strict();
+
+export type UpdateUserSettings = z.infer<typeof updateUserSettingsSchema>;
+
+export const CONNECTION_USER_ID_PATTERN = /^user_[A-Za-z0-9]+$/;
+
+export function isValidConnectionUserId(id: unknown): id is string {
+  return typeof id === "string" && CONNECTION_USER_ID_PATTERN.test(id);
+}
 
 // TV Channel schema
 export interface TVChannel {
