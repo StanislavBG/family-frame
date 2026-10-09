@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { registerMcpRoutes } from "./mcp";
 import { createServer, type Server } from "http";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { initializeFirebase, getUserData, setUserData, updateUserData, getUserByUsername, setSharedNote, deleteSharedNote, getAllSharedNotes } from "./firebase";
@@ -100,6 +101,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  registerMcpRoutes(app);
+
   // Config endpoint - provides environment-specific settings to frontend
   app.get("/api/config", (_req: Request, res: Response) => {
     res.json({
