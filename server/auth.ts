@@ -21,6 +21,8 @@ export interface SessionHeaderDeps {
   ) => Promise<{ userId: string; username: string; scopes: string[] } | null>;
 }
 
+const USERNAME_CACHE_TTL_MS = 5 * 60 * 1000;
+
 const PAT_BEARER_PREFIX = "Bearer ff_pat_";
 
 function isPatPathAllowed(path: string): boolean {
@@ -38,7 +40,21 @@ function isPatPathAllowed(path: string): boolean {
  * token. Routes trust these headers, so they must never pass through from the
  * client. PAT requests are confined to the calendar/people APIs and /mcp.
  */
-export function createSessionHeaderMiddleware(deps: SessionHeaderDeps) {
+export function createSessionHeaderMiddleware(
+  deps: SessionHeaderDeps,
+  opts: { now?: () => number } = {},
+) {
+  const now = opts.now ?? Date.now;
+  const usernameCache = new Map<string, { username: string; expiresAt: number }>();
+
+  async function lookupUsername(userId: string): Promise<string> {
+    const hit = usernameCache.get(userId);
+    if (hit && hit.expiresAt > now()) return hit.username;
+    const username = await deps.getUsername(userId);
+    usernameCache.set(userId, { username, expiresAt: now() + USERNAME_CACHE_TTL_MS });
+    return username;
+  }
+
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     delete req.headers["x-clerk-user-id"];
     delete req.headers["x-clerk-username"];
@@ -78,12 +94,17 @@ export function createSessionHeaderMiddleware(deps: SessionHeaderDeps) {
       return;
     }
 
+    if (!req.path.startsWith("/api")) {
+      next();
+      return;
+    }
+
     try {
       const sessionToken = req.cookies?.__session || req.cookies?.__clerk_db_jwt;
       if (sessionToken) {
         const claims = await deps.verifyToken(sessionToken);
         if (claims && claims.sub) {
-          const username = await deps.getUsername(claims.sub);
+          const username = await lookupUsername(claims.sub);
           req.headers["x-clerk-user-id"] = claims.sub;
           req.headers["x-clerk-username"] = username;
           req.headers["x-ff-auth"] = "session";

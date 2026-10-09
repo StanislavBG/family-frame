@@ -19,9 +19,11 @@ const SPOOFED = {
 async function run(
   req: FakeReq,
   deps: Parameters<typeof createSessionHeaderMiddleware>[0],
+  mw = createSessionHeaderMiddleware(deps),
 ): Promise<number> {
   let nextCalls = 0;
-  await createSessionHeaderMiddleware(deps)(req as any, {} as any, () => {
+  req.path ??= "/api/test";
+  await mw(req as any, {} as any, () => {
     nextCalls++;
   });
   return nextCalls;
@@ -32,6 +34,7 @@ async function runWithRes(
   deps: Parameters<typeof createSessionHeaderMiddleware>[0],
 ) {
   let nextCalls = 0;
+  req.path ??= "/api/test";
   const out: { status?: number; body?: unknown } = {};
   const res = {
     status(code: number) {
@@ -194,3 +197,49 @@ test("non-ff_pat_ bearer falls through to cookie logic", async () => {
   assert.equal(await run(req, okDeps), 1);
   assert.equal(req.headers["x-clerk-user-id"], "user_real");
 });
+
+test("non-/api path strips spoofed headers and never verifies the cookie", async () => {
+  let verifyCalls = 0;
+  const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __session: "good" }, path: "/hls/seg1.ts" };
+  const next = await run(req, {
+    ...okDeps,
+    verifyToken: async () => {
+      verifyCalls++;
+      return { sub: "user_real" };
+    },
+  });
+  assert.equal(next, 1);
+  assert.equal(verifyCalls, 0);
+  assert.equal(req.headers["x-clerk-user-id"], undefined);
+  assert.equal(req.headers["x-clerk-username"], undefined);
+});
+
+test("getUsername is called once for repeat requests within the TTL, again after it", async () => {
+  let lookups = 0;
+  let t = 1_000;
+  const deps = {
+    ...okDeps,
+    getUsername: async () => {
+      lookups++;
+      return "real";
+    },
+  };
+  const mw = createSessionHeaderMiddleware(deps, { now: () => t });
+  for (let i = 0; i < 2; i++) {
+    const req: FakeReq = { headers: {}, cookies: { __session: "good" }, path: "/api/messages" };
+    assert.equal(await runMw(req, mw), 1);
+    assert.equal(req.headers["x-clerk-username"], "real");
+  }
+  assert.equal(lookups, 1);
+  t += 5 * 60 * 1000 + 1;
+  await runMw({ headers: {}, cookies: { __session: "good" }, path: "/api/messages" }, mw);
+  assert.equal(lookups, 2);
+});
+
+async function runMw(req: FakeReq, mw: ReturnType<typeof createSessionHeaderMiddleware>) {
+  let n = 0;
+  await mw(req as any, {} as any, () => {
+    n++;
+  });
+  return n;
+}
