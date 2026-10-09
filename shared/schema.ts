@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { APP_MANIFESTS } from "./apps";
 
 // Event type enum
 export const EventType = {
@@ -175,27 +176,15 @@ export interface AppItem {
   fixed?: boolean;
 }
 
-// Default app list for app picker (id must match url path)
-export const defaultAppList: AppItem[] = [
-  { id: "home", title: "Home", url: "/", fixed: true },
-  { id: "settings", title: "Global Config", url: "/settings", fixed: true },
-  { id: "clock", title: "Clock", url: "/clock" },
-  { id: "weather", title: "Weather", url: "/weather" },
-  { id: "photos", title: "Picture Frame", url: "/photos" },
-  { id: "calendar", title: "Calendar", url: "/calendar" },
-  { id: "chores", title: "Chores", url: "/chores" },
-  { id: "recipes", title: "Recipes", url: "/recipes" },
-  { id: "notepad", title: "Notepad", url: "/notepad" },
-  { id: "messages", title: "Messages", url: "/messages" },
-  { id: "radio", title: "BG Radio", url: "/radio" },
-  { id: "baby-songs", title: "Baby Songs", url: "/baby-songs" },
-  { id: "tv", title: "World TV", url: "/tv" },
-  { id: "shopping", title: "Shopping", url: "/shopping" },
-  { id: "stocks", title: "Stocks", url: "/stocks" },
-  { id: "screensaver", title: "Screensaver", url: "/screensaver" },
-];
+// Default app list for app picker, derived from the framework app registry
+export const defaultAppList: AppItem[] = APP_MANIFESTS.map(({ id, title, url, fixed }) => ({
+  id,
+  title,
+  url,
+  ...(fixed ? { fixed } : {}),
+}));
 
-export type AppId = string;
+export type { AppId } from "./apps";
 
 // Custom YouTube Playlist schema - user-defined playlists (moved here for reference in userSettingsSchema)
 export const customPlaylistSchema = z.object({
@@ -240,8 +229,8 @@ export const userSettingsSchema = z.object({
   radioStation: z.string().default("https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac"),
   trackedStocks: z.array(z.string()).default(["DJI", "SPX", "VNQ", "BTC", "GOLD"]), // Default market trackers
   // App picker settings
-  visibleApps: z.array(z.string()).optional(), // If undefined, all apps visible
-  appOrder: z.array(z.string()).optional(), // Custom app order (excludes fixed apps)
+  visibleApps: z.array(z.string().max(40)).max(50).optional(), // If undefined, all apps visible
+  appOrder: z.array(z.string().max(40)).max(50).optional(), // Custom app order (excludes fixed apps)
   // Baby Radio settings
   babyAgeMonths: z.number().min(0).max(72).default(12), // Baby age in months (0-72 = 0-6 years)
   // Custom playlists for Baby Songs (user-defined YouTube playlists)
