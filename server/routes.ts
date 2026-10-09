@@ -1,37 +1,17 @@
 import type { Express, Request, Response } from "express";
 import { registerMcpRoutes } from "./mcp";
 import { createServer, type Server } from "http";
-import { randomUUID, createHmac, timingSafeEqual } from "crypto";
+import { randomUUID } from "crypto";
+import { createOAuthState, verifyOAuthState } from "./oauth-state";
 import { initializeFirebase, getUserData, setUserData, updateUserData, getUserByUsername, setSharedNote, deleteSharedNote, getAllSharedNotes } from "./firebase";
 import { asyncHandler, getOrCreateUser, toArray, type UserData } from "./middleware";
 import { z } from "zod";
 import { calendarService, CalendarError } from "./calendar-service";
 import { createApiToken, listApiTokens, revokeApiToken, firebaseTokenStore, ApiTokenError, API_TOKEN_SCOPES } from "./api-tokens";
 
-// Secret for signing OAuth state - use SESSION_SECRET or fallback
-const STATE_SECRET = process.env.SESSION_SECRET || "oauth-state-secret-fallback";
-
-// Sign data with HMAC for OAuth state security
-function signState(data: string): string {
-  const hmac = createHmac("sha256", STATE_SECRET);
-  hmac.update(data);
-  return hmac.digest("base64url");
-}
-
-// Verify HMAC signature using timing-safe comparison
-function verifyState(data: string, signature: string): boolean {
-  try {
-    const expectedSignature = signState(data);
-    const sigBuffer = Buffer.from(signature, "base64url");
-    const expectedBuffer = Buffer.from(expectedSignature, "base64url");
-    if (sigBuffer.length !== expectedBuffer.length) {
-      return false;
-    }
-    return timingSafeEqual(sigBuffer, expectedBuffer);
-  } catch {
-    return false;
-  }
-}
+const OAUTH_NONCE_COOKIE = "ff_oauth_nonce";
+const OAUTH_NONCE_MAX_AGE_MS = 10 * 60 * 1000;
+const OAUTH_NOT_CONFIGURED = { error: "Google Photos sign-in not configured" };
 import { getWeather, reverseGeocode, geocodeCity } from "./weather";
 import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPickerSession, getPickerSession, getPickedMediaItems, deletePickerSession, refreshPickerPhotoUrl } from "./google-photos";
 import { isAllowedGooglePhotoUrl } from "./url-guards";
@@ -1887,8 +1867,13 @@ export async function registerRoutes(
 
   app.get("/api/google/auth-url", async (req: Request, res: Response) => {
     try {
+      const secret = process.env.SESSION_SECRET;
+      if (!secret) {
+        res.status(503).json(OAUTH_NOT_CONFIGURED);
+        return;
+      }
+
       const userId = req.headers["x-clerk-user-id"] as string;
-      const username = req.headers["x-clerk-username"] as string || "user";
 
       if (!userId) {
         res.status(401).json({ error: "Unauthorized - please sign in" });
@@ -1899,13 +1884,15 @@ export async function registerRoutes(
       // This ensures the callback URL matches what's registered in Google Cloud Console
       const redirectUri = "https://family-frame.replit.app/api/google/callback";
 
-      // Create a signed state to pass user ID through OAuth flow
-      // This is needed because cookies may not be sent on cross-site redirects
-      const stateData = { userId, username, ts: Date.now() };
-      const stateJson = JSON.stringify(stateData);
-      const stateBase64 = Buffer.from(stateJson).toString("base64url");
-      const signature = signState(stateBase64);
-      const signedState = `${stateBase64}.${signature}`;
+      // Signed state carries the user ID through the cross-site redirect and is
+      // bound to this browser via a single-use nonce cookie
+      const { state: signedState, nonce } = createOAuthState(userId, secret);
+      res.cookie(OAUTH_NONCE_COOKIE, nonce, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: OAUTH_NONCE_MAX_AGE_MS,
+      });
 
       const authUrl = getGoogleAuthUrl(redirectUri, signedState);
       res.json({ url: authUrl });
@@ -1917,49 +1904,34 @@ export async function registerRoutes(
 
   app.get("/api/google/callback", async (req: Request, res: Response) => {
     try {
+      const secret = process.env.SESSION_SECRET;
+      if (!secret) {
+        res.status(503).json(OAUTH_NOT_CONFIGURED);
+        return;
+      }
+
       const code = req.query.code as string;
       const stateParam = req.query.state as string;
+      const nonceCookie = req.cookies?.[OAUTH_NONCE_COOKIE] as string | undefined;
+      // Single use: clear regardless of outcome so a replayed state fails
+      res.clearCookie(OAUTH_NONCE_COOKIE, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
 
       if (!code) {
         res.redirect("/settings?error=no_code");
         return;
       }
 
-      // Extract and verify user ID from signed state parameter (passed through OAuth flow)
-      let userId: string | undefined;
-      let username = "user";
-      
-      if (stateParam) {
-        try {
-          const [stateBase64, signature] = stateParam.split(".");
-
-          if (!stateBase64 || !signature) {
-            res.redirect("/settings?error=invalid_state");
-            return;
-          }
-
-          // Verify the signature to prevent forged states
-          if (!verifyState(stateBase64, signature)) {
-            res.redirect("/settings?error=invalid_state");
-            return;
-          }
-
-          const stateJson = Buffer.from(stateBase64, "base64url").toString();
-          const stateData = JSON.parse(stateJson);
-
-          // Check timestamp - reject if older than 10 minutes
-          if (Date.now() - stateData.ts > 10 * 60 * 1000) {
-            res.redirect("/settings?error=state_expired");
-            return;
-          }
-
-          userId = stateData.userId;
-          username = stateData.username || "user";
-        } catch {
-          res.redirect("/settings?error=invalid_state");
-          return;
-        }
+      const verified = stateParam ? verifyOAuthState(stateParam, nonceCookie, secret) : null;
+      if (stateParam && !verified) {
+        res.redirect("/settings?error=invalid_state");
+        return;
       }
+      const userId = verified?.userId;
+      const username = "user";
 
       if (!userId) {
         res.redirect("/settings?error=auth_failed");
