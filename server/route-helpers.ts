@@ -17,3 +17,4 @@ export function memoTTL<T>(fn: () => Promise<T>, ms: number): () => Promise<T> {
 export async function discardBody(response: globalThis.Response): Promise<void> {
   await response.body?.cancel().catch(() => {});
 }
+export const HEALTH_CHECK_TIMEOUT_MS = 5_000;
