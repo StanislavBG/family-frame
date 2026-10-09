@@ -8,7 +8,7 @@ import type {
   Note,
   Message,
 } from "@shared/schema";
-import { PhotoSource } from "@shared/schema";
+import { getDefaultUserData } from "./default-user";
 
 export interface UserData {
   clerkId: string;
@@ -31,56 +31,6 @@ export interface AuthContext {
   userId: string;
   username: string;
   userData: UserData;
-}
-
-function getDefaultUserData(clerkId: string, username: string): UserData {
-  return {
-    clerkId,
-    username,
-    settings: {
-      homeName: "",
-      location: { city: "", country: "" },
-      temperatureUnit: "celsius",
-      timeFormat: "24h",
-      clockStyle: "analog",
-      googlePhotosConnected: false,
-      selectedAlbums: [],
-      selectedPhotos: [],
-      photoSource: PhotoSource.GOOGLE_PHOTOS,
-      photoInterval: 10,
-      radioEnabled: false,
-      radioVolume: 50,
-      radioStation: "https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac",
-      trackedStocks: ["DJI", "BTC"],
-      babyAgeMonths: 12,
-      customPlaylists: [],
-      tvVolume: 50,
-      // Screensaver settings
-      screensaverEnabled: true,
-      screensaverDelay: 5,
-      screensaverMode: "cycle",
-      // Sleep mode settings
-      sleepModeEnabled: false,
-      sleepStartTime: "22:00",
-      sleepEndTime: "07:00",
-      sleepDimLevel: 20,
-      // Weather display mode
-      weatherDisplayMode: "dense" as const,
-      // Weather alerts
-      weatherAlertsEnabled: true,
-      // Dashboard settings
-      dashboardLayout: "default",
-      babySongsFavorites: [],
-      babySongsShuffleEnabled: false,
-      weekStartsMonday: true,
-    },
-    people: [],
-    events: [],
-    connections: [],
-    connectionRequests: [],
-    notes: [],
-    messages: [],
-  };
 }
 
 /**
