@@ -34,6 +34,7 @@ function verifyState(data: string, signature: string): boolean {
 }
 import { getWeather, reverseGeocode, geocodeCity } from "./weather";
 import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPickerSession, getPickerSession, getPickedMediaItems, deletePickerSession, refreshPickerPhotoUrl } from "./google-photos";
+import { isAllowedGooglePhotoUrl } from "./url-guards";
 import type {
   CalendarEvent,
   Person,
@@ -1987,159 +1988,161 @@ export async function registerRoutes(
   });
 
   // Comprehensive diagnostic endpoint for Google Photos debugging
-  app.get("/api/google/status", async (req: Request, res: Response) => {
-    try {
-      const userId = req.headers["x-clerk-user-id"] as string;
+  if (process.env.NODE_ENV !== "production") {
+    app.get("/api/google/status", async (req: Request, res: Response) => {
+      try {
+        const userId = req.headers["x-clerk-user-id"] as string;
 
-      if (!userId) {
-        res.json({ 
-          authenticated: false, 
-          reason: "No Clerk session - please sign in" 
-        });
-        return;
-      }
+        if (!userId) {
+          res.json({ 
+            authenticated: false, 
+            reason: "No Clerk session - please sign in" 
+          });
+          return;
+        }
 
-      const userData = await getUserData(userId);
-      
-      if (!userData) {
-        res.json({ 
+        const userData = await getUserData(userId);
+        
+        if (!userData) {
+          res.json({ 
+            authenticated: true,
+            userId: userId.substring(0, 8) + "...",
+            googleConnected: false,
+            reason: "User data not found in database"
+          });
+          return;
+        }
+
+        const hasTokens = !!userData.googleTokens;
+        const hasAccessToken = !!userData.googleTokens?.accessToken;
+        const hasRefreshToken = !!userData.googleTokens?.refreshToken;
+        const tokenExpiry = userData.googleTokens?.expiresAt;
+        const isExpired = tokenExpiry ? Date.now() > tokenExpiry : true;
+        const settingConnected = userData.settings?.googlePhotosConnected;
+
+        // Try to get a valid token (will refresh if expired)
+        let validToken: string | null = null;
+        let tokenRefreshed = false;
+        if (hasTokens) {
+          validToken = await getValidGoogleToken(userData);
+          tokenRefreshed = validToken !== userData.googleTokens?.accessToken;
+        }
+
+        // Test the token by fetching albums
+        let albumTest: any = { tested: false };
+        if (validToken) {
+          try {
+            const response = await fetch("https://photoslibrary.googleapis.com/v1/albums?pageSize=5", {
+              headers: { Authorization: `Bearer ${validToken}` }
+            });
+            const rawText = await response.text();
+            
+            let data: any = {};
+            try {
+              data = JSON.parse(rawText);
+            } catch (e) {
+              data = { parseError: "Failed to parse response", raw: rawText.substring(0, 200) };
+            }
+            
+            albumTest = {
+              tested: true,
+              status: response.status,
+              statusText: response.statusText,
+              albumCount: data.albums?.length || 0,
+              hasAlbumsField: "albums" in data,
+              error: data.error?.message,
+              errorCode: data.error?.code,
+              errorStatus: data.error?.status,
+              firstAlbumTitle: data.albums?.[0]?.title,
+              rawResponsePreview: rawText.substring(0, 300)
+            };
+          } catch (e: any) {
+            console.error("[Google Status] Albums API test error:", e);
+            albumTest = { tested: true, error: e.message };
+          }
+        }
+
+        // Check what scopes the token actually has
+        let tokenInfo: any = { tested: false };
+        if (validToken) {
+          try {
+            const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${validToken}`);
+            const rawText = await response.text();
+            
+            let data: any = {};
+            try {
+              data = JSON.parse(rawText);
+            } catch (e) {
+              data = { parseError: "Failed to parse", raw: rawText.substring(0, 200) };
+            }
+            
+            tokenInfo = {
+              tested: true,
+              status: response.status,
+              scope: data.scope,
+              scopeList: data.scope?.split(" ") || [],
+              hasPhotosReadonly: data.scope?.includes("photoslibrary.readonly") || false,
+              hasPhotosSharing: data.scope?.includes("photoslibrary.sharing") || false,
+              expiresIn: data.expires_in,
+              error: data.error,
+              errorDescription: data.error_description
+            };
+          } catch (e: any) {
+            tokenInfo = { tested: true, error: e.message };
+          }
+        }
+
+        // Also test shared albums
+        let sharedAlbumTest: any = { tested: false };
+        if (validToken) {
+          try {
+            const response = await fetch("https://photoslibrary.googleapis.com/v1/sharedAlbums?pageSize=5", {
+              headers: { Authorization: `Bearer ${validToken}` }
+            });
+            const rawText = await response.text();
+            
+            let data: any = {};
+            try {
+              data = JSON.parse(rawText);
+            } catch (e) {
+              data = { parseError: "Failed to parse response", raw: rawText.substring(0, 200) };
+            }
+            
+            sharedAlbumTest = {
+              tested: true,
+              status: response.status,
+              sharedAlbumCount: data.sharedAlbums?.length || 0,
+              hasSharedAlbumsField: "sharedAlbums" in data,
+              error: data.error?.message,
+            };
+          } catch (e: any) {
+            sharedAlbumTest = { tested: true, error: e.message };
+          }
+        }
+
+        res.json({
           authenticated: true,
           userId: userId.substring(0, 8) + "...",
-          googleConnected: false,
-          reason: "User data not found in database"
+          googleConnected: hasTokens,
+          hasAccessToken,
+          hasRefreshToken,
+          tokenExpired: isExpired,
+          tokenRefreshed,
+          settingConnected,
+          expiresIn: tokenExpiry ? Math.round((tokenExpiry - Date.now()) / 1000) + "s" : "N/A",
+          currentTime: new Date().toISOString(),
+          tokenExpiryTime: tokenExpiry ? new Date(tokenExpiry).toISOString() : "N/A",
+          tokenInfo,
+          albumTest,
+          sharedAlbumTest,
+          diagnosis: getDiagnosis(albumTest, sharedAlbumTest, tokenInfo, hasTokens, isExpired, validToken)
         });
-        return;
+      } catch (error: any) {
+        console.error("[Google Status] Error:", error);
+        res.status(500).json({ error: error.message });
       }
-
-      const hasTokens = !!userData.googleTokens;
-      const hasAccessToken = !!userData.googleTokens?.accessToken;
-      const hasRefreshToken = !!userData.googleTokens?.refreshToken;
-      const tokenExpiry = userData.googleTokens?.expiresAt;
-      const isExpired = tokenExpiry ? Date.now() > tokenExpiry : true;
-      const settingConnected = userData.settings?.googlePhotosConnected;
-
-      // Try to get a valid token (will refresh if expired)
-      let validToken: string | null = null;
-      let tokenRefreshed = false;
-      if (hasTokens) {
-        validToken = await getValidGoogleToken(userData);
-        tokenRefreshed = validToken !== userData.googleTokens?.accessToken;
-      }
-
-      // Test the token by fetching albums
-      let albumTest: any = { tested: false };
-      if (validToken) {
-        try {
-          const response = await fetch("https://photoslibrary.googleapis.com/v1/albums?pageSize=5", {
-            headers: { Authorization: `Bearer ${validToken}` }
-          });
-          const rawText = await response.text();
-          
-          let data: any = {};
-          try {
-            data = JSON.parse(rawText);
-          } catch (e) {
-            data = { parseError: "Failed to parse response", raw: rawText.substring(0, 200) };
-          }
-          
-          albumTest = {
-            tested: true,
-            status: response.status,
-            statusText: response.statusText,
-            albumCount: data.albums?.length || 0,
-            hasAlbumsField: "albums" in data,
-            error: data.error?.message,
-            errorCode: data.error?.code,
-            errorStatus: data.error?.status,
-            firstAlbumTitle: data.albums?.[0]?.title,
-            rawResponsePreview: rawText.substring(0, 300)
-          };
-        } catch (e: any) {
-          console.error("[Google Status] Albums API test error:", e);
-          albumTest = { tested: true, error: e.message };
-        }
-      }
-
-      // Check what scopes the token actually has
-      let tokenInfo: any = { tested: false };
-      if (validToken) {
-        try {
-          const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${validToken}`);
-          const rawText = await response.text();
-          
-          let data: any = {};
-          try {
-            data = JSON.parse(rawText);
-          } catch (e) {
-            data = { parseError: "Failed to parse", raw: rawText.substring(0, 200) };
-          }
-          
-          tokenInfo = {
-            tested: true,
-            status: response.status,
-            scope: data.scope,
-            scopeList: data.scope?.split(" ") || [],
-            hasPhotosReadonly: data.scope?.includes("photoslibrary.readonly") || false,
-            hasPhotosSharing: data.scope?.includes("photoslibrary.sharing") || false,
-            expiresIn: data.expires_in,
-            error: data.error,
-            errorDescription: data.error_description
-          };
-        } catch (e: any) {
-          tokenInfo = { tested: true, error: e.message };
-        }
-      }
-
-      // Also test shared albums
-      let sharedAlbumTest: any = { tested: false };
-      if (validToken) {
-        try {
-          const response = await fetch("https://photoslibrary.googleapis.com/v1/sharedAlbums?pageSize=5", {
-            headers: { Authorization: `Bearer ${validToken}` }
-          });
-          const rawText = await response.text();
-          
-          let data: any = {};
-          try {
-            data = JSON.parse(rawText);
-          } catch (e) {
-            data = { parseError: "Failed to parse response", raw: rawText.substring(0, 200) };
-          }
-          
-          sharedAlbumTest = {
-            tested: true,
-            status: response.status,
-            sharedAlbumCount: data.sharedAlbums?.length || 0,
-            hasSharedAlbumsField: "sharedAlbums" in data,
-            error: data.error?.message,
-          };
-        } catch (e: any) {
-          sharedAlbumTest = { tested: true, error: e.message };
-        }
-      }
-
-      res.json({
-        authenticated: true,
-        userId: userId.substring(0, 8) + "...",
-        googleConnected: hasTokens,
-        hasAccessToken,
-        hasRefreshToken,
-        tokenExpired: isExpired,
-        tokenRefreshed,
-        settingConnected,
-        expiresIn: tokenExpiry ? Math.round((tokenExpiry - Date.now()) / 1000) + "s" : "N/A",
-        currentTime: new Date().toISOString(),
-        tokenExpiryTime: tokenExpiry ? new Date(tokenExpiry).toISOString() : "N/A",
-        tokenInfo,
-        albumTest,
-        sharedAlbumTest,
-        diagnosis: getDiagnosis(albumTest, sharedAlbumTest, tokenInfo, hasTokens, isExpired, validToken)
-      });
-    } catch (error: any) {
-      console.error("[Google Status] Error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
+    });
+  }
 
   // Helper function to provide diagnosis
   function getDiagnosis(albumTest: any, sharedAlbumTest: any, tokenInfo: any, hasTokens: boolean, isExpired: boolean, validToken: string | null): string {
@@ -2497,6 +2500,8 @@ export async function registerRoutes(
     }
   });
 
+  const MAX_PROXY_BYTES = 15 * 1024 * 1024;
+
   // Proxy endpoint to serve Google Photos images (they require OAuth token)
   app.get("/api/photos/proxy", async (req: Request, res: Response) => {
     try {
@@ -2514,6 +2519,11 @@ export async function registerRoutes(
         return;
       }
 
+      if (!isAllowedGooglePhotoUrl(photoUrl)) {
+        res.status(400).json({ error: "Invalid photo URL" });
+        return;
+      }
+
       const userData = await getOrCreateUser(userId, username);
       const accessToken = await getValidGoogleToken(userData);
 
@@ -2522,27 +2532,53 @@ export async function registerRoutes(
         return;
       }
 
-      // Fetch the image from Google Photos with OAuth token
+      // Fetch the image from Google Photos with OAuth token; never follow redirects
+      // (the token must not be forwarded to another host).
       const imageResponse = await fetch(photoUrl, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
+        redirect: "manual",
+        signal: AbortSignal.timeout(10000),
       });
 
       if (!imageResponse.ok) {
         console.error("[Photo Proxy] Failed to fetch image:", imageResponse.status);
-        res.status(imageResponse.status).json({ error: "Failed to fetch image" });
+        res.status(imageResponse.status >= 300 && imageResponse.status < 400 ? 502 : imageResponse.status).json({ error: "Failed to fetch image" });
+        return;
+      }
+
+      const declaredLength = Number(imageResponse.headers.get("content-length"));
+      if (declaredLength > MAX_PROXY_BYTES) {
+        res.status(413).json({ error: "Image too large" });
         return;
       }
 
       // Get content type and stream the image
       const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
       res.setHeader("Content-Type", contentType);
-      res.setHeader("Cache-Control", "public, max-age=3000"); // Cache for 50 minutes (URLs expire at 60)
+      res.setHeader("Cache-Control", "private, max-age=3600");
 
-      // Stream the response
-      const arrayBuffer = await imageResponse.arrayBuffer();
-      res.send(Buffer.from(arrayBuffer));
+      // Read the body with a streamed byte cap
+      const chunks: Buffer[] = [];
+      let total = 0;
+      if (imageResponse.body) {
+        const reader = imageResponse.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          total += value.byteLength;
+          if (total > MAX_PROXY_BYTES) {
+            await reader.cancel();
+            res.removeHeader("Content-Type");
+            res.removeHeader("Cache-Control");
+            res.status(413).json({ error: "Image too large" });
+            return;
+          }
+          chunks.push(Buffer.from(value));
+        }
+      }
+      res.send(Buffer.concat(chunks));
     } catch (error) {
       console.error("[Photo Proxy] Error:", error);
       res.status(500).json({ error: "Internal server error" });
