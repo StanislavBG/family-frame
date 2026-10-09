@@ -777,7 +777,7 @@ export default function SettingsPage() {
 
       {/* Right Content Panel */}
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 max-w-3xl">
+        <div className={cn("p-6", activeSection === "apps" ? "max-w-6xl" : "max-w-3xl")}>
           {renderContent()}
         </div>
       </div>
