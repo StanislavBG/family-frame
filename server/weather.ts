@@ -1,5 +1,6 @@
 import type { WeatherData, DailyForecast, HourlyForecast } from "@shared/schema";
 import { getWeatherInfo } from "@shared/weather-codes";
+import { getAppBaseUrl } from "./config";
 
 interface OpenMeteoResponse {
   timezone: string;
@@ -164,7 +165,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<{ city: 
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
       {
         headers: {
-          "User-Agent": "FamilyFrame/1.0 (https://family-frame.replit.app)",
+          "User-Agent": `FamilyFrame/1.0 (${getAppBaseUrl()})`,
         },
       }
     );
