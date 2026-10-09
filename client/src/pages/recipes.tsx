@@ -37,6 +37,27 @@ import {
 } from "lucide-react";
 import type { Recipe, RecipeIngredient, RecipeStep } from "@shared/schema";
 
+// Single shared AudioContext for alarms, closed when the timer unmounts
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  try {
+    if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+      sharedAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return sharedAudioCtx;
+  } catch (e) {
+    return null;
+  }
+}
+
+function closeAudioContext() {
+  if (sharedAudioCtx && sharedAudioCtx.state !== "closed") {
+    sharedAudioCtx.close().catch(() => {});
+  }
+  sharedAudioCtx = null;
+}
+
 // Timer component for cooking steps
 function CookingTimer({
   initialMinutes,
@@ -55,6 +76,7 @@ function CookingTimer({
   useEffect(() => {
     // Create audio element for alarm
     audioRef.current = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU" + Array(1000).join("123"));
+    return closeAudioContext;
   }, []);
 
   useEffect(() => {
@@ -68,7 +90,8 @@ function CookingTimer({
           onComplete?.();
           // Play alarm sound (browser beep)
           try {
-            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const ctx = getAudioContext();
+            if (!ctx) return 0;
             const oscillator = ctx.createOscillator();
             oscillator.type = "sine";
             oscillator.frequency.setValueAtTime(880, ctx.currentTime);
@@ -352,6 +375,7 @@ function CookingMode({
             {/* Timer for this step */}
             {step?.duration && (
               <CookingTimer
+                key={currentStep}
                 initialMinutes={step.duration}
                 label={step.timerLabel || `Step ${currentStep + 1} Timer`}
                 onComplete={() => {
@@ -740,20 +764,35 @@ export default function RecipesPage() {
     });
   };
 
+  // Build the next list from the latest cache, apply optimistically, roll back on error
+  const applyRecipeChange = (change: (current: Recipe[]) => Recipe[]) => {
+    const previous = queryClient.getQueryData<Recipe[]>(["/api/recipes"]) ?? [];
+    const next = change(previous);
+    queryClient.setQueryData<Recipe[]>(["/api/recipes"], next);
+    saveMutation.mutate(next, {
+      onError: () => {
+        queryClient.setQueryData<Recipe[]>(["/api/recipes"], previous);
+        toast({
+          title: "Error",
+          description: "Change could not be saved and was reverted",
+          variant: "destructive",
+        });
+      },
+    });
+  };
+
   const handleToggleFavorite = (recipeId: string) => {
-    const updatedRecipes = recipes.map((recipe) => {
+    applyRecipeChange((current) => current.map((recipe) => {
       if (recipe.id === recipeId) {
         return { ...recipe, isFavorite: !recipe.isFavorite };
       }
       return recipe;
-    });
-    saveMutation.mutate(updatedRecipes);
+    }));
   };
 
   const handleDeleteRecipe = (recipeId: string) => {
     const recipe = recipes.find((r) => r.id === recipeId);
-    const updatedRecipes = recipes.filter((r) => r.id !== recipeId);
-    saveMutation.mutate(updatedRecipes);
+    applyRecipeChange((current) => current.filter((r) => r.id !== recipeId));
 
     if (recipe) {
       toast({

@@ -157,14 +157,17 @@ export default function TVPage() {
     },
   });
 
-  // Auto-reconnect function
-  const attemptReconnect = useCallback((channel: TVChannel, attempt: number = 0) => {
+  // Auto-reconnect function; attempt count lives in a ref so it survives repeated error events
+  const reconnectAttemptsRef = useRef(0);
+  const attemptReconnect = useCallback((channel: TVChannel) => {
+    const attempt = reconnectAttemptsRef.current;
     if (attempt >= RECONNECT_DELAYS.length) {
       setVideoError("Stream unavailable. Please try another channel.");
       setIsReconnecting(false);
       setReconnectAttempt(0);
       return;
     }
+    reconnectAttemptsRef.current = attempt + 1;
 
     setIsReconnecting(true);
     setReconnectAttempt(attempt + 1);
@@ -195,6 +198,7 @@ export default function TVPage() {
     setCurrentQuality(-1);
 
     if (reconnectAttemptNum === 0) {
+      reconnectAttemptsRef.current = 0;
       setIsReconnecting(false);
       setReconnectAttempt(0);
     }
@@ -251,7 +255,7 @@ export default function TVPage() {
 
           // Attempt auto-reconnect
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            attemptReconnect(channel, reconnectAttemptNum);
+            attemptReconnect(channel);
           } else {
             setVideoError(`Stream error: ${data.details}`);
           }
@@ -324,13 +328,14 @@ export default function TVPage() {
       setVideoError(null);
       setIsReconnecting(false);
       setReconnectAttempt(0);
+      reconnectAttemptsRef.current = 0;
     };
     const handleError = () => {
       setIsPlaying(false);
       setIsBuffering(false);
       // Attempt auto-reconnect on video error
       if (selectedChannel) {
-        attemptReconnect(selectedChannel, 0);
+        attemptReconnect(selectedChannel);
       }
     };
     const handleCanPlay = () => setIsBuffering(false);
