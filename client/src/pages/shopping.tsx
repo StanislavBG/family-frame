@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ShoppingCart, Plus, Trash2, Check } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ShoppingItem {
   id: string;
@@ -36,21 +37,41 @@ export default function ShoppingPage() {
   const [selectedAisle, setSelectedAisle] = useState<string>("produce");
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
 
+  const { toast } = useToast();
+  const pendingSaves = useRef(0);
+  const confirmedList = useRef<ShoppingItem[]>([]);
+
   const { data: savedList } = useQuery<ShoppingList>({
     queryKey: ["/api/shopping"],
+    refetchInterval: 60_000,
+    refetchOnMount: "always",
   });
 
   const saveMutation = useMutation({
     mutationFn: async (items: ShoppingItem[]) => {
       return apiRequest("POST", "/api/shopping", { items });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shopping"] });
+    onMutate: () => {
+      pendingSaves.current += 1;
+    },
+    onSuccess: (_data, items) => {
+      confirmedList.current = items;
+    },
+    onError: () => {
+      setShoppingList(confirmedList.current);
+      toast({ title: "Failed to save shopping list", variant: "destructive" });
+    },
+    onSettled: () => {
+      pendingSaves.current -= 1;
+      if (pendingSaves.current === 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/shopping"] });
+      }
     },
   });
 
   useEffect(() => {
-    if (savedList?.items) {
+    if (savedList?.items && pendingSaves.current === 0) {
+      confirmedList.current = savedList.items;
       setShoppingList(savedList.items);
     }
   }, [savedList]);
