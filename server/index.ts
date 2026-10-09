@@ -6,7 +6,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { clerkClient } from "@clerk/clerk-sdk-node";
-import { createSessionHeaderMiddleware } from "./auth";
+import { createClerkIdentityMiddleware } from "./auth";
 
 // Use __dirname for CJS compatibility in production build
 const currentDir = typeof __dirname !== 'undefined' 
@@ -40,12 +40,9 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 
 app.use(
-  createSessionHeaderMiddleware({
+  createClerkIdentityMiddleware({
     verifyToken: (t) => clerkClient.verifyToken(t),
-    getUsername: async (id) => {
-      const u = await clerkClient.users.getUser(id);
-      return u.username || u.emailAddresses[0]?.emailAddress?.split("@")[0] || "user";
-    },
+    getUser: (id) => clerkClient.users.getUser(id),
   }),
 );
 

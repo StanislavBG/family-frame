@@ -1,8 +1,5 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-
-process.env.CLERK_SECRET_KEY ??= "sk_test_dummy";
-const { createSessionHeaderMiddleware } = await import("./auth");
+import { describe, expect, it, vi } from "vitest";
+import { createClerkIdentityMiddleware } from "./auth";
 
 type FakeReq = {
   headers: Record<string, string | undefined>;
@@ -14,64 +11,66 @@ const SPOOFED = {
   "x-clerk-username": "victim",
 };
 
-async function run(
-  req: FakeReq,
-  deps: Parameters<typeof createSessionHeaderMiddleware>[0],
-): Promise<number> {
-  let nextCalls = 0;
-  await createSessionHeaderMiddleware(deps)(req as any, {} as any, () => {
-    nextCalls++;
-  });
-  return nextCalls;
+type Deps = Parameters<typeof createClerkIdentityMiddleware>[0];
+
+async function run(req: FakeReq, deps: Deps): Promise<number> {
+  const next = vi.fn();
+  await createClerkIdentityMiddleware(deps)(req as any, {} as any, next);
+  return next.mock.calls.length;
 }
 
-const okDeps = {
+const okDeps: Deps = {
   verifyToken: async () => ({ sub: "user_real" }),
-  getUsername: async () => "real",
+  getUser: async () => ({ username: "real", emailAddresses: [] }),
 };
 
-test("spoofed headers with no cookie are removed", async () => {
-  const req: FakeReq = { headers: { ...SPOOFED }, cookies: {} };
-  const next = await run(req, okDeps);
-  assert.equal(req.headers["x-clerk-user-id"], undefined);
-  assert.equal(req.headers["x-clerk-username"], undefined);
-  assert.equal(next, 1);
-});
-
-test("spoofed headers with invalid cookie are removed", async () => {
-  const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __session: "bad" } };
-  const next = await run(req, {
-    verifyToken: async () => {
-      throw new Error("invalid");
-    },
-    getUsername: async () => "real",
+describe("createClerkIdentityMiddleware", () => {
+  it("strips forged headers when there is no cookie", async () => {
+    const req: FakeReq = { headers: { ...SPOOFED }, cookies: {} };
+    expect(await run(req, okDeps)).toBe(1);
+    expect(req.headers["x-clerk-user-id"]).toBeUndefined();
+    expect(req.headers["x-clerk-username"]).toBeUndefined();
   });
-  assert.equal(req.headers["x-clerk-user-id"], undefined);
-  assert.equal(req.headers["x-clerk-username"], undefined);
-  assert.equal(next, 1);
-});
 
-test("valid cookie sets verified identity over spoofed values", async () => {
-  const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __session: "good" } };
-  const next = await run(req, okDeps);
-  assert.equal(req.headers["x-clerk-user-id"], "user_real");
-  assert.equal(req.headers["x-clerk-username"], "real");
-  assert.equal(next, 1);
-});
+  it("strips forged headers when the cookie fails verification", async () => {
+    const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __session: "bad" } };
+    const next = await run(req, {
+      ...okDeps,
+      verifyToken: async () => {
+        throw new Error("invalid");
+      },
+    });
+    expect(next).toBe(1);
+    expect(req.headers["x-clerk-user-id"]).toBeUndefined();
+    expect(req.headers["x-clerk-username"]).toBeUndefined();
+  });
 
-test("__clerk_db_jwt cookie is accepted and missing cookies object is safe", async () => {
-  const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __clerk_db_jwt: "good" } };
-  assert.equal(await run(req, okDeps), 1);
-  assert.equal(req.headers["x-clerk-user-id"], "user_real");
+  it("sets verified identity from a valid cookie, overriding forged values", async () => {
+    const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __session: "good" } };
+    expect(await run(req, okDeps)).toBe(1);
+    expect(req.headers["x-clerk-user-id"]).toBe("user_real");
+    expect(req.headers["x-clerk-username"]).toBe("real");
+  });
 
-  const bare: FakeReq = { headers: { ...SPOOFED } };
-  assert.equal(await run(bare, okDeps), 1);
-  assert.equal(bare.headers["x-clerk-user-id"], undefined);
-});
+  it("accepts __clerk_db_jwt and tolerates a missing cookies object", async () => {
+    const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __clerk_db_jwt: "good" } };
+    expect(await run(req, okDeps)).toBe(1);
+    expect(req.headers["x-clerk-user-id"]).toBe("user_real");
 
-test("null verification result strips headers and calls next once", async () => {
-  const req: FakeReq = { headers: { ...SPOOFED }, cookies: { __session: "x" } };
-  const next = await run(req, { verifyToken: async () => null, getUsername: async () => "u" });
-  assert.equal(req.headers["x-clerk-user-id"], undefined);
-  assert.equal(next, 1);
+    const bare: FakeReq = { headers: { ...SPOOFED } };
+    expect(await run(bare, okDeps)).toBe(1);
+    expect(bare.headers["x-clerk-user-id"]).toBeUndefined();
+  });
+
+  it("falls back to the email prefix when the user has no username", async () => {
+    const req: FakeReq = { headers: {}, cookies: { __session: "good" } };
+    await run(req, {
+      ...okDeps,
+      getUser: async () => ({
+        username: null,
+        emailAddresses: [{ emailAddress: "grandma@example.com" }],
+      }),
+    });
+    expect(req.headers["x-clerk-username"]).toBe("grandma");
+  });
 });
