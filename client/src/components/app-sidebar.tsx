@@ -1,4 +1,4 @@
-import { Cloud, Image, Calendar, Settings, Home, ChevronLeft, ChevronRight, StickyNote, MessageSquare, LayoutDashboard, Radio, Tv, ShoppingCart, Clock, BarChart3, Baby } from "lucide-react";
+import { Home, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -16,74 +16,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { UserSettings } from "@shared/schema";
-import { defaultAppList } from "@shared/schema";
-import { useMemo } from "react";
-
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  home: LayoutDashboard,
-  clock: Clock,
-  weather: Cloud,
-  photos: Image,
-  calendar: Calendar,
-  notepad: StickyNote,
-  messages: MessageSquare,
-  radio: Radio,
-  "baby-songs": Baby,
-  tv: Tv,
-  shopping: ShoppingCart,
-  stocks: BarChart3,
-  settings: Settings,
-};
+import { getAppIcon, useAppLayout } from "@/lib/app-registry";
 
 export function AppSidebar() {
   const [location] = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
 
+  const { layout, isEnabled } = useAppLayout();
+
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],
     refetchInterval: 30000,
-  });
-
-  const { data: settings } = useQuery<UserSettings>({
-    queryKey: ["/api/settings"],
+    enabled: isEnabled("messages"),
   });
 
   const unreadCount = unreadData?.count || 0;
 
-  const visibleAppItems = useMemo(() => {
-    const allAppIds = defaultAppList.map(app => app.id);
-    const visibleApps = settings?.visibleApps || allAppIds;
-    const appOrder = settings?.appOrder || defaultAppList.filter(app => !app.fixed).map(app => app.id);
-
-    const movableApps = defaultAppList.filter(app => !app.fixed);
-
-    const orderedMovableApps = [...movableApps]
-      .filter(app => visibleApps.includes(app.id))
-      .sort((a, b) => {
-        const indexA = appOrder.indexOf(a.id);
-        const indexB = appOrder.indexOf(b.id);
-        if (indexA === -1) return 1;
-        if (indexB === -1) return -1;
-        return indexA - indexB;
-      });
-
-    const homeApp = defaultAppList.find(app => app.id === "home");
-    const settingsApp = defaultAppList.find(app => app.id === "settings");
-
-    const result = [];
-    if (homeApp) result.push(homeApp);
-    if (settingsApp) result.push(settingsApp);
-    result.push(...orderedMovableApps);
-
-    return result.map(app => ({
-      id: app.id,
-      title: app.title,
-      url: app.url,
-      icon: iconMap[app.id] || LayoutDashboard,
-    }));
-  }, [settings?.visibleApps, settings?.appOrder]);
+  const visibleAppItems = layout.menu.map((app) => ({
+    id: app.id,
+    title: app.title,
+    url: app.url,
+    icon: getAppIcon(app.id),
+  }));
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -111,7 +66,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {visibleAppItems.map((item) => {
                 const isActive = location === item.url;
-                const showBadge = item.url === "/messages" && unreadCount > 0;
+                const showBadge = item.id === "messages" && unreadCount > 0;
                 return (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton

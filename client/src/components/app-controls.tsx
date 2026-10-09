@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback, createContext, useContext, useRef } f
 import { useLocation } from "wouter";
 import { radioService } from "@/lib/radio-service";
 import { useQuery } from "@tanstack/react-query";
+import { APP_MANIFESTS } from "@shared/apps";
+import { useAppLayout } from "@/lib/app-registry";
 import { AppSettingsSheet, routeToAppId } from "@/components/app-settings";
 
 interface AppControlsContextType {
@@ -198,12 +200,15 @@ export function HeaderControls() {
   const [location, setLocation] = useLocation();
   const [radioState, setRadioState] = useState(radioService.getState());
 
+  const { isEnabled } = useAppLayout();
+
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],
     refetchInterval: 30000,
+    enabled: isEnabled("messages"),
   });
 
-  const unreadCount = unreadData?.count || 0;
+  const unreadCount = isEnabled("messages") ? unreadData?.count || 0 : 0;
 
   useEffect(() => {
     const unsubState = radioService.subscribe("stateChange", setRadioState);
@@ -232,7 +237,8 @@ export function HeaderControls() {
       : null;
 
   // Show the gear icon only for apps that have an in-app settings panel
-  const hasAppSettings = !!routeToAppId[location];
+  const routeApp = APP_MANIFESTS.find((a) => a.url === location);
+  const hasAppSettings = !!routeToAppId[location] && !!routeApp && isEnabled(routeApp.id);
 
   return (
     <div className="flex items-center gap-2">
