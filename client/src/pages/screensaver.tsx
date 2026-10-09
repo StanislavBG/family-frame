@@ -97,6 +97,11 @@ function getProxiedPhotoUrl(baseUrl: string): string {
   return `/api/photos/proxy?url=${encodeURIComponent(fullUrl)}`;
 }
 
+// Cached photos are served from our own origin and never expire
+function getPhotoSrc(photo: GooglePhotoItem): string {
+  return photo.cached ? photo.baseUrl : getProxiedPhotoUrl(photo.baseUrl);
+}
+
 // Ambient photo display with Ken Burns effect
 function AmbientPhoto({ photo, index }: { photo: GooglePhotoItem; index: number }) {
   // Alternate between different pan/zoom animations
@@ -110,7 +115,7 @@ function AmbientPhoto({ photo, index }: { photo: GooglePhotoItem; index: number 
   return (
     <div className="absolute inset-0 overflow-hidden">
       <img
-        src={getProxiedPhotoUrl(photo.baseUrl)}
+        src={getPhotoSrc(photo)}
         alt=""
         className={cn(
           "absolute inset-0 w-full h-full object-cover",

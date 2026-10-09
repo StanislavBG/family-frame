@@ -44,6 +44,11 @@ function getProxiedPhotoUrl(baseUrl: string): string {
   return `/api/photos/proxy?url=${encodeURIComponent(fullUrl)}`;
 }
 
+// Cached photos are served from our own origin and never expire
+function getPhotoSrc(photo: GooglePhotoItem): string {
+  return photo.cached ? photo.baseUrl : getPhotoSrc(photo);
+}
+
 function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisplayProps) {
   const [, setLocation] = useLocation();
   const { setAppSettingsOpen } = useAppControls();
@@ -53,7 +58,7 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [currentUrl, setCurrentUrl] = useState<string>(() => {
     const shuffled = photos;
-    return shuffled[0]?.baseUrl ? getProxiedPhotoUrl(shuffled[0].baseUrl) : "";
+    return shuffled[0]?.baseUrl ? getPhotoSrc(shuffled[0]) : "";
   });
   const refreshingPhotosRef = useRef<Set<string>>(new Set());
   const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({
@@ -66,23 +71,24 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
     setPhotos(shuffled);
     setCurrentIndex(0);
     if (shuffled[0]?.baseUrl) {
-      setCurrentUrl(getProxiedPhotoUrl(shuffled[0].baseUrl));
+      setCurrentUrl(getPhotoSrc(shuffled[0]));
     }
   }, [initialPhotos]);
 
   const isUrlExpired = useCallback((photo: GooglePhotoItem) => {
+    if (photo.cached) return false;
     if (!photo.fetchedAt) return true;
     return Date.now() - photo.fetchedAt > URL_EXPIRY_MS;
   }, []);
 
   const refreshPhotoUrlIfNeeded = useCallback(async (photo: GooglePhotoItem): Promise<string | null> => {
     if (!isUrlExpired(photo)) {
-      return getProxiedPhotoUrl(photo.baseUrl);
+      return getPhotoSrc(photo);
     }
 
     if (refreshingPhotosRef.current.has(photo.id)) {
       // Already refreshing, return current URL if available
-      return photo.baseUrl ? getProxiedPhotoUrl(photo.baseUrl) : null;
+      return photo.baseUrl ? getPhotoSrc(photo) : null;
     }
 
     refreshingPhotosRef.current.add(photo.id);
@@ -101,12 +107,12 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
           : p
       ));
 
-      return getProxiedPhotoUrl(result.baseUrl);
+      return getPhotoSrc({ ...photo, baseUrl: result.baseUrl });
     } catch (error) {
       console.error("Failed to refresh photo URL:", error);
       // Return existing URL if still valid, null otherwise
       if (photo.baseUrl && !isUrlExpired(photo)) {
-        return getProxiedPhotoUrl(photo.baseUrl);
+        return getPhotoSrc(photo);
       }
       return null;
     } finally {
@@ -120,7 +126,7 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
 
     // Set initial URL if available
     if (photo.baseUrl) {
-      setCurrentUrl(getProxiedPhotoUrl(photo.baseUrl));
+      setCurrentUrl(getPhotoSrc(photo));
     }
 
     // Refresh if expired
@@ -431,6 +437,7 @@ interface PhotosResponse {
   storedCount: number;
   sessionActive: boolean;
   needsSessionRefresh: boolean;
+  uncachedCount?: number;
   sessionError?: string;
   error?: string;
 }
@@ -559,7 +566,7 @@ export default function PhotosPage() {
   if (!photos || photos.length === 0) {
     const getErrorMessage = () => {
       if (needsSessionRefresh && storedPhotoCount > 0) {
-        return `You have ${storedPhotoCount} photo${storedPhotoCount === 1 ? "" : "s"} saved. Open the photo picker to refresh access to them.`;
+        return `Google's access to your ${storedPhotoCount} photo${storedPhotoCount === 1 ? "" : "s"} has expired. Re-selecting them once will save them to Family Frame so this won't happen again.`;
       }
       if (sessionError) {
         return `Unable to access your photos: ${sessionError}. Please re-select your photos.`;
@@ -575,14 +582,14 @@ export default function PhotosPage() {
               <Image className="h-10 w-10 text-muted-foreground" />
             </div>
             <h2 className="text-2xl font-semibold mb-3">
-              {needsSessionRefresh && storedPhotoCount > 0 ? "Session Expired" : "No Photos Found"}
+              {needsSessionRefresh && storedPhotoCount > 0 ? "Re-select Your Photos" : "No Photos Found"}
             </h2>
             <p className="text-muted-foreground mb-6 leading-relaxed">
               {getErrorMessage()}
             </p>
             <Button variant="outline" onClick={() => setAppSettingsOpen(true)} data-testid="button-change-photos">
               <Settings className="h-5 w-5 mr-2" />
-              {needsSessionRefresh ? "Refresh Photos" : "Change Photos"}
+              {needsSessionRefresh ? "Select Photos" : "Change Photos"}
             </Button>
           </CardContent>
         </Card>
