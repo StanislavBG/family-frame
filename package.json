@@ -88,7 +88,7 @@
     "tsx": "^4.20.5",
     "typescript": "5.6.3",
     "vite": "^7.3.0",
-    "vitest": "^5.0.3"
+    "vitest": "^3.2.7"
   },
   "overrides": {
     "drizzle-kit": {
