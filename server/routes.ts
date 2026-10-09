@@ -2204,14 +2204,6 @@ export async function registerRoutes(
         return;
       }
 
-      // Save the session ID to user settings
-      await updateUserData(userId, {
-        settings: {
-          ...userData.settings,
-          pickerSessionId: session.id,
-        },
-      });
-
       res.json(session);
     } catch (error) {
       console.error("[Picker] Create session error:", error);
@@ -2266,11 +2258,12 @@ export async function registerRoutes(
 
         const mergedPhotos = [...existingPhotos, ...newPhotos];
 
-        // Update user settings with merged photos
+        // Update user settings with merged photos; only now does this session become the active one
         await updateUserData(userId, {
           settings: {
             ...userData.settings,
             selectedPhotos: mergedPhotos,
+            pickerSessionId: sessionId,
           },
         });
       }
