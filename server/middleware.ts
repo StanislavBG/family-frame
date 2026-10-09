@@ -72,6 +72,7 @@ function getDefaultUserData(clerkId: string, username: string): UserData {
       dashboardLayout: "default",
       babySongsFavorites: [],
       babySongsShuffleEnabled: false,
+      weekStartsMonday: true,
     },
     people: [],
     events: [],

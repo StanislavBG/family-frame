@@ -13,6 +13,38 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+export interface SessionHeaderDeps {
+  verifyToken: (token: string) => Promise<{ sub?: string } | null>;
+  getUsername: (userId: string) => Promise<string>;
+}
+
+/**
+ * Global middleware: strips client-supplied identity headers, then sets them
+ * only from a verified Clerk session cookie. Routes trust these headers, so
+ * they must never pass through from the client.
+ */
+export function createSessionHeaderMiddleware(deps: SessionHeaderDeps) {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    delete req.headers["x-clerk-user-id"];
+    delete req.headers["x-clerk-username"];
+
+    try {
+      const sessionToken = req.cookies?.__session || req.cookies?.__clerk_db_jwt;
+      if (sessionToken) {
+        const claims = await deps.verifyToken(sessionToken);
+        if (claims && claims.sub) {
+          const username = await deps.getUsername(claims.sub);
+          req.headers["x-clerk-user-id"] = claims.sub;
+          req.headers["x-clerk-username"] = username;
+        }
+      }
+    } catch {
+      // Token verification failed - continue unauthenticated
+    }
+    next();
+  };
+}
+
 export async function requireAuth(
   req: AuthenticatedRequest,
   res: Response,
