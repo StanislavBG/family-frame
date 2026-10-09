@@ -71,6 +71,7 @@ export const storedPhotoSchema = z.object({
   mimeType: z.string(),
   creationTime: z.string().optional(),
   addedAt: z.number(), // When this photo was added to the collection
+  cachedAt: z.number().optional(), // When the photo bytes were stored durably server-side
 });
 
 export type StoredPhoto = z.infer<typeof storedPhotoSchema>;
@@ -496,6 +497,7 @@ export const googlePhotoItemSchema = z.object({
   mimeType: z.string(),
   creationTime: z.string().optional(),
   fetchedAt: z.number(), // Timestamp when baseUrl was fetched (expires after 60 min)
+  cached: z.boolean().optional(), // True when baseUrl is a ready-to-use same-origin cached-image URL
 });
 
 export type GooglePhotoItem = z.infer<typeof googlePhotoItemSchema>;

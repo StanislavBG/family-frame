@@ -35,6 +35,7 @@ function verifyState(data: string, signature: string): boolean {
 import { getWeather, reverseGeocode, geocodeCity } from "./weather";
 import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPickerSession, getPickerSession, getPickedMediaItems, deletePickerSession, refreshPickerPhotoUrl } from "./google-photos";
 import { isAllowedGooglePhotoUrl } from "./url-guards";
+import { photoCache } from "./photo-cache";
 import type {
   CalendarEvent,
   Person,
@@ -2230,20 +2231,35 @@ export async function registerRoutes(
 
         // Get existing photos and merge (dedupe by ID)
         const existingPhotos = userData.settings?.selectedPhotos || [];
-        const existingIds = new Set(existingPhotos.map(p => p.id));
+        const existingById = new Map(existingPhotos.map(p => [p.id, p]));
+
+        // Cache bytes for new photos and for old ones that were never cached
+        const toCache = photos.filter(p => !existingById.get(p.id)?.cachedAt);
+        const cachedIds = new Set(
+          await photoCache.cachePhotos(
+            userId,
+            toCache.map(p => ({ id: p.id, baseUrl: p.baseUrl, mimeType: p.mimeType })),
+            accessToken,
+          ),
+        );
 
         const now = Date.now();
+        const upgradedExisting = existingPhotos.map(p =>
+          !p.cachedAt && cachedIds.has(p.id) ? { ...p, cachedAt: now } : p,
+        );
         const newPhotos = photos
-          .filter(p => !existingIds.has(p.id))
+          .filter(p => !existingById.has(p.id))
           .map(p => ({
             id: p.id,
             filename: p.filename,
             mimeType: p.mimeType,
             creationTime: p.creationTime,
             addedAt: now,
+            // RTDB rejects undefined, so only include cachedAt on success
+            ...(cachedIds.has(p.id) ? { cachedAt: now } : {}),
           }));
 
-        const mergedPhotos = [...existingPhotos, ...newPhotos];
+        const mergedPhotos = [...upgradedExisting, ...newPhotos];
 
         // Update user settings with merged photos; only now does this session become the active one
         await updateUserData(userId, {
