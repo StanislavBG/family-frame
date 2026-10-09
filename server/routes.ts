@@ -14,7 +14,9 @@ const OAUTH_NONCE_MAX_AGE_MS = 10 * 60 * 1000;
 const OAUTH_NOT_CONFIGURED = { error: "Google Photos sign-in not configured" };
 import { getWeather, reverseGeocode, geocodeCity } from "./weather";
 import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPickerSession, getPickerSession, getPickedMediaItems, deletePickerSession, refreshPickerPhotoUrl } from "./google-photos";
-import { isAllowedGooglePhotoUrl } from "./url-guards";
+import { isAllowedGooglePhotoUrl, isAllowedStreamUrl } from "./url-guards";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { photoCache } from "./photo-cache";
 import type {
   CalendarEvent,
@@ -809,6 +811,37 @@ export async function registerRoutes(
     "i.mjh.nz",
   ];
 
+  const MAX_STREAM_REDIRECTS = 3;
+
+  class DisallowedRedirectError extends Error {}
+
+  // Fetch with manual redirects; every hop must pass isAllowedStreamUrl.
+  async function fetchFollowingAllowed(
+    startUrl: string,
+    hosts: readonly string[],
+    init: RequestInit,
+  ): Promise<globalThis.Response> {
+    let current = startUrl;
+    for (let hop = 0; hop <= MAX_STREAM_REDIRECTS; hop++) {
+      const response = await fetch(current, { ...init, redirect: "manual" });
+      if (response.status < 300 || response.status >= 400) return response;
+      const location = response.headers.get("location");
+      await response.body?.cancel().catch(() => {});
+      if (!location) return response;
+      let next: string;
+      try {
+        next = new URL(location, current).toString();
+      } catch {
+        throw new DisallowedRedirectError("Invalid redirect location");
+      }
+      if (!isAllowedStreamUrl(next, hosts)) {
+        throw new DisallowedRedirectError("Redirect target not allowed");
+      }
+      current = next;
+    }
+    throw new DisallowedRedirectError("Too many redirects");
+  }
+
   app.get("/api/media/proxy", async (req: Request, res: Response) => {
     try {
       const streamUrl = req.query.url as string;
@@ -842,7 +875,11 @@ export async function registerRoutes(
       }
 
       // Fetch the stream with headers that mimic a Bulgarian client
-      const response = await fetch(streamUrl, {
+      const upstream = new AbortController();
+      res.on("close", () => upstream.abort());
+
+      const response = await fetchFollowingAllowed(streamUrl, ALLOWED_STREAM_DOMAINS, {
+        signal: upstream.signal,
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": req.headers.accept || "*/*",
@@ -906,31 +943,16 @@ export async function registerRoutes(
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Cache-Control", "no-cache");
 
-      // Pipe the stream
-      const reader = response.body.getReader();
-      
-      const pump = async (): Promise<void> => {
-        try {
-          const { done, value } = await reader.read();
-          if (done) {
-            res.end();
-            return;
-          }
-          res.write(Buffer.from(value));
-          return pump();
-        } catch (e) {
-          res.end();
-        }
-      };
-
-      // Handle client disconnect
-      req.on("close", () => {
-        reader.cancel();
+      // Pipe with backpressure; aborting upstream on client close cancels the body
+      await pipeline(Readable.fromWeb(response.body as any), res).catch(() => {
+        // premature close / upstream abort: expected when the client disconnects
       });
-
-      await pump();
     } catch (error) {
-      console.error("Media proxy error:", error);
+      if (error instanceof DisallowedRedirectError) {
+        console.warn(`Media proxy blocked redirect: ${error.message}`);
+      } else {
+        console.error("Media proxy error:", error);
+      }
       if (!res.headersSent) {
         res.status(502).json({ error: "Stream error" });
       }
@@ -938,7 +960,6 @@ export async function registerRoutes(
   });
 
   // Radio stations organized by category (countries + genres) with icons
-  app.get("/api/radio/stations", async (_req: Request, res: Response) => {
     interface StationConfig {
       name: string;
       url: string;
@@ -1041,6 +1062,7 @@ export async function registerRoutes(
       },
     };
 
+  app.get("/api/radio/stations", async (_req: Request, res: Response) => {
     // Helper to check if a URL is reachable
     async function checkUrl(url: string): Promise<boolean> {
       try {
@@ -1520,22 +1542,31 @@ export async function registerRoutes(
       return res.status(400).json({ error: "Missing stream URL" });
     }
 
+    const radioHosts = [
+      ...ALLOWED_STREAM_DOMAINS,
+      ...Object.values(stationsByCategory).flatMap((c) =>
+        c.stations.flatMap((st) =>
+          [st.url, ...(st.fallbackUrls ?? [])].map((u) => new URL(u).hostname),
+        ),
+      ),
+    ];
+    if (typeof streamUrl !== "string" || !isAllowedStreamUrl(streamUrl, radioHosts)) {
+      return res.status(400).json({ error: "Stream URL not allowed" });
+    }
+
     try {
-      // Create abort controller with timeout
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      // One 5s deadline covers connect, headers and the body read loop
+      const signal = AbortSignal.timeout(5000);
 
       // Request stream with ICY metadata header
-      const response = await fetch(streamUrl, {
+      const response = await fetchFollowingAllowed(streamUrl, radioHosts, {
         method: "GET",
         headers: {
           "Icy-MetaData": "1",
           "User-Agent": "FamilyFrame/1.0",
         },
-        signal: controller.signal,
+        signal,
       });
-
-      clearTimeout(timeout);
 
       // Extract ICY headers
       const icyName = response.headers.get("icy-name") || null;
@@ -1558,7 +1589,7 @@ export async function registerRoutes(
             const reader = response.body?.getReader();
             if (reader) {
               let bytesRead = 0;
-              const maxBytes = metaInterval + 4096; // Read metadata interval + some extra
+              const maxBytes = Math.min(metaInterval + 4096, 65536); // capped at 64 KB
 
               while (bytesRead < maxBytes) {
                 const { done, value } = await reader.read();
@@ -1595,7 +1626,7 @@ export async function registerRoutes(
                   break;
                 }
               }
-              reader.cancel();
+              await reader.cancel().catch(() => {});
             }
           } catch {
             // Ignore metadata parsing errors
@@ -1603,12 +1634,9 @@ export async function registerRoutes(
         }
       }
 
-      // Close the stream
-      if (response.body) {
-        try {
-          const reader = response.body.getReader();
-          await reader.cancel();
-        } catch {}
+      // Close the stream (no-op if the reader above already cancelled it)
+      if (response.body && !response.body.locked) {
+        await response.body.cancel().catch(() => {});
       }
 
       res.json({
@@ -1623,7 +1651,10 @@ export async function registerRoutes(
         title,
       });
     } catch (error: any) {
-      if (error.name === "AbortError") {
+      if (error instanceof DisallowedRedirectError) {
+        return res.status(502).json({ error: "Stream redirect not allowed" });
+      }
+      if (error.name === "AbortError" || error.name === "TimeoutError") {
         return res.status(504).json({ error: "Timeout fetching stream metadata" });
       }
       console.error("[Radio Metadata] Error:", error.message);
