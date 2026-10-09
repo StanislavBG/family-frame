@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import { createSessionHeaderMiddleware } from "./auth";
 
 // Use __dirname for CJS compatibility in production build
 const currentDir = typeof __dirname !== 'undefined' 
@@ -38,28 +39,15 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-app.use(async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const sessionToken = req.cookies?.__session || req.cookies?.__clerk_db_jwt;
-    
-    if (sessionToken) {
-      try {
-        const claims = await clerkClient.verifyToken(sessionToken);
-        if (claims && claims.sub) {
-          req.headers["x-clerk-user-id"] = claims.sub;
-          
-          const user = await clerkClient.users.getUser(claims.sub);
-          req.headers["x-clerk-username"] = user.username || user.emailAddresses[0]?.emailAddress?.split("@")[0] || "user";
-        }
-      } catch {
-        // Token verification failed - continue without auth
-      }
-    }
-  } catch (error) {
-    console.error("Auth middleware error:", error);
-  }
-  next();
-});
+app.use(
+  createSessionHeaderMiddleware({
+    verifyToken: (t) => clerkClient.verifyToken(t),
+    getUsername: async (id) => {
+      const u = await clerkClient.users.getUser(id);
+      return u.username || u.emailAddresses[0]?.emailAddress?.split("@")[0] || "user";
+    },
+  }),
+);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
