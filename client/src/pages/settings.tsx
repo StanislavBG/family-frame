@@ -54,6 +54,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSearch } from "wouter";
 import { cn } from "@/lib/utils";
+import { parseLocalDate } from "@/lib/format";
 import type { UserSettings, ConnectedUser, Person, ConnectionRequest } from "@shared/schema";
 import { defaultAppList } from "@shared/schema";
 
@@ -194,7 +195,7 @@ function PersonCard({ person, onRemove, onEdit }: PersonCardProps) {
           <p className="font-medium">{person.name}</p>
           {person.birthday && (
             <p className="text-sm text-muted-foreground">
-              Birthday: {new Date(person.birthday).toLocaleDateString(undefined, { month: "long", day: "numeric" })}
+              Birthday: {parseLocalDate(person.birthday).toLocaleDateString(undefined, { month: "long", day: "numeric" })}
             </p>
           )}
         </div>
