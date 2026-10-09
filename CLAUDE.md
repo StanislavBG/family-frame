@@ -60,6 +60,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       ├── components/
 │       │   ├── ui/             # shadcn components
 │       │   ├── app-sidebar.tsx # Navigation sidebar
+│       │   ├── app-picker.tsx  # App Picker (enable/disable apps)
 │       │   ├── empty-state.tsx # Reusable empty state component
 │       │   ├── fullscreen-button.tsx # Reusable fullscreen toggle
 │       │   └── [widgets].tsx   # Clock, Weather, Stock widgets
@@ -67,6 +68,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       │   └── use-fullscreen.ts # Fullscreen hook with auto-enter support
 │       └── lib/
 │           ├── api.ts          # Query keys, mutation helpers
+│           ├── app-registry.ts # APP_ICONS + app layout hook
 │           ├── format.ts       # Formatting utilities (dates, temps)
 │           ├── queryClient.ts  # React Query setup + apiRequest helper
 │           ├── radio-service.ts # Singleton radio player service
@@ -76,6 +78,9 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── routes.ts               # All API endpoints
 │   ├── middleware.ts           # Auth middleware, async handler, utilities
 │   ├── auth.ts                 # Clerk verification + PAT auth branch
+│   ├── apps/                   # Per-app route modules (apps/<id>.ts)
+│   ├── media-proxy.ts          # Media proxy, radio and TV routes
+│   ├── route-inventory.test.ts # Guards the route inventory
 │   ├── config.ts               # getAppBaseUrl() (APP_BASE_URL)
 │   ├── url-guards.ts           # Outbound URL validation (SSRF guards)
 │   ├── oauth-state.ts          # Signed OAuth state (SESSION_SECRET)
@@ -89,6 +94,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── *.test.ts               # Server tests (node:test via tsx)
 │   └── static-pages/           # Pre-rendered SEO pages
 ├── shared/                      # Shared schemas & types
+│   ├── apps.ts                 # App registry: APP_IDS, APP_MANIFESTS
 │   └── schema.ts               # Zod schemas for validation
 └── script/
     └── build.ts                # Build script (esbuild + Vite)
@@ -187,6 +193,20 @@ Operator guide: `docs/agent-access.md`. Agents authenticate with personal access
 - Rule: any new PAT-reachable path must be added to the allowlist in `server/auth.ts` with a scope; new MCP tools check scope in `server/mcp.ts` and reuse a service, never duplicate route logic.
 - Tokens cannot manage tokens (`/api/tokens/*` stays off the allowlist).
 
+### App Registry (framework vs apps)
+- `shared/apps.ts` is the single list of apps: `APP_IDS`, `APP_MANIFESTS`, `defaultEnabled`.
+- Shell files (`app-sidebar`, `App.tsx` router, `app-picker`, home, screensaver, app-settings sheet, landing) read the registry; never hard-code app ids there.
+- Adding an app fills these slots only:
+  - `APP_IDS` + `APP_MANIFESTS` entry: `shared/apps.ts`
+  - `APP_ICONS`: `client/src/lib/app-registry.ts`
+  - `APP_PAGES`: `client/src/App.tsx`
+  - optional `APP_SETTINGS_PANELS`: `client/src/components/app-settings-panels.tsx`
+  - optional `runAppDisableHook` case: `client/src/lib/app-lifecycle.ts`
+  - server routes in `server/apps/<id>.ts`, registered from `server/routes.ts`
+- Visibility: new users get `defaultEnabled` apps (`server/default-user.ts`); `visibleApps` undefined = legacy all-on.
+- Changes go through `PUT /api/settings/apps/:appId` and `POST /api/settings/apps/:appId/move`.
+- Turning an app off hides it from screens but keeps its data and agent/MCP access.
+
 ### Server Middleware (server/middleware.ts)
 Use `asyncHandler` to eliminate try-catch boilerplate:
 ```typescript
@@ -247,6 +267,12 @@ app.get("/api/resource", asyncHandler(async (req, res) => {
 - `client/src/App.tsx` - Main app with Clerk auth and routing
 - `client/src/pages/home.tsx` - Dashboard with widget grid
 - `client/src/pages/settings.tsx` - Comprehensive settings panels
+- `shared/apps.ts` - App registry (APP_IDS, APP_MANIFESTS, defaultEnabled)
+- `client/src/lib/app-registry.ts` - APP_ICONS and app layout hook
+- `client/src/components/app-picker.tsx` - App Picker
+- `server/apps/` - Per-app route modules
+- `server/media-proxy.ts` - Media proxy, radio and TV routes
+- `server/route-inventory.test.ts` - Route inventory guard
 - `client/src/lib/api.ts` - Query keys and mutation hook factories
 - `client/src/lib/format.ts` - Date/temperature formatting utilities
 - `client/src/lib/queryClient.ts` - React Query setup and API helpers
