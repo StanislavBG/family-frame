@@ -4,6 +4,7 @@ import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { initializeFirebase, getUserData, setUserData, updateUserData, getUserByUsername, setSharedNote, deleteSharedNote, getAllSharedNotes } from "./firebase";
 import { asyncHandler, getOrCreateUser, toArray, type UserData } from "./middleware";
 import { z } from "zod";
+import { calendarService, CalendarError } from "./calendar-service";
 import { createApiToken, listApiTokens, revokeApiToken, firebaseTokenStore, ApiTokenError, API_TOKEN_SCOPES } from "./api-tokens";
 
 // Secret for signing OAuth state - use SESSION_SECRET or fallback
@@ -344,18 +345,13 @@ export async function registerRoutes(
     res.json({ success: true });
   }));
 
-  // Helper to normalize old event schema to current schema
-  function normalizeEvent(event: any, defaultCreatorId?: string, defaultCreatorName?: string): CalendarEvent {
-    return {
-      id: event.id,
-      title: event.title || "",
-      startDate: event.startDate || event.start || "",
-      endDate: event.endDate || event.end || "",
-      type: event.type || EventType.SHARED,
-      people: Array.isArray(event.people) ? event.people : [],
-      creatorId: event.creatorId || defaultCreatorId,
-      creatorName: event.creatorName || defaultCreatorName,
-    };
+  function calendarErrorResponse(res: Response, error: unknown, label: string) {
+    if (error instanceof CalendarError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    console.error(label, error);
+    res.status(500).json({ error: "Internal server error" });
   }
 
   app.get("/api/calendar/events", async (req: Request, res: Response) => {
@@ -368,36 +364,9 @@ export async function registerRoutes(
         return;
       }
 
-      const userData = await getOrCreateUser(userId, username);
-      const rawEvents = userData.events || [];
-      const defaultCreatorName = userData.settings?.homeName || username;
-      
-      // Normalize all events to current schema (with this user as default creator for old events)
-      const normalizedEvents = rawEvents.map((e: any) => normalizeEvent(e, userId, defaultCreatorName));
-      
-      // If any events were normalized, save them back
-      const needsMigration = rawEvents.some((e: any) => e.start || e.end || !Array.isArray(e.people) || !e.creatorId);
-      if (needsMigration) {
-        await updateUserData(userId, { events: normalizedEvents });
-      }
-      
-      const allEvents = [...normalizedEvents];
-
-      for (const connectedUserId of userData.connections || []) {
-        const connectedUserData = await getUserData(connectedUserId);
-        if (connectedUserData?.events) {
-          const connectedCreatorName = connectedUserData.settings?.homeName || connectedUserData.username || "Connected Home";
-          const sharedEvents = connectedUserData.events
-            .map((e: any) => normalizeEvent(e, connectedUserId, connectedCreatorName))
-            .filter((e: CalendarEvent) => e.type === "Shared");
-          allEvents.push(...sharedEvents);
-        }
-      }
-
-      res.json(allEvents);
+      res.json(await calendarService.listEvents(userId, username));
     } catch (error) {
-      console.error("Calendar events error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      calendarErrorResponse(res, error, "Calendar events error:");
     }
   });
 
@@ -417,23 +386,9 @@ export async function registerRoutes(
         return;
       }
 
-      const userData = await getOrCreateUser(userId, username);
-      const creatorName = userData.settings?.homeName || username;
-
-      const newEvent: CalendarEvent = {
-        id: randomUUID(),
-        ...parseResult.data,
-        creatorId: userId,
-        creatorName: creatorName,
-      };
-
-      const updatedEvents = [...(userData.events || []), newEvent];
-      await updateUserData(userId, { events: updatedEvents });
-
-      res.json(newEvent);
+      res.json(await calendarService.createEvent(userId, username, parseResult.data));
     } catch (error) {
-      console.error("Calendar create error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      calendarErrorResponse(res, error, "Calendar create error:");
     }
   });
 
@@ -454,30 +409,9 @@ export async function registerRoutes(
         return;
       }
 
-      const userData = await getOrCreateUser(userId, username);
-      const events = userData?.events || [];
-
-      const eventIndex = events.findIndex((e: CalendarEvent) => e.id === eventId);
-      if (eventIndex === -1) {
-        res.status(403).json({ error: "You can only edit your own events" });
-        return;
-      }
-
-      const existingEvent = events[eventIndex];
-      const updatedEvent: CalendarEvent = {
-        id: eventId,
-        ...parseResult.data,
-        creatorId: existingEvent.creatorId || userId,
-        creatorName: existingEvent.creatorName || userData.settings?.homeName || username,
-      };
-
-      events[eventIndex] = updatedEvent;
-      await updateUserData(userId, { events });
-
-      res.json(updatedEvent);
+      res.json(await calendarService.updateEvent(userId, username, eventId, parseResult.data));
     } catch (error) {
-      console.error("Calendar update error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      calendarErrorResponse(res, error, "Calendar update error:");
     }
   });
 
@@ -492,23 +426,10 @@ export async function registerRoutes(
         return;
       }
 
-      const userData = await getOrCreateUser(userId, username);
-      const events = userData?.events || [];
-
-      // Check if event exists in user's own events (they can only delete their own)
-      const eventExists = events.some((e: CalendarEvent) => e.id === eventId);
-      if (!eventExists) {
-        res.status(403).json({ error: "You can only delete your own events" });
-        return;
-      }
-
-      const updatedEvents = events.filter((e: CalendarEvent) => e.id !== eventId);
-      await updateUserData(userId, { events: updatedEvents });
-
+      await calendarService.deleteEvent(userId, username, eventId);
       res.json({ success: true });
     } catch (error) {
-      console.error("Calendar delete error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      calendarErrorResponse(res, error, "Calendar delete error:");
     }
   });
 
