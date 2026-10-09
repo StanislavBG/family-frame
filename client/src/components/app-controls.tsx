@@ -18,6 +18,8 @@ interface AppControlsContextType {
   fullscreenRef: React.RefObject<HTMLDivElement>;
   isSettingsMode: boolean;
   setIsSettingsMode: (mode: boolean) => void;
+  appSettingsOpen: boolean;
+  setAppSettingsOpen: (open: boolean) => void;
 }
 
 interface DebugLog {
@@ -42,6 +44,7 @@ export function AppControlsProvider({ children }: { children: React.ReactNode })
   const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSettingsMode, setIsSettingsMode] = useState(false);
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
   const fullscreenRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -108,6 +111,8 @@ export function AppControlsProvider({ children }: { children: React.ReactNode })
         fullscreenRef,
         isSettingsMode,
         setIsSettingsMode,
+        appSettingsOpen,
+        setAppSettingsOpen,
       }}
     >
       {children}
@@ -186,11 +191,12 @@ export function HeaderControls() {
     setShowDebug,
     isFullscreen,
     toggleFullscreen,
+    appSettingsOpen,
+    setAppSettingsOpen,
   } = useAppControls();
 
   const [location, setLocation] = useLocation();
   const [radioState, setRadioState] = useState(radioService.getState());
-  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
 
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],

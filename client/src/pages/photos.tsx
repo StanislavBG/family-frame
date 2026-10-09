@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Image, Settings, Play, Pause, SkipForward, Camera, Sparkles, Maximize, Minimize } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Link, useLocation, useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
+import { useAppControls } from "@/components/app-controls";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useFullscreen } from "@/hooks/use-fullscreen";
 import { useToast } from "@/hooks/use-toast";
@@ -45,6 +46,7 @@ function getProxiedPhotoUrl(baseUrl: string): string {
 
 function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisplayProps) {
   const [, setLocation] = useLocation();
+  const { setAppSettingsOpen } = useAppControls();
   const [photos, setPhotos] = useState(() => shuffleArray(initialPhotos));
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -172,7 +174,7 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
         title="No Photos Available"
         description="No photos to display. Connect Google Photos and select albums in Settings."
         actionLabel="Go to Settings"
-        onAction={() => window.location.href = "/settings?tab=photos"}
+        onAction={() => setAppSettingsOpen(true)}
       />
     );
   }
@@ -434,6 +436,7 @@ interface PhotosResponse {
 }
 
 export default function PhotosPage() {
+  const { setAppSettingsOpen } = useAppControls();
   const { toast } = useToast();
   const searchString = useSearch();
 
@@ -504,7 +507,7 @@ export default function PhotosPage() {
         title="Connect Google Photos"
         description="Transform your screen into a beautiful digital photo frame. Connect your Google Photos account and select albums to display your cherished memories."
         actionLabel="Go to Settings"
-        onAction={() => window.location.href = "/settings?tab=photos"}
+        onAction={() => setAppSettingsOpen(true)}
       />
     );
   }
@@ -516,7 +519,7 @@ export default function PhotosPage() {
         title="Select Photos to Display"
         description="Your Google Photos is connected! Now select which photos you'd like to display in your picture frame slideshow."
         actionLabel="Select Photos"
-        onAction={() => window.location.href = "/settings?tab=photos"}
+        onAction={() => setAppSettingsOpen(true)}
       />
     );
   }
@@ -542,11 +545,9 @@ export default function PhotosPage() {
               <Button onClick={() => window.location.reload()} variant="outline" data-testid="button-retry">
                 Try Again
               </Button>
-              <Button asChild data-testid="button-settings">
-                <Link href="/settings?tab=photos">
-                  <Settings className="h-5 w-5 mr-2" />
-                  Settings
-                </Link>
+              <Button onClick={() => setAppSettingsOpen(true)} data-testid="button-settings">
+                <Settings className="h-5 w-5 mr-2" />
+                Settings
               </Button>
             </div>
           </CardContent>
@@ -579,11 +580,9 @@ export default function PhotosPage() {
             <p className="text-muted-foreground mb-6 leading-relaxed">
               {getErrorMessage()}
             </p>
-            <Button asChild variant="outline" data-testid="button-change-photos">
-              <Link href="/settings?tab=photos">
-                <Settings className="h-5 w-5 mr-2" />
-                {needsSessionRefresh ? "Refresh Photos" : "Change Photos"}
-              </Link>
+            <Button variant="outline" onClick={() => setAppSettingsOpen(true)} data-testid="button-change-photos">
+              <Settings className="h-5 w-5 mr-2" />
+              {needsSessionRefresh ? "Refresh Photos" : "Change Photos"}
             </Button>
           </CardContent>
         </Card>
