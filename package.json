@@ -11,8 +11,8 @@
     "test": "vitest run && tsx --test server/*.test.ts"
   },
   "dependencies": {
-    "@clerk/clerk-react": "^5.59.3",
     "@clerk/express": "^2.1.77",
+    "@clerk/react": "^6.17.7",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@modelcontextprotocol/sdk": "^1.32.1",

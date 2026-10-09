@@ -7,7 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ClerkProvider, SignedIn, SignedOut, SignInButton, UserButton, useClerk } from "@clerk/clerk-react";
+import { ClerkProvider, Show, SignInButton, UserButton, useClerk } from "@clerk/react";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
 import WeatherPage from "@/pages/weather";
@@ -256,7 +256,7 @@ function AuthenticatedLayout() {
               <div className="flex items-center gap-2">
                 <HeaderControls />
                 <ThemeToggle />
-                <UserButton afterSignOutUrl="/" />
+                <UserButton />
               </div>
             </header>
             <main className="flex-1 overflow-hidden">
@@ -709,6 +709,7 @@ function App() {
         publishableKey={publishableKey}
         signInFallbackRedirectUrl="/"
         signUpFallbackRedirectUrl="/"
+        afterSignOutUrl="/"
         allowedRedirectOrigins={[
           currentOrigin,
           /https:\/\/.*\.replit\.dev$/,
@@ -803,12 +804,12 @@ function ClerkContent() {
 
   return (
     <>
-      <SignedIn>
+      <Show when="signed-in">
         <AuthenticatedLayout />
-      </SignedIn>
-      <SignedOut>
+      </Show>
+      <Show when="signed-out">
         <LandingPage />
-      </SignedOut>
+      </Show>
     </>
   );
 }

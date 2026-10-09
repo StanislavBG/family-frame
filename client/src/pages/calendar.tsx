@@ -50,7 +50,7 @@ import { cn } from "@/lib/utils";
 import type { CalendarEvent, Person, InsertCalendarEvent, EventTypeValue, UserSettings } from "@shared/schema";
 import { Link } from "wouter";
 import { EventType } from "@shared/schema";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import { Home } from "lucide-react";
 
 // Parse date string as local date (not UTC) to avoid timezone offset issues
