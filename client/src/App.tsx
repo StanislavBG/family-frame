@@ -33,6 +33,8 @@ import { Home, LogIn, Loader2, Cloud, Calendar, ImageIcon, Radio, ShoppingCart, 
 import { Component, ErrorInfo, ReactNode, useState, useEffect, useMemo, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useWakeLock } from "@/hooks/use-wake-lock";
+import { APP_MANIFESTS, type AppId } from "@shared/apps";
+import { withAppGate } from "@/components/app-gate";
 import { AppControlsProvider, AppControlsWidget, HeaderControls, useAppControls } from "@/components/app-controls";
 
 interface ErrorBoundaryProps {
@@ -203,25 +205,39 @@ const GuardedStocks = guarded(StocksPage);
 const GuardedScreensaver = guarded(ScreensaverPage);
 const GuardedSettings = guarded(SettingsPage);
 
+const APP_PAGES: Record<AppId, React.ComponentType> = {
+  home: GuardedHome,
+  settings: GuardedSettings,
+  clock: GuardedClock,
+  weather: GuardedWeather,
+  photos: GuardedPhotos,
+  calendar: GuardedCalendar,
+  chores: GuardedChores,
+  recipes: GuardedRecipes,
+  notepad: GuardedNotepad,
+  messages: GuardedMessages,
+  radio: GuardedRadio,
+  "baby-songs": GuardedBabySongs,
+  tv: GuardedTV,
+  shopping: GuardedShopping,
+  stocks: GuardedStocks,
+  screensaver: GuardedScreensaver,
+};
+
+// Built once at module scope: gated components must keep a stable identity across renders
+const APP_ROUTES = APP_MANIFESTS.map((app) => {
+  const Page = app.fixed ? APP_PAGES[app.id] : withAppGate(app.id, APP_PAGES[app.id]);
+  return (
+    <Route key={app.id} path={app.url}>
+      <Page />
+    </Route>
+  );
+});
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={GuardedHome} />
-      <Route path="/clock" component={GuardedClock} />
-      <Route path="/weather" component={GuardedWeather} />
-      <Route path="/photos" component={GuardedPhotos} />
-      <Route path="/calendar" component={GuardedCalendar} />
-      <Route path="/chores" component={GuardedChores} />
-      <Route path="/recipes" component={GuardedRecipes} />
-      <Route path="/notepad" component={GuardedNotepad} />
-      <Route path="/messages" component={GuardedMessages} />
-      <Route path="/radio" component={GuardedRadio} />
-      <Route path="/baby-songs" component={GuardedBabySongs} />
-      <Route path="/tv" component={GuardedTV} />
-      <Route path="/shopping" component={GuardedShopping} />
-      <Route path="/stocks" component={GuardedStocks} />
-      <Route path="/screensaver" component={GuardedScreensaver} />
-      <Route path="/settings" component={GuardedSettings} />
+      {APP_ROUTES}
       <Route component={NotFound} />
     </Switch>
   );
