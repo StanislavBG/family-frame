@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -26,29 +25,15 @@ import {
   X,
   Plus,
   Trash2,
-  Image,
   Link as LinkIcon,
   UserPlus,
   Pencil,
   LayoutGrid,
-  ChevronUp,
-  ChevronDown,
   ChevronRight,
-  Clock,
-  Cloud,
-  Calendar,
-  StickyNote,
-  MessageSquare,
-  LayoutDashboard,
-  Radio,
-  Tv,
-  ShoppingCart,
-  BarChart3,
   Search,
   PanelLeftClose,
   PanelLeft,
   Wrench,
-  Baby,
   Bot,
 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -58,7 +43,7 @@ import { cn } from "@/lib/utils";
 import { AgentAccessSettings } from "@/components/agent-access-settings";
 import { parseLocalDate } from "@/lib/format";
 import type { UserSettings, ConnectedUser, Person, ConnectionRequest } from "@shared/schema";
-import { defaultAppList } from "@shared/schema";
+import { AppPicker } from "@/components/app-picker";
 
 function SettingsSkeleton() {
   return (
@@ -213,22 +198,6 @@ function PersonCard({ person, onRemove, onEdit }: PersonCardProps) {
     </div>
   );
 }
-
-const appIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  home: LayoutDashboard,
-  settings: Settings,
-  clock: Clock,
-  weather: Cloud,
-  photos: Image,
-  calendar: Calendar,
-  notepad: StickyNote,
-  messages: MessageSquare,
-  radio: Radio,
-  "baby-songs": Baby,
-  tv: Tv,
-  shopping: ShoppingCart,
-  stocks: BarChart3,
-};
 
 type NavSection = "household" | "location" | "people" | "connections" | "apps" | "agents";
 
@@ -696,138 +665,7 @@ export default function SettingsPage() {
         );
 
       case "apps":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-1">App Picker</h2>
-              <p className="text-muted-foreground">Choose which apps appear in your menu and arrange their order</p>
-            </div>
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground uppercase tracking-wide">Fixed Apps</Label>
-                  {defaultAppList.filter(app => app.fixed).map((app) => {
-                    const IconComponent = appIconMap[app.id] || LayoutGrid;
-                    return (
-                      <div 
-                        key={app.id}
-                        className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
-                        data-testid={`app-picker-${app.id}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
-                            <IconComponent className="h-4 w-4 text-primary" />
-                          </div>
-                          <span className="font-medium">{app.title}</span>
-                        </div>
-                        <Badge variant="secondary">Always visible</Badge>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="space-y-2 pt-4 border-t">
-                  <Label className="text-sm text-muted-foreground uppercase tracking-wide">Customizable Apps</Label>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Toggle visibility and use arrows to reorder
-                  </p>
-                  {(() => {
-                    const allAppIds = defaultAppList.map(app => app.id);
-                    const movableApps = defaultAppList.filter(app => !app.fixed);
-                    const visibleApps = settings?.visibleApps || allAppIds;
-                    const appOrder = settings?.appOrder || movableApps.map(app => app.id);
-
-                    const isAppVisible = (appId: string) => {
-                      const app = defaultAppList.find(a => a.id === appId);
-                      if (app?.fixed) return true;
-                      return visibleApps.includes(appId);
-                    };
-
-                    const toggleAppVisibility = (appId: string) => {
-                      const app = defaultAppList.find(a => a.id === appId);
-                      if (app?.fixed) return;
-                      
-                      const newVisibleApps = isAppVisible(appId)
-                        ? visibleApps.filter(id => id !== appId)
-                        : [...visibleApps, appId];
-                      
-                      updateSettingsMutation.mutate({ visibleApps: newVisibleApps });
-                    };
-
-                    const moveApp = (appId: string, direction: "up" | "down") => {
-                      const currentIndex = appOrder.indexOf(appId);
-                      if (currentIndex === -1) return;
-                      
-                      const newIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-                      if (newIndex < 0 || newIndex >= appOrder.length) return;
-                      
-                      const newOrder = [...appOrder];
-                      [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-                      
-                      updateSettingsMutation.mutate({ appOrder: newOrder });
-                    };
-
-                    const orderedMovableApps = [...movableApps].sort((a, b) => {
-                      const indexA = appOrder.indexOf(a.id);
-                      const indexB = appOrder.indexOf(b.id);
-                      if (indexA === -1) return 1;
-                      if (indexB === -1) return -1;
-                      return indexA - indexB;
-                    });
-
-                    return orderedMovableApps.map((app, index) => {
-                      const IconComponent = appIconMap[app.id] || LayoutGrid;
-                      return (
-                        <div 
-                          key={app.id}
-                          className={cn(
-                            "flex items-center justify-between p-3 rounded-lg border",
-                            isAppVisible(app.id) ? "bg-card" : "bg-muted/20 opacity-60"
-                          )}
-                          data-testid={`app-picker-${app.id}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex flex-col gap-0.5">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => moveApp(app.id, "up")}
-                                disabled={index === 0}
-                                data-testid={`button-move-up-${app.id}`}
-                              >
-                                <ChevronUp className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => moveApp(app.id, "down")}
-                                disabled={index === orderedMovableApps.length - 1}
-                                data-testid={`button-move-down-${app.id}`}
-                              >
-                                <ChevronDown className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
-                              <IconComponent className="h-4 w-4 text-primary" />
-                            </div>
-                            <span className="font-medium">{app.title}</span>
-                          </div>
-                          <Switch
-                            checked={isAppVisible(app.id)}
-                            onCheckedChange={() => toggleAppVisibility(app.id)}
-                            data-testid={`switch-app-${app.id}`}
-                          />
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
+        return <AppPicker initialAppId={urlParams.get("app")} />;
 
       default:
         return null;
