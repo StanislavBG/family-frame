@@ -11,6 +11,9 @@ export const queryKeys = {
   settings: () => ["/api/settings"] as const,
   config: () => ["/api/config"] as const,
 
+  // API tokens (agent access)
+  apiTokens: () => ["/api/tokens"] as const,
+
   // People
   people: () => ["/api/people/list"] as const,
 

@@ -49,11 +49,13 @@ import {
   PanelLeft,
   Wrench,
   Baby,
+  Bot,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSearch } from "wouter";
 import { cn } from "@/lib/utils";
+import { AgentAccessSettings } from "@/components/agent-access-settings";
 import { parseLocalDate } from "@/lib/format";
 import type { UserSettings, ConnectedUser, Person, ConnectionRequest } from "@shared/schema";
 import { defaultAppList } from "@shared/schema";
@@ -228,7 +230,7 @@ const appIconMap: Record<string, React.ComponentType<{ className?: string }>> = 
   stocks: BarChart3,
 };
 
-type NavSection = "household" | "location" | "people" | "connections" | "apps";
+type NavSection = "household" | "location" | "people" | "connections" | "apps" | "agents";
 
 interface NavItem {
   id: NavSection;
@@ -242,6 +244,7 @@ const navItems: NavItem[] = [
   { id: "people", label: "People", icon: Users },
   { id: "connections", label: "Connections", icon: LinkIcon },
   { id: "apps", label: "App Picker", icon: LayoutGrid },
+  { id: "agents", label: "Agent Access", icon: Bot },
 ];
 
 export default function SettingsPage() {
@@ -249,7 +252,7 @@ export default function SettingsPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const sectionFromUrl = urlParams.get("section");
-  const validSections: NavSection[] = ["household", "location", "people", "connections", "apps"];
+  const validSections: NavSection[] = ["household", "location", "people", "connections", "apps", "agents"];
   const initialSection = sectionFromUrl && validSections.includes(sectionFromUrl as NavSection) 
     ? sectionFromUrl as NavSection 
     : "household";
@@ -678,6 +681,17 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+          </div>
+        );
+
+      case "agents":
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold mb-1">Agent Access</h2>
+              <p className="text-muted-foreground">Let an AI agent, like a Claude Code session, work with your calendar</p>
+            </div>
+            <AgentAccessSettings />
           </div>
         );
 
