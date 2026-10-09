@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import Hls from "hls.js";
+import { radioService } from "@/lib/radio-service";
 import { useAppControls } from "@/components/app-controls";
 import { useFullscreen } from "@/hooks/use-fullscreen";
 import { useWakeLock } from "@/hooks/use-wake-lock";
@@ -181,6 +182,8 @@ export default function TVPage() {
   const loadChannel = useCallback((channel: TVChannel, reconnectAttemptNum: number = 0) => {
     const video = videoRef.current;
     if (!video) return;
+
+    if (radioService.getState().isPlaying) radioService.pause();
 
     // Clear any pending reconnect
     if (reconnectTimeoutRef.current) {
