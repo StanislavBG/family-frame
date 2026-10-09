@@ -17,6 +17,7 @@ import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPick
 import { isAllowedGooglePhotoUrl, isAllowedStreamUrl } from "./url-guards";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { getAppBaseUrl } from "./config";
 import { photoCache } from "./photo-cache";
 import type {
   CalendarEvent,
@@ -1956,7 +1957,7 @@ export async function registerRoutes(
 
       // Always use production URL for Google OAuth to avoid redirect_uri_mismatch errors
       // This ensures the callback URL matches what's registered in Google Cloud Console
-      const redirectUri = "https://family-frame.replit.app/api/google/callback";
+      const redirectUri = `${getAppBaseUrl()}/api/google/callback`;
 
       // Signed state carries the user ID through the cross-site redirect and is
       // bound to this browser via a single-use nonce cookie
@@ -2013,7 +2014,7 @@ export async function registerRoutes(
       }
 
       // Use the same production redirect URI as auth-url endpoint
-      const redirectUri = "https://family-frame.replit.app/api/google/callback";
+      const redirectUri = `${getAppBaseUrl()}/api/google/callback`;
 
       const tokens = await exchangeCodeForTokens(code, redirectUri);
       if (!tokens) {
