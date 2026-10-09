@@ -8,6 +8,7 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "validate:baby-songs": "tsx script/validate-baby-songs.ts",
     "test": "vitest run && tsx --test server/*.test.ts"
   },
   "dependencies": {
