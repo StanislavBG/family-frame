@@ -114,7 +114,7 @@ export default function HomePage() {
       */}
 
       {/* Main area: 2 columns */}
-      <div className={`flex-1 grid grid-cols-1 ${showLeftColumn ? "md:grid-cols-2" : ""} gap-4 p-4 md:p-6 min-h-0 overflow-y-auto md:overflow-hidden`}>
+      <div className={`flex-shrink-0 grid grid-cols-1 ${showLeftColumn ? "md:grid-cols-2" : ""} gap-4 p-4 md:p-6 md:pb-4`}>
 
         {/* Left column: Clock stacked above Weather */}
         {showLeftColumn && (
@@ -132,7 +132,7 @@ export default function HomePage() {
 
           {/* Weather Tile */}
           {showWeather && (
-          <Link href="/weather" className="block flex-1 min-h-0">
+          <Link href="/weather" className="block flex-1 min-h-[9rem]">
             <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-weather">
               <CardContent className="h-full p-0">
                 <WeatherTile />
@@ -163,7 +163,7 @@ export default function HomePage() {
               </div>
 
               {hasConnections ? (
-                <div className="flex-1 grid grid-cols-1 gap-3 overflow-y-auto content-start">
+                <div className="flex-1 grid grid-cols-1 gap-3 content-start">
                   {connections.map((conn) => (
                     <Card
                       key={conn.id}
@@ -220,10 +220,10 @@ export default function HomePage() {
 
       {/* Calendar row - full width, horizontal layout */}
       {showCalendar && (
-      <div className="flex-shrink-0 px-4 md:px-6 pb-2">
-        <Link href="/calendar" className="block">
-          <Card className="hover-elevate cursor-pointer" data-testid="widget-calendar">
-            <CardContent className="p-0">
+      <div className="flex-1 min-h-0 px-4 md:px-6 pb-2">
+        <Link href="/calendar" className="block h-full">
+          <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-calendar">
+            <CardContent className="h-full p-0">
               <CalendarTile layout="horizontal" />
             </CardContent>
           </Card>

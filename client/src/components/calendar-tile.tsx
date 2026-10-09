@@ -19,10 +19,12 @@ function MiniCalendarGrid({
   now,
   events,
   weekStartsMonday,
+  fill,
 }: {
   now: Date;
   events: CalendarEvent[];
   weekStartsMonday: boolean;
+  fill?: boolean;
 }) {
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -57,7 +59,7 @@ function MiniCalendarGrid({
   };
 
   return (
-    <div className="w-full">
+    <div className={fill ? "w-full h-full flex flex-col" : "w-full"}>
       {/* Weekday headers */}
       <div className="grid grid-cols-7 gap-0 mb-0.5">
         {weekDays.map((day, i) => (
@@ -76,10 +78,16 @@ function MiniCalendarGrid({
       </div>
 
       {/* Day grid */}
-      <div className="grid grid-cols-7 gap-0">
+      <div
+        className={
+          fill
+            ? "grid grid-cols-7 gap-0 flex-1 min-h-0 auto-rows-fr"
+            : "grid grid-cols-7 gap-0"
+        }
+      >
         {days.map((day, i) => {
           if (day === null) {
-            return <div key={`empty-${i}`} className="aspect-square" />;
+            return <div key={`empty-${i}`} className={fill ? undefined : "aspect-square"} />;
           }
 
           const isToday = day === today;
@@ -88,7 +96,10 @@ function MiniCalendarGrid({
           return (
             <div
               key={day}
-              className="flex flex-col items-center justify-center aspect-square relative"
+              className={cn(
+                "flex flex-col items-center justify-center relative",
+                !fill && "aspect-square"
+              )}
             >
               <span
                 className={cn(
@@ -207,11 +218,12 @@ export function CalendarTile({ className = "", layout = "vertical" }: CalendarTi
 
         {/* Horizontal: grid left, events right */}
         <div className="flex-1 flex gap-4 min-h-0">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 h-full">
             <MiniCalendarGrid
               now={now}
               events={events || []}
               weekStartsMonday={weekStartsMonday}
+              fill
             />
           </div>
           <div className="w-px bg-border/40 flex-shrink-0" />
