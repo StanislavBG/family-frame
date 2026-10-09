@@ -108,6 +108,16 @@ export function YouTubeAudioPlayer({
 
   const currentTrack = orderedPlaylist[currentIndex];
 
+  const unmountedRef = useRef(false);
+  const currentVideoIdRef = useRef<string | undefined>(undefined);
+  const volumeRef = useRef(internalVolume);
+  const onPlayStateChangeRef = useRef(onPlayStateChange);
+  const handleNextRef = useRef<() => void>(() => {});
+  const handleStopRef = useRef<() => void>(() => {});
+  currentVideoIdRef.current = currentTrack?.videoId;
+  volumeRef.current = internalVolume;
+  onPlayStateChangeRef.current = onPlayStateChange;
+
   // Fetch video titles from API
   const videoIds = useMemo(() => playlist.map(t => t.videoId), [playlist]);
   const { data: videoInfos } = useQuery<YouTubeVideoInfo[]>({
@@ -163,29 +173,14 @@ export function YouTubeAudioPlayer({
   useEffect(() => {
     if (onStopRef) {
       onStopRef(() => {
-        handleStop();
+        handleStopRef.current();
       });
     }
   }, [onStopRef]);
 
-  const loadYouTubeAPI = useCallback(() => {
-    if (window.YT && window.YT.Player) {
-      initPlayer();
-      return;
-    }
-
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    const firstScriptTag = document.getElementsByTagName("script")[0];
-    firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-
-    window.onYouTubeIframeAPIReady = () => {
-      initPlayer();
-    };
-  }, []);
-
+  // Player event handlers are registered once; they read the latest state via refs.
   const initPlayer = useCallback(() => {
-    if (!containerRef.current || playerRef.current) return;
+    if (unmountedRef.current || !containerRef.current || playerRef.current) return;
 
     const playerId = "kpopdh-player";
     let playerDiv = document.getElementById(playerId);
@@ -198,7 +193,7 @@ export function YouTubeAudioPlayer({
     playerRef.current = new window.YT.Player(playerId, {
       height: "1",
       width: "1",
-      videoId: currentTrack?.videoId,
+      videoId: currentVideoIdRef.current,
       playerVars: {
         autoplay: 0,
         controls: 0,
@@ -210,7 +205,7 @@ export function YouTubeAudioPlayer({
       events: {
         onReady: (event) => {
           setIsReady(true);
-          event.target.setVolume(internalVolume);
+          event.target.setVolume(volumeRef.current);
           const videoData = event.target.getVideoData();
           if (videoData?.title) {
             setCurrentTitle(videoData.title);
@@ -218,36 +213,52 @@ export function YouTubeAudioPlayer({
         },
         onStateChange: (event) => {
           if (event.data === window.YT.PlayerState.ENDED) {
-            handleNext();
+            handleNextRef.current();
           } else if (event.data === window.YT.PlayerState.PLAYING) {
             setIsPlaying(true);
-            onPlayStateChange?.(true);
+            onPlayStateChangeRef.current?.(true);
             const videoData = event.target.getVideoData();
             if (videoData?.title) {
               setCurrentTitle(videoData.title);
             }
           } else if (event.data === window.YT.PlayerState.PAUSED) {
             setIsPlaying(false);
-            onPlayStateChange?.(false);
+            onPlayStateChangeRef.current?.(false);
           }
         },
         onError: (event) => {
           console.error("YouTube player error:", event.data);
-          handleNext();
+          handleNextRef.current();
         },
       },
     });
-  }, [currentTrack?.videoId, internalVolume, onPlayStateChange]);
+  }, []);
 
   useEffect(() => {
-    loadYouTubeAPI();
+    unmountedRef.current = false;
+    let apiReadyHandler: (() => void) | undefined;
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName("script")[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+      apiReadyHandler = () => initPlayer();
+      window.onYouTubeIframeAPIReady = apiReadyHandler;
+    }
     return () => {
+      unmountedRef.current = true;
+      if (apiReadyHandler && window.onYouTubeIframeAPIReady === apiReadyHandler) {
+        window.onYouTubeIframeAPIReady = undefined;
+      }
       if (playerRef.current) {
         playerRef.current.destroy();
         playerRef.current = null;
       }
     };
-  }, [loadYouTubeAPI]);
+  }, [initPlayer]);
 
   useEffect(() => {
     if (isActive && isPlaying) {
@@ -283,6 +294,9 @@ export function YouTubeAudioPlayer({
       }
     }
   };
+
+  handleNextRef.current = handleNext;
+  handleStopRef.current = handleStop;
 
   const handlePrevious = () => {
     const prevIndex = (currentIndex - 1 + orderedPlaylist.length) % orderedPlaylist.length;
