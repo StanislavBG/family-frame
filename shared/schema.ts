@@ -802,37 +802,6 @@ export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
     isBuiltIn: true,
   },
   {
-    id: "lullabies-yt",
-    name: "Lullaby Dreams",
-    description: "Soothing lullabies for sleep & naps",
-    iconHint: "moon",
-    colorTheme: "#5C6BC0",
-    type: MoodStationType.YOUTUBE,
-    videoIds: [
-      "VKsMfubWBHM", // Baby Sleep Music
-      "TfHLp0tz1hY", // Lullaby for Babies
-      "1ZYbU82GVz4", // Mozart for Babies
-      "AF_nfazQaek", // Brahms Lullaby
-      "sEhMdyj6nqA", // Baby Sleep Lullaby
-    ],
-    isBuiltIn: true,
-  },
-  {
-    id: "cocomelon",
-    name: "Cocomelon Fun",
-    description: "Educational songs from Cocomelon",
-    iconHint: "video",
-    colorTheme: "#4CAF50",
-    type: MoodStationType.YOUTUBE,
-    videoIds: [
-      "75NQK-Sm1YY", // Yes Yes Vegetables
-      "gRaznYdw8_0", // Bath Song
-      "IoKfQsos-zY", // ABC Song
-      "xIm2ydB8PVo", // The Wheels on the Bus
-    ],
-    isBuiltIn: true,
-  },
-  {
     id: "bathtime-yt",
     name: "Bath Time Fun",
     description: "Splashy songs for bath time",
@@ -840,10 +809,8 @@ export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
     colorTheme: "#00BCD4",
     type: MoodStationType.YOUTUBE,
     videoIds: [
-      "gRaznYdw8_0", // Cocomelon Bath Song
       "WRVsOCh907o", // Baby Shark Bath
       "frN3nvhIHUk", // Bubble Bath Song
-      "eTtmJVE5tQc", // Splish Splash
     ],
     isBuiltIn: true,
   },
@@ -858,7 +825,6 @@ export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
       "l4WNrvVjiTw", // If You're Happy
       "h4eueDYPTIg", // Head Shoulders Knees
       "0wSllz_hmzs", // Freeze Dance
-      "CE8UiMo2mJg", // Happy Birthday
       "tVlcKp3bWH8", // Cha Cha Slide Kids
     ],
     isBuiltIn: true,
@@ -872,8 +838,6 @@ export const BUILT_IN_MOOD_STATIONS: MoodStation[] = [
     type: MoodStationType.YOUTUBE,
     videoIds: [
       "d0tU18Ybcvk", // Nature Sounds for Baby
-      "JYwm7CQIJKU", // Forest Sounds
-      "L9Bf8M6KUfk", // Bird Sounds for Kids
       "1ZYbU82GVz4", // Mozart Nature
     ],
     isBuiltIn: true,
@@ -890,7 +854,7 @@ export function moodStationToTracks(station: MoodStation): YouTubeTrack[] {
 }
 
 // ============================================
-// BABY RADIO TRACK LIBRARY (Verified working tracks)
+// BABY RADIO TRACK LIBRARY (check with npm run validate:baby-songs)
 // Sources: Archive.org public domain content
 // Updated with expanded occasion tags
 // ============================================
@@ -922,17 +886,9 @@ export const BABY_RADIO_LIBRARY: BabyRadioTrack[] = [
   { id: "cs006", title: "You Didn't Have to Be So Nice", url: "https://archive.org/download/TheBestNurseryRhymes4/2-06%20You%20Didn%27t%20Have%20to%20Be%20So%20Nice.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.NAPTIME, Situation.ANYTIME], minAgeMonths: 24, maxAgeMonths: 72, source: "Archive.org" },
   { id: "cs007", title: "Que Sera Sera", url: "https://archive.org/download/TheBestNurseryRhymes4/2-07%20Que%20Sera%2C%20Sera.mp3", contentType: ContentType.LULLABY, situations: [Situation.QUIET, Situation.BEDTIME, Situation.NAPTIME, Situation.CARRIDE], minAgeMonths: 12, maxAgeMonths: 72, source: "Archive.org" },
 
-  // ========== ANIMAL SOUNDS (SSE Library - verified working) ==========
+  // ========== ANIMAL SOUNDS (SSE Library) ==========
   { id: "as001", title: "Lion Roar", url: "https://archive.org/download/SSE_Library_ANIMALS/CAT%20WILD/ANMLWcat_Lion%20roaring%20with%20light%20jungle%20background_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 0, maxAgeMonths: 72, source: "Archive.org" },
   { id: "as002", title: "Elephant Sounds", url: "https://archive.org/download/SSE_Library_ANIMALS/WILD/ANMLWild_Elephant%20running%20by%20in%20dirt_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 0, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as003", title: "Dog Barking", url: "https://archive.org/download/SSE_Library_ANIMALS/DOG/ANMLDog_Dog%20barking%20medium%20sized_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as004", title: "Cat Meowing", url: "https://archive.org/download/SSE_Library_ANIMALS/CAT%20DOMESTIC/ANMLCat_Cat%20meowing%20several%20times_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as005", title: "Cow Mooing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Cow%20mooing%20single_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as006", title: "Rooster Crowing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Rooster%20crowing_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.MORNING, Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as007", title: "Horse Neighing", url: "https://archive.org/download/SSE_Library_ANIMALS/HORSE/ANMLHorse_Horse%20whinny_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as008", title: "Pig Oinking", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Pig%20oinking_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as009", title: "Sheep Baaing", url: "https://archive.org/download/SSE_Library_ANIMALS/FARM/ANMLFarm_Sheep%20baaing_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
-  { id: "as010", title: "Duck Quacking", url: "https://archive.org/download/SSE_Library_ANIMALS/BIRD/ANMLBird_Ducks%20quacking_CS_USC.mp3", contentType: ContentType.ANIMAL_SOUNDS, situations: [Situation.PLAYTIME, Situation.LEARNING, Situation.BATHTIME, Situation.OUTDOOR, Situation.ANYTIME], minAgeMonths: 6, maxAgeMonths: 72, source: "Archive.org" },
 ];
 
 // Helper functions

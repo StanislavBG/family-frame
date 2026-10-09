@@ -108,3 +108,19 @@ test("collectBabySongSources de-duplicates shared videoIds", () => {
     for (const v of s.videoIds) counts.set(v, (counts.get(v) ?? new Set()).add(s.id));
   for (const y of youtube) assert.deepEqual([...y.stations].sort(), [...counts.get(y.videoId)!].sort());
 });
+
+const DEAD_TRACK_IDS = ["as003", "as004", "as005", "as006", "as007", "as008", "as009", "as010"] as const;
+const DEAD_VIDEO_IDS = [
+  "VKsMfubWBHM", "TfHLp0tz1hY", "AF_nfazQaek", "sEhMdyj6nqA", "gRaznYdw8_0", "IoKfQsos-zY",
+  "xIm2ydB8PVo", "eTtmJVE5tQc", "CE8UiMo2mJg", "JYwm7CQIJKU", "L9Bf8M6KUfk",
+] as const;
+
+test("built-in Baby Songs sources exclude known-dead entries", () => {
+  const { audio: tracks, youtube } = collectBabySongSources();
+  const trackIds = new Set(tracks.map((t) => t.id));
+  for (const id of DEAD_TRACK_IDS) assert.equal(trackIds.has(id), false, `dead track ${id} still present`);
+  const videoIds = new Set(youtube.map((y) => y.videoId));
+  for (const id of DEAD_VIDEO_IDS) assert.equal(videoIds.has(id), false, `dead video ${id} still present`);
+  for (const s of BUILT_IN_MOOD_STATIONS)
+    assert.ok(s.videoIds.length >= 2, `station ${s.id} has fewer than 2 videos`);
+});
