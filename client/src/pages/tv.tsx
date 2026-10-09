@@ -3,7 +3,7 @@ import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Tv, Volume2, VolumeX, Maximize, Minimize, Play, Pause, Loader2, ChevronRight, ChevronLeft, Settings2, Clock, RefreshCw } from "lucide-react";
+import { Tv, Volume2, VolumeX, Maximize, Minimize, Play, Pause, Loader2, ChevronRight, ChevronLeft, Settings2, Clock, RefreshCw, List } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -93,6 +93,13 @@ export default function TVPage() {
   const isLoading = settingsLoading || channelsLoading;
   const countries = useMemo(() => Object.keys(channelsByCountry), [channelsByCountry]);
   const currentChannels = selectedCountry ? (channelsByCountry[selectedCountry] || []) : [];
+  const countryTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  // Keep the selected country tab visible in the single-row tab strip
+  useEffect(() => {
+    if (!selectedCountry) return;
+    countryTabRefs.current[selectedCountry]?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [selectedCountry]);
 
   // Set default country when data loads
   useEffect(() => {
@@ -475,6 +482,19 @@ export default function TVPage() {
           </div>
         )}
 
+        {/* Large "Channels" button: reachable when the sidebar is closed */}
+        {!sidebarOpen && (showControls || !isPlaying) && (
+          <Button
+            onClick={() => setSidebarOpen(true)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-20 h-14 px-5 gap-2 text-lg rounded-xl bg-black/60 text-white hover:bg-black/80 backdrop-blur-sm touch-manipulation"
+            aria-label="Show channels"
+            data-testid="button-open-channels"
+          >
+            <List className="h-6 w-6" />
+            <span>Channels</span>
+          </Button>
+        )}
+
         {/* Control bar - auto-hides after inactivity */}
         <div
           className={cn(
@@ -591,12 +611,13 @@ export default function TVPage() {
 
             {/* Sidebar toggle - larger touch target */}
             <Button
-              size="icon"
               variant="ghost"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="h-12 w-12 text-white hover:bg-white/20 touch-manipulation"
+              className="h-12 px-3 gap-2 text-white hover:bg-white/20 touch-manipulation"
+              aria-label={sidebarOpen ? "Hide channels" : "Show channels"}
               data-testid="button-toggle-channels"
             >
+              <span>Channels</span>
               {sidebarOpen ? (
                 <ChevronRight className="h-6 w-6" />
               ) : (
@@ -617,13 +638,14 @@ export default function TVPage() {
       >
         {/* Country Tabs */}
         <div className="p-3 border-b border-white/10">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap gap-2 overflow-x-auto">
             {countries.map((country) => (
               <button
                 key={country}
+                ref={(el) => { countryTabRefs.current[country] = el; }}
                 onClick={() => setSelectedCountry(country)}
                 className={cn(
-                  "px-3 py-2 rounded-lg text-sm font-medium transition-colors touch-manipulation whitespace-nowrap",
+                  "shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors touch-manipulation whitespace-nowrap",
                   selectedCountry === country
                     ? "bg-white/20 text-white"
                     : "text-white/60 hover:text-white hover:bg-white/10"
