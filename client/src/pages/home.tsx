@@ -12,6 +12,8 @@ import { StockTicker } from "@/components/stock-ticker";
 import { formatTemperature } from "@/lib/weather-utils";
 import type { UserSettings, WeatherData } from "@shared/schema";
 import { availableStocks } from "@shared/schema";
+import { useAppLayout } from "@/lib/app-registry";
+import { getHomeLayout } from "@/lib/display-layout";
 
 interface WeatherResponse {
   current: WeatherData;
@@ -52,8 +54,13 @@ export default function HomePage() {
     refetchInterval: 15 * 60 * 1000,
   });
 
+  const { isEnabled } = useAppLayout();
+  const { showClock, showWeather, showLeftColumn, showCalendar, showStocks, showUnread } =
+    getHomeLayout(isEnabled);
+
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],
+    enabled: showUnread,
   });
 
   const trackedStocks = settings?.trackedStocks || ["DJI", "SPX", "VNQ", "BTC", "GOLD"];
@@ -65,12 +72,13 @@ export default function HomePage() {
       if (!res.ok) throw new Error(`Market request failed: ${res.status}`);
       return res.json();
     },
+    enabled: showStocks,
     staleTime: 60 * 1000,
     refetchInterval: 60_000,
     retry: false,
   });
 
-  const unreadCount = unreadData?.count || 0;
+  const unreadCount = showUnread ? unreadData?.count || 0 : 0;
   const hasConnections = connections && connections.length > 0;
   const temperatureUnit = settings?.temperatureUnit || "celsius";
   const timeFormat = settings?.timeFormat || "24h";
@@ -106,11 +114,13 @@ export default function HomePage() {
       */}
 
       {/* Main area: 2 columns */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 md:p-6 min-h-0 overflow-y-auto md:overflow-hidden">
+      <div className={`flex-1 grid grid-cols-1 ${showLeftColumn ? "md:grid-cols-2" : ""} gap-4 p-4 md:p-6 min-h-0 overflow-y-auto md:overflow-hidden`}>
 
         {/* Left column: Clock stacked above Weather */}
+        {showLeftColumn && (
         <div className="flex flex-col gap-4 min-h-0">
           {/* Digital Clock */}
+          {showClock && (
           <Link href="/clock" className="block flex-shrink-0">
             <Card className="hover-elevate cursor-pointer overflow-hidden" data-testid="widget-clock">
               <CardContent className="p-4 md:p-6">
@@ -118,8 +128,10 @@ export default function HomePage() {
               </CardContent>
             </Card>
           </Link>
+          )}
 
           {/* Weather Tile */}
+          {showWeather && (
           <Link href="/weather" className="block flex-1 min-h-0">
             <Card className="h-full hover-elevate cursor-pointer" data-testid="widget-weather">
               <CardContent className="h-full p-0">
@@ -127,7 +139,9 @@ export default function HomePage() {
               </CardContent>
             </Card>
           </Link>
+          )}
         </div>
+        )}
 
         {/* Right column: Connected Homes */}
         <div className="min-h-0">
@@ -205,6 +219,7 @@ export default function HomePage() {
       </div>
 
       {/* Calendar row - full width, horizontal layout */}
+      {showCalendar && (
       <div className="flex-shrink-0 px-4 md:px-6 pb-2">
         <Link href="/calendar" className="block">
           <Card className="hover-elevate cursor-pointer" data-testid="widget-calendar">
@@ -214,13 +229,16 @@ export default function HomePage() {
           </Card>
         </Link>
       </div>
+      )}
 
       {/* Stock ticker tape - thin bottom strip */}
+      {showStocks && (
       <div className="flex-shrink-0">
         <Link href="/stocks">
           <StockTicker stocks={trackedStocks} marketData={marketData} />
         </Link>
       </div>
+      )}
     </div>
   );
 }

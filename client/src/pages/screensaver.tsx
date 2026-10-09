@@ -7,6 +7,9 @@ import { formatTemperature } from "@/lib/weather-utils";
 import type { UserSettings, GooglePhotoItem } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
 import { getPhotoSrc } from "@/lib/photo-src";
+import { useAppLayout } from "@/lib/app-registry";
+import { getScreensaverModes } from "@/lib/display-layout";
+import type { WeatherResponse } from "@/hooks/use-weather-data";
 
 // Screensaver modes cycle through these displays
 type ScreensaverDisplay = "photos" | "clock" | "weather";
@@ -125,6 +128,15 @@ interface PhotosResponse {
   needsSessionRefresh?: boolean;
 }
 
+// Mounted only when the weather mode is active so the hook's fetches stay off otherwise.
+function WeatherSource({ onWeather }: { onWeather: (w: WeatherResponse | undefined) => void }) {
+  const { weather } = useWeatherData();
+  useEffect(() => {
+    onWeather(weather);
+  }, [weather, onWeather]);
+  return null;
+}
+
 export default function ScreensaverPage() {
   const [, navigate] = useLocation();
   const [currentDisplay, setCurrentDisplay] = useState<ScreensaverDisplay>("clock");
@@ -136,13 +148,21 @@ export default function ScreensaverPage() {
     queryKey: ["/api/settings"],
   });
 
-  const { weather, temperatureUnit: weatherTempUnit } = useWeatherData();
+  const { isEnabled } = useAppLayout();
+  const screensaverMode = settings?.screensaverMode || "cycle";
+  const modes = getScreensaverModes(screensaverMode, isEnabled);
+  const modesKey = modes.join(",");
+  const wantsPhotos = modes.includes("photos");
+  const wantsWeather = modes.includes("weather");
+  const [fetchedWeather, setFetchedWeather] = useState<WeatherResponse | undefined>();
+  const weather = wantsWeather ? fetchedWeather : undefined;
 
   // Fetch photos from API (with fresh URLs)
   const hasPhotosSelected = (settings?.selectedPhotos?.length ?? 0) > 0;
   const { data: photosData } = useQuery<GooglePhotoItem[] | PhotosResponse>({
     queryKey: ["/api/photos"],
-    enabled: settings?.photoSource === PhotoSource.GOOGLE_PHOTOS &&
+    enabled: wantsPhotos &&
+             settings?.photoSource === PhotoSource.GOOGLE_PHOTOS &&
              settings?.googlePhotosConnected === true &&
              hasPhotosSelected,
     staleTime: 0,
@@ -152,29 +172,31 @@ export default function ScreensaverPage() {
   const photos: GooglePhotoItem[] = Array.isArray(photosData)
     ? photosData
     : (photosData as PhotosResponse)?.photos || [];
-  const screensaverMode = settings?.screensaverMode || "cycle";
   const timeFormat = settings?.timeFormat || "24h";
-  const temperatureUnit = weatherTempUnit;
+  const temperatureUnit = settings?.temperatureUnit || "celsius";
 
   // Cycle through displays if mode is "cycle"
   useEffect(() => {
     if (screensaverMode !== "cycle") {
-      setCurrentDisplay(screensaverMode as ScreensaverDisplay);
+      setCurrentDisplay(modes[0]);
       return;
     }
 
-    const displays: ScreensaverDisplay[] = ["clock"];
-    if (weather) displays.push("weather");
-    if (photos.length > 0) displays.push("photos");
+    const displays = modes.filter(
+      (m) => m === "clock" || (m === "weather" && weather) || (m === "photos" && photos.length > 0),
+    );
+    if (displays.length === 0) displays.push("clock");
 
     let index = 0;
+    setCurrentDisplay(displays[0]);
     const interval = setInterval(() => {
       index = (index + 1) % displays.length;
       setCurrentDisplay(displays[index]);
     }, CYCLE_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [screensaverMode, weather, photos.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screensaverMode, modesKey, weather, photos.length]);
 
   // Cycle through photos when in photos mode
   useEffect(() => {
@@ -229,6 +251,7 @@ export default function ScreensaverPage() {
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden cursor-none">
+      {wantsWeather && <WeatherSource onWeather={setFetchedWeather} />}
       {/* Photo background (always rendered for smooth transitions) */}
       {photos.length > 0 && currentDisplay === "photos" && (
         <AmbientPhoto
