@@ -330,6 +330,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
       queryClient.invalidateQueries({ queryKey: ["/api/connections/requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/weather"] });
       toast({ title: "Connection accepted" });
     },
     onError: (error: Error) => {
@@ -356,13 +357,14 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/weather"] });
       toast({ title: "Connection removed" });
     },
   });
 
   const createPersonMutation = useMutation({
     mutationFn: async (data: { name: string; birthday?: string }) => {
-      return apiRequest("POST", "/api/people", data);
+      return apiRequest("POST", "/api/people/new", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/people/list"] });
