@@ -29,7 +29,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Pencil, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -256,98 +266,6 @@ function formatDateDisplay(date: Date): string {
   return `${year}/${month}/${day}`;
 }
 
-interface EventCardProps {
-  event: CalendarEvent;
-  people: Person[];
-  currentUserId?: string;
-  onEdit: (event: CalendarEvent) => void;
-  onDelete: (eventId: string) => void;
-}
-
-function EventCard({ event, people, currentUserId, onEdit, onDelete }: EventCardProps) {
-  const eventPeople = people.filter((p) => (event.people || []).includes(p.id));
-  const startDate = parseLocalDate(event.startDate);
-  const endDate = parseLocalDate(event.endDate);
-  const isMultiDay = startDate.toDateString() !== endDate.toDateString();
-  
-  // Check if current user owns this event
-  const isOwner = !event.creatorId || event.creatorId === currentUserId;
-
-  return (
-    <div
-      className={cn(
-        "p-4 rounded-lg border-l-4 bg-card transition-all duration-200 hover-elevate group",
-        event.type === EventType.SHARED ? "border-l-cyan-500" : "border-l-violet-500"
-      )}
-      data-testid={`event-card-${event.id}`}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <h4 className="font-medium text-lg truncate" data-testid="text-event-title">{event.title}</h4>
-          <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
-            <span>
-              {formatDateDisplay(startDate)}
-              {isMultiDay && ` - ${formatDateDisplay(endDate)}`}
-            </span>
-          </div>
-          {event.creatorName && (
-            <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-              <Home className="h-4 w-4" />
-              <span>{event.creatorName}</span>
-            </div>
-          )}
-          {eventPeople.length > 0 && (
-            <div className="flex items-center gap-2 mt-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <div className="flex flex-wrap gap-1">
-                {eventPeople.map((person) => (
-                  <Badge key={person.id} variant="secondary" className="text-xs">
-                    {person.name}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge 
-            className={cn(
-              event.type === EventType.SHARED 
-                ? "bg-cyan-500 hover:bg-cyan-600 text-white" 
-                : "bg-violet-500 hover:bg-violet-600 text-white"
-            )}
-          >
-            {event.type}
-          </Badge>
-          {isOwner && (
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => onEdit(event)}
-                data-testid={`button-edit-event-${event.id}`}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive hover:text-destructive"
-                onClick={() => onDelete(event.id)}
-                data-testid={`button-delete-event-${event.id}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function CalendarPage() {
   const { toast } = useToast();
   const { user } = useUser();
@@ -356,6 +274,8 @@ export default function CalendarPage() {
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [editEventOpen, setEditEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const isEditingOwner = !!editingEvent && (!editingEvent.creatorId || editingEvent.creatorId === user?.id);
 
   const { data: settings } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
@@ -434,6 +354,9 @@ export default function CalendarPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
       toast({ title: "Event deleted successfully" });
+      setConfirmDeleteOpen(false);
+      setEditEventOpen(false);
+      setEditingEvent(null);
     },
     onError: (error: Error) => {
       toast({ title: "Failed to delete event", description: error.message, variant: "destructive" });
@@ -478,10 +401,6 @@ export default function CalendarPage() {
       people: event.people || [],
     });
     setEditEventOpen(true);
-  };
-
-  const handleDeleteEvent = (eventId: string) => {
-    deleteEventMutation.mutate(eventId);
   };
 
   const previousMonth = () => {
@@ -685,6 +604,7 @@ export default function CalendarPage() {
                 </DialogHeader>
                 <Form {...editForm}>
                   <form onSubmit={editForm.handleSubmit(onEditSubmit, onFormError)} className="space-y-4">
+                    <fieldset disabled={!isEditingOwner} className="space-y-4 min-w-0 border-0 p-0 m-0">
                     <FormField
                       control={editForm.control}
                       name="title"
@@ -779,21 +699,64 @@ export default function CalendarPage() {
                         );
                       }}
                     />
+                    </fieldset>
+                    {!isEditingOwner && editingEvent && (
+                      <p className="text-sm text-muted-foreground" data-testid="text-event-readonly">
+                        Created by {editingEvent.creatorName || "another household"} — only they can change it.
+                      </p>
+                    )}
                     <DialogFooter>
+                      {isEditingOwner && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="mr-auto"
+                          onClick={() => setConfirmDeleteOpen(true)}
+                          data-testid="button-delete-event"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </Button>
+                      )}
                       <Button type="button" variant="outline" onClick={() => {
                         setEditEventOpen(false);
                         setEditingEvent(null);
                       }}>
-                        Cancel
+                        {isEditingOwner ? "Cancel" : "Close"}
                       </Button>
-                      <Button type="submit" disabled={updateEventMutation.isPending} data-testid="button-update-event">
-                        {updateEventMutation.isPending ? "Updating..." : "Update Event"}
-                      </Button>
+                      {isEditingOwner && (
+                        <Button type="submit" disabled={updateEventMutation.isPending} data-testid="button-update-event">
+                          {updateEventMutation.isPending ? "Updating..." : "Update Event"}
+                        </Button>
+                      )}
                     </DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
             </Dialog>
+            <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete event?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    "{editingEvent?.title}" will be removed from your calendar. This can't be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-delete-event">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={deleteEventMutation.isPending}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (editingEvent) deleteEventMutation.mutate(editingEvent.id);
+                    }}
+                    data-testid="button-confirm-delete-event"
+                  >
+                    {deleteEventMutation.isPending ? "Deleting..." : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col p-2 md:p-4 min-h-0">
             <div className="flex-1 min-h-0">
