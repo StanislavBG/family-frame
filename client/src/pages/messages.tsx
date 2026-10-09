@@ -22,6 +22,8 @@ export default function MessagesPage() {
 
   const { data: messages = [], isLoading } = useQuery<Message[]>({
     queryKey: queryKeys.messages.all(),
+    refetchInterval: 30_000,
+    refetchOnMount: "always",
   });
 
   const { data: connections = [] } = useQuery<ConnectedUser[]>({
