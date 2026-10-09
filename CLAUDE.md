@@ -17,6 +17,9 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 - **Shopping List**: Shared grocery/shopping lists
 - **Stocks**: Market tracking (Dow Jones, Bitcoin, Real Estate, MSFT, CRM, ISRG)
 - **Notepad**: Shared note-taking
+- **Chores**: Shared household chore tracking
+- **Recipes**: Shared family recipes
+- **Screensaver**: Full-screen ambient display mode for mounted screens
 - **Household Connections**: Connect and view family members' homes with real-time weather
 
 ## Tech Stack
@@ -35,7 +38,6 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 ### Backend
 - Express.js with TypeScript
 - Firebase Realtime Database for user data storage
-- PostgreSQL with Drizzle ORM
 - Clerk JWT verification for auth
 
 ### External Services
@@ -43,6 +45,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 - Firebase: Real-time data (notes, messages, events, settings)
 - Open-Meteo API: Weather data (no API key required)
 - Google Photos API: Photo sync via OAuth picker
+- Pixabay API: Stock photo source for the photo frame
 
 ## Project Structure
 
@@ -53,7 +56,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       ├── App.tsx             # Main app with auth flow
 │       ├── main.tsx            # React entry point
 │       ├── index.css           # Global styles (Tailwind + custom utilities)
-│       ├── pages/              # Route page components
+│       ├── pages/              # Route pages (home, clock, weather, photos, calendar, messages, radio, tv, baby-songs, shopping, stocks, notepad, chores, recipes, screensaver, settings, ...)
 │       ├── components/
 │       │   ├── ui/             # shadcn components
 │       │   ├── app-sidebar.tsx # Navigation sidebar
@@ -72,10 +75,18 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── index.ts                # Express app setup, middleware
 │   ├── routes.ts               # All API endpoints
 │   ├── middleware.ts           # Auth middleware, async handler, utilities
-│   ├── auth.ts                 # Clerk verification
+│   ├── auth.ts                 # Clerk verification + PAT auth branch
+│   ├── config.ts               # getAppBaseUrl() (APP_BASE_URL)
+│   ├── url-guards.ts           # Outbound URL validation (SSRF guards)
+│   ├── oauth-state.ts          # Signed OAuth state (SESSION_SECRET)
+│   ├── api-tokens.ts           # Personal access tokens
+│   ├── mcp.ts                  # MCP server at /mcp
+│   ├── calendar-service.ts     # Shared calendar logic (REST + MCP)
 │   ├── firebase.ts             # Firebase initialization & helpers
 │   ├── weather.ts              # Open-Meteo integration
 │   ├── google-photos.ts        # Google Photos OAuth & picker
+│   ├── photo-cache.ts          # Photo caching
+│   ├── *.test.ts               # Server tests (node:test via tsx)
 │   └── static-pages/           # Pre-rendered SEO pages
 ├── shared/                      # Shared schemas & types
 │   └── schema.ts               # Zod schemas for validation
@@ -90,20 +101,33 @@ npm run dev      # Start dev server (Express + Vite on port 5000)
 npm run build    # Build for production (client → dist/public/, server → dist/index.cjs)
 npm start        # Run production build
 npm run check    # TypeScript type checking
-npm run db:push  # Push Drizzle schema changes to PostgreSQL
+npm test         # vitest (client) + node:test via tsx (server/*.test.ts)
 ```
+
+`npm run dev` loads a local `.env` (via `--env-file`) if present. `.env` is git-ignored; never commit it. Local dev uses the **production Firebase database**, so edits made locally change real data.
 
 ## Environment Variables
 
 ```env
 # Required
-VITE_CLERK_PUBLISHABLE_KEY    # Frontend Clerk publishable key
+VITE_CLERK_PUBLISHABLE_KEY    # Frontend Clerk publishable key (also read server-side)
 CLERK_SECRET_KEY              # Backend Clerk secret
-DATABASE_URL                  # PostgreSQL connection string
 FIREBASE_SERVICE_ACCOUNT      # JSON service account key
 
 # Optional
+APP_BASE_URL                  # Public base URL for OAuth redirects and weather User-Agent (default https://family-frame.replit.app)
 SESSION_SECRET                # OAuth state signing secret
+GOOGLE_CLIENT_ID              # Google Photos OAuth client ID
+GOOGLE_CLIENT_SECRET          # Google Photos OAuth client secret
+PIXABAY_API_KEY               # Pixabay photo source
+PUBLISHABLE_KEY_PROD          # Server-side Clerk key override (prod)
+PUBLISHABLE_KEY_DEV           # Server-side Clerk key override (dev)
+
+# Set by tooling/platform (not configured by hand)
+NODE_ENV                      # Set by npm scripts
+PORT                          # Listen port (default 5000)
+REPLIT_DEPLOYMENT             # "1" on Replit deployments
+TZ                            # Only used by client tests
 ```
 
 ## Architecture Patterns
@@ -241,6 +265,7 @@ app.get("/api/resource", asyncHandler(async (req, res) => {
 - **Port**: 5000
 - **Build**: `npm run build`
 - **Run**: `node ./dist/index.cjs`
+- **Release**: push to GitHub `main`, then in Replit pull from the Git pane and click Publish. Secrets live only in Replit.
 
 ## Design Philosophy
 
