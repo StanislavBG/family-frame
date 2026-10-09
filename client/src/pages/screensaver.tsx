@@ -6,6 +6,7 @@ import { useWeatherData } from "@/hooks/use-weather-data";
 import { formatTemperature } from "@/lib/weather-utils";
 import type { UserSettings, GooglePhotoItem } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
+import { getPhotoSrc } from "@/lib/photo-src";
 
 // Screensaver modes cycle through these displays
 type ScreensaverDisplay = "photos" | "clock" | "weather";
@@ -89,17 +90,6 @@ function AmbientWeather({
       )}
     </div>
   );
-}
-
-// Helper to create proxied URL for Google Photos
-function getProxiedPhotoUrl(baseUrl: string): string {
-  const fullUrl = `${baseUrl}=w1920-h1080`;
-  return `/api/photos/proxy?url=${encodeURIComponent(fullUrl)}`;
-}
-
-// Cached photos are served from our own origin and never expire
-function getPhotoSrc(photo: GooglePhotoItem): string {
-  return photo.cached ? photo.baseUrl : getProxiedPhotoUrl(photo.baseUrl);
 }
 
 // Ambient photo display with Ken Burns effect

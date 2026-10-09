@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/empty-state";
 import type { GooglePhotoItem, UserSettings, PixabayPhoto } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
+import { getPhotoSrc } from "@/lib/photo-src";
 
 const URL_EXPIRY_MS = 50 * 60 * 1000;
 
@@ -36,17 +37,6 @@ function PhotosSkeleton() {
 interface GooglePhotoDisplayProps {
   photos: GooglePhotoItem[];
   interval: number;
-}
-
-// Helper to create proxied URL for Google Photos
-function getProxiedPhotoUrl(baseUrl: string): string {
-  const fullUrl = `${baseUrl}=w1920-h1080`;
-  return `/api/photos/proxy?url=${encodeURIComponent(fullUrl)}`;
-}
-
-// Cached photos are served from our own origin and never expire
-function getPhotoSrc(photo: GooglePhotoItem): string {
-  return photo.cached ? photo.baseUrl : getPhotoSrc(photo);
 }
 
 function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisplayProps) {
