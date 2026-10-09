@@ -33,7 +33,7 @@ import type {
   GooglePhotoItem,
   StoredPhoto,
 } from "@shared/schema";
-import { insertCalendarEventSchema, insertPersonSchema, insertNoteSchema, insertMessageSchema, ConnectionStatus, PhotoSource, EventType, updateUserSettingsSchema, updatePersonSchema, isValidConnectionUserId } from "@shared/schema";
+import { insertCalendarEventSchema, insertPersonSchema, insertNoteSchema, insertMessageSchema, ConnectionStatus, PhotoSource, EventType, updateUserSettingsSchema, updatePersonSchema, isValidConnectionUserId, saveShoppingListSchema, saveChoresSchema, saveRecipesSchema, createPlaylistSchema, updatePlaylistSchema } from "@shared/schema";
 
 // Detect if running in production deployment
 const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
@@ -2812,9 +2812,13 @@ export async function registerRoutes(
         return;
       }
 
-      const { items } = req.body;
+      const parsed = saveShoppingListSchema.safeParse(req.body?.items);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid shopping list", details: parsed.error.errors });
+        return;
+      }
       await getOrCreateUser(userId, username);
-      await updateUserData(userId, { shoppingList: { items } });
+      await updateUserData(userId, { shoppingList: { items: parsed.data } });
       res.json({ success: true });
     } catch (error) {
       console.error("Save shopping list error:", error);
@@ -3234,7 +3238,7 @@ export async function registerRoutes(
         return;
       }
 
-      const { toUserId, toUsername, content, linkedNoteId } = validatedData.data;
+      const { toUserId, content, linkedNoteId, linkedEventId } = validatedData.data;
 
       const userData = await getOrCreateUser(userId, username);
       const connections = toArray<string>(userData.connections as any);
@@ -3244,6 +3248,10 @@ export async function registerRoutes(
         res.status(400).json({ error: "You can only message connected users" });
         return;
       }
+
+      // Recipient's username comes from their stored record, never the request body
+      const recipientData = await getOrCreateUser(toUserId, "user");
+      const toUsername = recipientData.username;
 
       const now = new Date().toISOString();
       const messageId = randomUUID();
@@ -3260,6 +3268,7 @@ export async function registerRoutes(
         createdAt: now,
         isRead: false,
         ...(linkedNoteId ? { linkedNoteId } : {}),
+        ...(linkedEventId ? { linkedEventId } : {}),
       };
 
       // Message copy for sender (marked as read, shown as sent)
@@ -3273,10 +3282,10 @@ export async function registerRoutes(
         createdAt: now,
         isRead: true,
         ...(linkedNoteId ? { linkedNoteId } : {}),
+        ...(linkedEventId ? { linkedEventId } : {}),
       };
 
       // Add message to recipient's inbox
-      const recipientData = await getOrCreateUser(toUserId, toUsername);
       const recipientMsgs = [...toArray<Message>(recipientData.messages as any), recipientMessage];
       await updateUserData(toUserId, { messages: recipientMsgs });
 
@@ -3397,9 +3406,13 @@ export async function registerRoutes(
         return;
       }
 
-      const { chores } = req.body;
+      const parsed = saveChoresSchema.safeParse(req.body?.chores);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid chores", details: parsed.error.errors });
+        return;
+      }
       await getOrCreateUser(userId, username);
-      await updateUserData(userId, { chores });
+      await updateUserData(userId, { chores: parsed.data });
       res.json({ success: true });
     } catch (error) {
       console.error("Save chores error:", error);
@@ -3451,9 +3464,13 @@ export async function registerRoutes(
         return;
       }
 
-      const { recipes } = req.body;
+      const parsed = saveRecipesSchema.safeParse(req.body?.recipes);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid recipes", details: parsed.error.errors });
+        return;
+      }
       await getOrCreateUser(userId, username);
-      await updateUserData(userId, { recipes });
+      await updateUserData(userId, { recipes: parsed.data });
       res.json({ success: true });
     } catch (error) {
       console.error("Save recipes error:", error);
@@ -3564,17 +3581,18 @@ export async function registerRoutes(
   app.post("/api/playlists", asyncHandler(async (req: Request, res: Response) => {
     const userId = req.headers["x-clerk-user-id"] as string;
     const username = req.headers["x-clerk-username"] as string || "user";
-    const { name, description, iconHint, colorTheme, videoIds } = req.body;
 
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
-    if (!name || !videoIds || !Array.isArray(videoIds)) {
-      res.status(400).json({ error: "name and videoIds are required" });
+    const parsedBody = createPlaylistSchema.safeParse(req.body);
+    if (!parsedBody.success) {
+      res.status(400).json({ error: "Invalid playlist", details: parsedBody.error.errors });
       return;
     }
+    const { name, description, iconHint, colorTheme, videoIds } = parsedBody.data;
 
     const userData = await getOrCreateUser(userId, username);
     const playlists = toArray(userData.settings?.customPlaylists || []);
@@ -3607,12 +3625,19 @@ export async function registerRoutes(
     const userId = req.headers["x-clerk-user-id"] as string;
     const username = req.headers["x-clerk-username"] as string || "user";
     const { playlistId } = req.params;
-    const updates = req.body;
 
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
+
+    // Schema strips id/createdAt/updatedAt and unknown keys
+    const parsedUpdates = updatePlaylistSchema.safeParse(req.body);
+    if (!parsedUpdates.success) {
+      res.status(400).json({ error: "Invalid playlist update", details: parsedUpdates.error.errors });
+      return;
+    }
+    const updates = parsedUpdates.data;
 
     const userData = await getOrCreateUser(userId, username);
     const playlists = toArray(userData.settings?.customPlaylists || []);

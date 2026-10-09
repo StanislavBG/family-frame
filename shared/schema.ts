@@ -211,6 +211,17 @@ export const customPlaylistSchema = z.object({
 
 export type CustomPlaylist = z.infer<typeof customPlaylistSchema>;
 
+// Playlist create/update bodies. id/createdAt/updatedAt are server-owned: strip them (zod object default).
+export const createPlaylistSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  description: z.string().max(500).optional(),
+  iconHint: z.string().max(50).optional(),
+  colorTheme: z.string().max(50).optional(),
+  videoIds: z.array(z.string().min(1).max(50)).max(500),
+});
+
+export const updatePlaylistSchema = createPlaylistSchema.partial();
+
 // User settings schema
 export const userSettingsSchema = z.object({
   homeName: z.string().optional(),
@@ -417,6 +428,17 @@ export const insertNoteSchema = noteSchema.omit({ id: true, createdAt: true, upd
 export type Note = z.infer<typeof noteSchema>;
 export type InsertNote = z.infer<typeof insertNoteSchema>;
 
+// Shopping list item schema
+export const shoppingItemSchema = z.object({
+  id: z.string().min(1).max(100),
+  name: z.string().min(1).max(200),
+  aisle: z.string().max(50),
+  checked: z.boolean(),
+});
+
+// Whole-list save bodies (the client replaces the entire list on each write)
+export const saveShoppingListSchema = z.array(shoppingItemSchema).max(1000);
+
 // Chore schema (for family task management)
 export const choreSchema = z.object({
   id: z.string(),
@@ -434,6 +456,8 @@ export const choreSchema = z.object({
 });
 
 export const insertChoreSchema = choreSchema.omit({ id: true, createdAt: true, completedAt: true, completedBy: true });
+
+export const saveChoresSchema = z.array(choreSchema).max(1000);
 
 export type Chore = z.infer<typeof choreSchema>;
 export type InsertChore = z.infer<typeof insertChoreSchema>;
@@ -470,6 +494,8 @@ export const recipeSchema = z.object({
 
 export const insertRecipeSchema = recipeSchema.omit({ id: true, createdAt: true, updatedAt: true });
 
+export const saveRecipesSchema = z.array(recipeSchema).max(500);
+
 export type RecipeIngredient = z.infer<typeof recipeIngredientSchema>;
 export type RecipeStep = z.infer<typeof recipeStepSchema>;
 export type Recipe = z.infer<typeof recipeSchema>;
@@ -489,7 +515,12 @@ export const messageSchema = z.object({
   linkedEventId: z.string().optional(),
 });
 
-export const insertMessageSchema = messageSchema.omit({ id: true, createdAt: true, isRead: true, fromUserId: true, fromUsername: true });
+export const MESSAGE_MAX_LENGTH = 2000;
+
+// toUsername is derived server-side from the recipient's stored record; any client value is stripped.
+export const insertMessageSchema = messageSchema
+  .omit({ id: true, createdAt: true, isRead: true, fromUserId: true, fromUsername: true, toUsername: true })
+  .extend({ content: z.string().min(1).max(MESSAGE_MAX_LENGTH) });
 
 export type Message = z.infer<typeof messageSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
