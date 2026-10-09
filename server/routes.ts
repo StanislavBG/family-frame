@@ -2356,87 +2356,105 @@ export async function registerRoutes(
         return;
       }
 
-      const accessToken = await getValidGoogleToken(userData);
-      if (!accessToken) {
-        // Return stored count even when not connected, so UI can show appropriate message
-        res.json({
-          photos: [],
-          storedCount: selectedPhotos.length,
-          sessionActive: false,
-          needsSessionRefresh: true,
-          error: "Google Photos not connected",
-        });
-        return;
-      }
+      const cachedStored = selectedPhotos.filter((p: StoredPhoto) => p.cachedAt);
+      const uncachedStored = selectedPhotos.filter((p: StoredPhoto) => !p.cachedAt);
 
-      // Get fresh URLs from the current session if available
-      const sessionId = userData.settings?.pickerSessionId;
-      let freshPhotos: GooglePhotoItem[] = [];
+      const cachedPhotos: GooglePhotoItem[] = cachedStored.map((stored: StoredPhoto) => ({
+        id: stored.id,
+        baseUrl: `/api/photos/${encodeURIComponent(stored.id)}/image`,
+        filename: stored.filename,
+        mimeType: stored.mimeType,
+        creationTime: stored.creationTime,
+        fetchedAt: stored.cachedAt as number,
+        cached: true,
+      }));
+
+      let livePhotos: GooglePhotoItem[] = [];
       let sessionActive = false;
       let sessionError: string | undefined;
-      let needsSessionRefresh = false;
 
-      if (sessionId) {
-        try {
-          const session = await getPickerSession(accessToken, sessionId);
-          if (session?.mediaItemsSet) {
-            freshPhotos = await getPickedMediaItems(accessToken, sessionId);
-            sessionActive = true;
+      // Only touch Google when some photos still depend on a live picker session
+      if (uncachedStored.length > 0) {
+        const accessToken = await getValidGoogleToken(userData);
+        if (!accessToken) {
+          sessionError = "Google Photos not connected";
+        } else {
+          const sessionId = userData.settings?.pickerSessionId;
+          let freshPhotos: GooglePhotoItem[] = [];
+          if (sessionId) {
+            try {
+              const session = await getPickerSession(accessToken, sessionId);
+              if (session?.mediaItemsSet) {
+                freshPhotos = await getPickedMediaItems(accessToken, sessionId);
+                sessionActive = true;
+              } else {
+                sessionError = "Session not ready";
+              }
+            } catch {
+              // Session may be expired
+              sessionError = "Session expired";
+            }
           } else {
-            sessionError = "Session not ready";
-            needsSessionRefresh = true;
+            sessionError = "No session ID stored";
           }
-        } catch {
-          // Session may be expired
-          sessionError = "Session expired";
-          needsSessionRefresh = true;
+
+          const freshUrlMap = new Map(freshPhotos.map(p => [p.id, p]));
+          const now = Date.now();
+          livePhotos = uncachedStored
+            .map((stored: StoredPhoto): GooglePhotoItem => {
+              const fresh = freshUrlMap.get(stored.id);
+              return {
+                id: stored.id,
+                baseUrl: fresh?.baseUrl || "",
+                filename: stored.filename,
+                mimeType: stored.mimeType,
+                creationTime: stored.creationTime,
+                fetchedAt: fresh ? now : 0,
+              };
+            })
+            .filter((p: GooglePhotoItem) => p.baseUrl);
         }
-      } else {
-        sessionError = "No session ID stored";
-        needsSessionRefresh = true;
       }
 
-      // Build a map of fresh URLs by photo ID
-      const freshUrlMap = new Map(freshPhotos.map(p => [p.id, p]));
+      const displayablePhotos = [...cachedPhotos, ...livePhotos];
+      const needsSessionRefresh = displayablePhotos.length === 0 && selectedPhotos.length > 0;
 
-      // Return ALL stored photos, with fresh URLs where available
-      const now = Date.now();
-      const photos: GooglePhotoItem[] = selectedPhotos.map(stored => {
-        const fresh = freshUrlMap.get(stored.id);
-        return {
-          id: stored.id,
-          baseUrl: fresh?.baseUrl || "", // Empty if no fresh URL available
-          filename: stored.filename,
-          mimeType: stored.mimeType,
-          creationTime: stored.creationTime,
-          fetchedAt: fresh ? now : 0,
-        };
-      });
-
-      // Filter to only those with URLs for display
-      const displayablePhotos = photos.filter(p => p.baseUrl);
-      
-      // If no fresh URLs but we have stored photos, return empty with session status
-      if (displayablePhotos.length === 0 && selectedPhotos.length > 0) {
-        res.json({ 
-          photos: [], 
-          storedCount: selectedPhotos.length,
-          needsSessionRefresh: true 
-        });
-        return;
-      }
-
-      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored, session active:", sessionActive, sessionError ? `(${sessionError})` : "");
+      console.log("[Photos] Retrieved", displayablePhotos.length, "displayable photos,", selectedPhotos.length, "stored,", cachedPhotos.length, "cached, session active:", sessionActive, sessionError ? `(${sessionError})` : "");
 
       res.json({
         photos: displayablePhotos,
         storedCount: selectedPhotos.length,
+        uncachedCount: uncachedStored.length,
         sessionActive,
         needsSessionRefresh,
         ...(sessionError && { sessionError }),
       });
     } catch (error) {
       console.error("[Photos] Error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Stream the requesting user's cached image bytes
+  app.get("/api/photos/:photoId/image", async (req: Request, res: Response) => {
+    try {
+      const userId = req.headers["x-clerk-user-id"] as string;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const cached = await photoCache.getCachedPhoto(userId, req.params.photoId);
+      if (!cached) {
+        res.status(404).json({ error: "Photo not cached" });
+        return;
+      }
+
+      res.setHeader("Content-Type", cached.mimeType);
+      res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+      res.send(cached.buffer);
+    } catch (error) {
+      console.error("[Photos] Cached image error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -2508,6 +2526,12 @@ export async function registerRoutes(
           selectedPhotos: updatedPhotos,
         },
       });
+
+      if (photoId && photoId !== "all") {
+        await photoCache.removeCachedPhoto(userId, photoId);
+      } else {
+        await photoCache.removeAllCachedPhotos(userId);
+      }
 
       res.json({ success: true, count: updatedPhotos.length });
     } catch (error) {
