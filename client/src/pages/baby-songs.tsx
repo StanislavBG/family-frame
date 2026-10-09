@@ -344,6 +344,12 @@ export default function BabySongsPage() {
     radioState.playlistName?.includes(selectedStation.name);
 
   const selectedMoodStation = isMoodStation(selectedStation) ? selectedStation : null;
+  const selectedMoodStationId = selectedMoodStation?.id;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const moodPlaylist = useMemo(
+    () => (selectedMoodStation ? moodStationToTracks(selectedMoodStation) : []),
+    [selectedMoodStationId]
+  );
 
   return (
     <div className="flex h-full">
@@ -612,7 +618,8 @@ export default function BabySongsPage() {
               </div>
             </div>
             <YouTubeAudioPlayer
-              playlist={moodStationToTracks(selectedMoodStation)}
+              key={selectedMoodStation.id}
+              playlist={moodPlaylist}
               isActive={!!selectedMoodStation}
               onPlayStateChange={(playing) => setMoodStationPlaying(playing ? selectedMoodStation.id : null)}
               volume={localVolume}
