@@ -7,6 +7,8 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { createSessionHeaderMiddleware } from "./auth";
+import { verifyApiToken, firebaseTokenStore } from "./api-tokens";
+import { getUserData } from "./firebase";
 
 // Use __dirname for CJS compatibility in production build
 const currentDir = typeof __dirname !== 'undefined' 
@@ -45,6 +47,12 @@ app.use(
     getUsername: async (id) => {
       const u = await clerkClient.users.getUser(id);
       return u.username || u.emailAddresses[0]?.emailAddress?.split("@")[0] || "user";
+    },
+    verifyApiToken: async (t) => {
+      const v = await verifyApiToken(firebaseTokenStore, t);
+      if (!v) return null;
+      const data = await getUserData(v.userId);
+      return { userId: v.userId, username: data?.username || "user", scopes: v.scopes };
     },
   }),
 );
