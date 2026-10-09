@@ -5,7 +5,7 @@ import path from "path";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { clerkClient } from "@clerk/clerk-sdk-node";
+import { createClerkClient, verifyToken } from "@clerk/express";
 import { createSessionHeaderMiddleware } from "./auth";
 import { verifyApiToken, firebaseTokenStore } from "./api-tokens";
 import { getUserData } from "./firebase";
@@ -29,6 +29,15 @@ declare module "http" {
   }
 }
 
+const clerkClient = createClerkClient({
+  secretKey: process.env.CLERK_SECRET_KEY,
+  publishableKey:
+    process.env.VITE_CLERK_PUBLISHABLE_KEY ||
+    process.env.PUBLISHABLE_KEY_PROD ||
+    process.env.PUBLISHABLE_KEY_DEV ||
+    "",
+});
+
 app.use(cookieParser());
 
 app.use(
@@ -43,7 +52,7 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use(
   createSessionHeaderMiddleware({
-    verifyToken: (t) => clerkClient.verifyToken(t),
+    verifyToken: (t) => verifyToken(t, { secretKey: process.env.CLERK_SECRET_KEY }),
     getUsername: async (id) => {
       const u = await clerkClient.users.getUser(id);
       return u.username || u.emailAddresses[0]?.emailAddress?.split("@")[0] || "user";
