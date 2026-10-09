@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
+import { parseLocalDate } from "@/lib/format";
 import {
   CheckSquare,
   Square,
@@ -61,6 +62,23 @@ const RECURRING_OPTIONS = [
   { id: "monthly", label: "Monthly" },
 ];
 
+const CHORES_KEY = ["/api/chores"];
+
+function todayString(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function isOverdueDate(dueDate: string): boolean {
+  return dueDate < todayString();
+}
+
+function isTodayDate(dueDate: string): boolean {
+  return dueDate === todayString();
+}
+
 function ChoreCard({
   chore,
   onToggle,
@@ -72,8 +90,8 @@ function ChoreCard({
 }) {
   const category = CATEGORIES.find(c => c.id === chore.category);
   const priority = PRIORITIES.find(p => p.id === chore.priority);
-  const isOverdue = chore.dueDate && !chore.completed && new Date(chore.dueDate) < new Date();
-  const isDueToday = chore.dueDate && new Date(chore.dueDate).toDateString() === new Date().toDateString();
+  const isOverdue = chore.dueDate && !chore.completed && isOverdueDate(chore.dueDate);
+  const isDueToday = chore.dueDate && isTodayDate(chore.dueDate);
 
   return (
     <Card
@@ -162,7 +180,7 @@ function ChoreCard({
                 )}
               >
                 <Calendar className="h-3 w-3 mr-1" />
-                {isOverdue ? "Overdue" : isDueToday ? "Today" : new Date(chore.dueDate).toLocaleDateString()}
+                {isOverdue ? "Overdue" : isDueToday ? "Today" : parseLocalDate(chore.dueDate).toLocaleDateString()}
               </Badge>
             )}
 
@@ -344,22 +362,40 @@ export default function ChoresPage() {
   const { toast } = useToast();
 
   const { data: chores = [], isLoading } = useQuery<Chore[]>({
-    queryKey: ["/api/chores"],
+    queryKey: CHORES_KEY,
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async (updatedChores: Chore[]) => {
-      await apiRequest("POST", "/api/chores", { chores: updatedChores });
+  // Variables are an updater applied to the latest cached list, so quick
+  // successive changes build on each other instead of on a stale render.
+  const saveMutation = useMutation<
+    void,
+    Error,
+    (current: Chore[]) => Chore[],
+    { previous: Chore[] | undefined }
+  >({
+    mutationFn: async () => {
+      const latest = queryClient.getQueryData<Chore[]>(CHORES_KEY) ?? [];
+      await apiRequest("POST", "/api/chores", { chores: latest });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/chores"] });
+    onMutate: async (updater) => {
+      await queryClient.cancelQueries({ queryKey: CHORES_KEY });
+      const previous = queryClient.getQueryData<Chore[]>(CHORES_KEY);
+      queryClient.setQueryData<Chore[]>(CHORES_KEY, updater(previous ?? []));
+      return { previous };
     },
-    onError: () => {
+    onError: (_err, _updater, context) => {
+      if (context) queryClient.setQueryData(CHORES_KEY, context.previous);
       toast({
         title: "Error",
         description: "Failed to save chores",
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      // Only resync once the last in-flight save finishes.
+      if (queryClient.isMutating({ mutationKey: undefined }) <= 1) {
+        queryClient.invalidateQueries({ queryKey: CHORES_KEY });
+      }
     },
   });
 
@@ -377,7 +413,7 @@ export default function ChoresPage() {
       category: choreData.category,
     };
 
-    saveMutation.mutate([...chores, newChore]);
+    saveMutation.mutate((current) => [...current, newChore]);
     toast({
       title: "Chore added",
       description: `"${newChore.title}" has been added`,
@@ -385,21 +421,21 @@ export default function ChoresPage() {
   };
 
   const handleToggleChore = (choreId: string) => {
-    const updatedChores = chores.map((chore) => {
-      if (chore.id === choreId) {
-        const completed = !chore.completed;
+    const latest = queryClient.getQueryData<Chore[]>(CHORES_KEY) ?? [];
+    const chore = latest.find((c) => c.id === choreId);
+
+    saveMutation.mutate((current) =>
+      current.map((c) => {
+        if (c.id !== choreId) return c;
+        const completed = !c.completed;
         return {
-          ...chore,
+          ...c,
           completed,
           completedAt: completed ? new Date().toISOString() : undefined,
         };
-      }
-      return chore;
-    });
+      })
+    );
 
-    saveMutation.mutate(updatedChores);
-
-    const chore = chores.find((c) => c.id === choreId);
     if (chore && !chore.completed) {
       toast({
         title: "Well done!",
@@ -409,9 +445,9 @@ export default function ChoresPage() {
   };
 
   const handleDeleteChore = (choreId: string) => {
-    const chore = chores.find((c) => c.id === choreId);
-    const updatedChores = chores.filter((c) => c.id !== choreId);
-    saveMutation.mutate(updatedChores);
+    const latest = queryClient.getQueryData<Chore[]>(CHORES_KEY) ?? [];
+    const chore = latest.find((c) => c.id === choreId);
+    saveMutation.mutate((current) => current.filter((c) => c.id !== choreId));
 
     if (chore) {
       toast({
@@ -438,7 +474,7 @@ export default function ChoresPage() {
       }
       // Earlier due dates first
       if (a.dueDate && b.dueDate) {
-        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
       }
       if (a.dueDate) return -1;
       if (b.dueDate) return 1;
@@ -449,11 +485,11 @@ export default function ChoresPage() {
   const pendingCount = chores.filter((c) => !c.completed).length;
   const todayCount = chores.filter((c) => {
     if (c.completed || !c.dueDate) return false;
-    return new Date(c.dueDate).toDateString() === new Date().toDateString();
+    return isTodayDate(c.dueDate);
   }).length;
   const overdueCount = chores.filter((c) => {
     if (c.completed || !c.dueDate) return false;
-    return new Date(c.dueDate) < new Date();
+    return isOverdueDate(c.dueDate);
   }).length;
 
   return (
