@@ -10,6 +10,7 @@ interface OpenMeteoResponse {
     wind_speed_10m: number;
     weather_code: number;
     is_day: number;
+    time?: string;
   };
   current_units: Record<string, string>;
   daily: {
@@ -82,6 +83,19 @@ export async function geocodeCity(city: string, country?: string): Promise<Geoco
   }
 }
 
+/**
+ * Index of "today" in Open-Meteo's daily rows. Daily rows are in the location's
+ * local time, so use the response's local current time; fall back to the server
+ * date only when it is missing.
+ */
+export function pickTodayIndex(dailyDates: string[], currentLocalTime?: string): number {
+  const todayStr = currentLocalTime
+    ? currentLocalTime.slice(0, 10)
+    : new Date().toISOString().split("T")[0];
+  const idx = dailyDates.findIndex(d => d >= todayStr);
+  return idx >= 0 ? idx : 0;
+}
+
 export async function getWeather(lat: number, lon: number): Promise<{
   current: WeatherData;
   daily: DailyForecast[];
@@ -100,9 +114,7 @@ export async function getWeather(lat: number, lon: number): Promise<{
     const data: OpenMeteoResponse = await response.json();
 
     // With past_days=1, daily[0] may be yesterday. Find today's index.
-    const todayStr = new Date().toISOString().split("T")[0];
-    const todayDailyIdx = data.daily.time.findIndex(d => d >= todayStr);
-    const dailyStart = todayDailyIdx >= 0 ? todayDailyIdx : 0;
+    const dailyStart = pickTodayIndex(data.daily.time, data.current.time);
 
     const current: WeatherData = {
       temperature: data.current.temperature_2m,
