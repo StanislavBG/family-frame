@@ -391,6 +391,8 @@ export default function NotepadPage() {
 
   const { data, isLoading } = useQuery<NotesResponse>({
     queryKey: ["/api/notes"],
+    refetchInterval: 60_000,
+    refetchOnMount: "always",
   });
 
   const { data: connections = [] } = useQuery<ConnectedUser[]>({

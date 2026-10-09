@@ -62,9 +62,11 @@ export default function HomePage() {
     queryKey: ["/api/market", trackedStocks.join(",")],
     queryFn: async () => {
       const res = await fetch(`/api/market?symbols=${trackedStocks.join(",")}`);
+      if (!res.ok) throw new Error(`Market request failed: ${res.status}`);
       return res.json();
     },
     staleTime: 60 * 1000,
+    refetchInterval: 60_000,
     retry: false,
   });
 
