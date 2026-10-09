@@ -154,6 +154,15 @@ const updateMutation = useUpdateMutation(
 );
 ```
 
+### Agent / MCP Access
+Operator guide: `docs/agent-access.md`. Agents authenticate with personal access tokens (`ff_pat_...`, hash-only in Firebase).
+- `server/api-tokens.ts` - token create/verify/revoke and the scope list (`API_TOKEN_SCOPES`)
+- `server/auth.ts` - session-header middleware; the PAT branch sets identity headers and enforces a path allowlist
+- `server/mcp.ts` - stateless Streamable-HTTP MCP server at `/mcp`; tools are thin wrappers over services
+- `server/calendar-service.ts` - shared calendar logic used by both REST routes and MCP tools
+- Rule: any new PAT-reachable path must be added to the allowlist in `server/auth.ts` with a scope; new MCP tools check scope in `server/mcp.ts` and reuse a service, never duplicate route logic.
+- Tokens cannot manage tokens (`/api/tokens/*` stays off the allowlist).
+
 ### Server Middleware (server/middleware.ts)
 Use `asyncHandler` to eliminate try-catch boilerplate:
 ```typescript
