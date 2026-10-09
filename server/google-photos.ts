@@ -6,6 +6,7 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 // Retry configuration
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
+const FETCH_TIMEOUT_MS = 10_000;
 
 // Helper function for retrying fetch requests with exponential backoff
 async function fetchWithRetry(
@@ -18,7 +19,7 @@ async function fetchWithRetry(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...options });
 
       // Don't retry client errors (4xx) except for 429 (rate limit)
       if (response.status >= 400 && response.status < 500 && response.status !== 429) {

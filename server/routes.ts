@@ -81,6 +81,29 @@ async function getValidGoogleToken(userData: UserData): Promise<string | null> {
   return refreshed.accessToken;
 }
 
+const FETCH_TIMEOUT_MS = 10_000;
+const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+const PUBLIC_CACHE_TTL_MS = 5 * 60 * 1000;
+const PIXABAY_CACHE_TTL_MS = 10 * 60 * 1000;
+const PIXABAY_MAX_PER_PAGE = 50;
+
+// Cache an async computation for ms; concurrent callers share one in-flight run, failures aren't cached.
+function memoTTL<T>(fn: () => Promise<T>, ms: number): () => Promise<T> {
+  let cached: { value: Promise<T>; expires: number } | null = null;
+  return () => {
+    if (cached && cached.expires > Date.now()) return cached.value;
+    const value = fn();
+    cached = { value, expires: Date.now() + ms };
+    value.catch(() => { if (cached?.value === value) cached = null; });
+    return value;
+  };
+}
+
+// Status-only health probe: always release the body so no stream stays open.
+async function discardBody(response: globalThis.Response): Promise<void> {
+  await response.body?.cancel().catch(() => {});
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -721,51 +744,52 @@ export async function registerRoutes(
     // Use toArray helper to normalize Firebase data
     const connectionIds = toArray<string>(userData.connections);
 
-      for (const connectedUserId of connectionIds) {
-        const connectedUserData = await getUserData(connectedUserId);
-        if (connectedUserData) {
-          const entry: typeof connectionsWithWeather[0] = {
-            id: connectedUserId,
-            recipientId: connectedUserId,
-            recipientName: connectedUserData.username,
-            recipientHomeName: connectedUserData.settings?.homeName,
-          };
+    const entries = await Promise.all(connectionIds.map(async (connectedUserId) => {
+      const connectedUserData = await getUserData(connectedUserId);
+      if (!connectedUserData) return null;
+      const entry: typeof connectionsWithWeather[0] = {
+        id: connectedUserId,
+        recipientId: connectedUserId,
+        recipientName: connectedUserData.username,
+        recipientHomeName: connectedUserData.settings?.homeName,
+      };
 
-          // Get weather for their location if set
-          if (connectedUserData.settings?.location?.city && connectedUserData.settings?.location?.country) {
-            try {
-              // First geocode the city to get coordinates
-              const geoResult = await geocodeCity(
-                connectedUserData.settings.location.city,
-                connectedUserData.settings.location.country
-              );
-              if (geoResult) {
-                const weatherData = await getWeather(geoResult.latitude, geoResult.longitude);
-                if (weatherData) {
-                  entry.weather = {
-                    current: {
-                      temperature: weatherData.current.temperature,
-                      weatherCode: weatherData.current.weatherCode,
-                      isDay: weatherData.current.isDay,
-                    },
-                    location: {
-                      city: connectedUserData.settings.location.city,
-                      country: connectedUserData.settings.location.country,
-                    },
-                  };
-                  entry.timezone = weatherData.timezone;
-                }
-              }
-            } catch {
-              // Weather fetch failed for connected user
+      // Get weather for their location if set
+      if (connectedUserData.settings?.location?.city && connectedUserData.settings?.location?.country) {
+        try {
+          // First geocode the city to get coordinates
+          const geoResult = await geocodeCity(
+            connectedUserData.settings.location.city,
+            connectedUserData.settings.location.country
+          );
+          if (geoResult) {
+            const weatherData = await getWeather(geoResult.latitude, geoResult.longitude);
+            if (weatherData) {
+              entry.weather = {
+                current: {
+                  temperature: weatherData.current.temperature,
+                  weatherCode: weatherData.current.weatherCode,
+                  isDay: weatherData.current.isDay,
+                },
+                location: {
+                  city: connectedUserData.settings.location.city,
+                  country: connectedUserData.settings.location.country,
+                },
+              };
+              entry.timezone = weatherData.timezone;
             }
           }
-
-          connectionsWithWeather.push(entry);
+        } catch {
+          // Weather fetch failed for connected user
         }
       }
+      return entry;
+    }));
+    for (const entry of entries) {
+      if (entry) connectionsWithWeather.push(entry);
+    }
 
-      res.json(connectionsWithWeather);
+    res.json(connectionsWithWeather);
   }));
 
   // Media stream proxy - proxies streams through server to bypass geo-restrictions
@@ -823,7 +847,7 @@ export async function registerRoutes(
   ): Promise<globalThis.Response> {
     let current = startUrl;
     for (let hop = 0; hop <= MAX_STREAM_REDIRECTS; hop++) {
-      const response = await fetch(current, { ...init, redirect: "manual" });
+      const response = await fetch(current, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...init, redirect: "manual" });
       if (response.status < 300 || response.status >= 400) return response;
       const location = response.headers.get("location");
       await response.body?.cancel().catch(() => {});
@@ -1062,20 +1086,17 @@ export async function registerRoutes(
       },
     };
 
-  app.get("/api/radio/stations", async (_req: Request, res: Response) => {
+  const getRadioStations = memoTTL(async () => {
     // Helper to check if a URL is reachable
     async function checkUrl(url: string): Promise<boolean> {
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
-
         // Try HEAD first
         const response = await fetch(url, {
           method: "HEAD",
-          signal: controller.signal,
+          signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
           redirect: "follow",
         });
-        clearTimeout(timeout);
+        await discardBody(response);
 
         if (response.status === 200 || response.status === 302 || response.status === 405) {
           return true;
@@ -1086,15 +1107,12 @@ export async function registerRoutes(
 
       // Try GET for streams that don't support HEAD
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
-
         const response = await fetch(url, {
           method: "GET",
-          signal: controller.signal,
+          signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
           redirect: "follow",
         });
-        clearTimeout(timeout);
+        await discardBody(response);
 
         return response.status === 200 || response.status === 302;
       } catch {
@@ -1149,12 +1167,16 @@ export async function registerRoutes(
       })
     );
 
-    res.json(result);
-  });
+    return result;
+  }, PUBLIC_CACHE_TTL_MS);
+
+  app.get("/api/radio/stations", asyncHandler(async (_req: Request, res: Response) => {
+    res.json(await getRadioStations());
+  }));
 
   // TV channels health check - tests which channels are accessible
   // Organized by region with Bulgaria first, then World News, then alphabetically by region
-  app.get("/api/tv/channels", async (_req: Request, res: Response) => {
+  const getTvChannels = memoTTL(async () => {
     const channelsByCountry: Record<string, Array<{ name: string; url: string; logo?: string; group?: string }>> = {
       // ============ BULGARIA (Primary) ============
       "🇧🇬 Bulgaria": [
@@ -1344,30 +1366,24 @@ export async function registerRoutes(
     // Helper to check if a channel is healthy
     async function checkChannel(channel: { name: string; url: string; logo?: string }) {
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        
         const response = await fetch(channel.url, {
           method: "HEAD",
-          signal: controller.signal,
+          signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
           redirect: "follow",
         });
-        clearTimeout(timeout);
-        
+        await discardBody(response);
+
         return response.status === 200 || response.status === 302 || response.status === 405;
       } catch {
         // Try GET for streams that don't support HEAD
         try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
-          
           const response = await fetch(channel.url, {
             method: "GET",
-            signal: controller.signal,
+            signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
             redirect: "follow",
           });
-          clearTimeout(timeout);
-          
+          await discardBody(response);
+
           return response.status === 200 || response.status === 302;
         } catch {
           return false;
@@ -1390,8 +1406,12 @@ export async function registerRoutes(
       })
     );
 
-    res.json(result);
-  });
+    return result;
+  }, PUBLIC_CACHE_TTL_MS);
+
+  app.get("/api/tv/channels", asyncHandler(async (_req: Request, res: Response) => {
+    res.json(await getTvChannels());
+  }));
 
   // Legacy radio stream proxy (kept for backward compatibility)
   app.get("/api/radio/stream", async (req: Request, res: Response) => {
@@ -1405,7 +1425,7 @@ export async function registerRoutes(
   });
 
   // Radio stream validation endpoint - deep health check for all stations
-  app.get("/api/radio/validate", async (_req: Request, res: Response) => {
+  const getRadioValidation = memoTTL(async () => {
     interface ValidationResult {
       name: string;
       url: string;
@@ -1445,16 +1465,13 @@ export async function registerRoutes(
       };
 
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 6000);
-
         const response = await fetch(station.url, {
           method: "GET",
           headers: {
             "User-Agent": "FamilyFrame/1.0",
             "Icy-MetaData": "1",
           },
-          signal: controller.signal,
+          signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
           redirect: "follow",
         });
 
@@ -1463,12 +1480,8 @@ export async function registerRoutes(
         result.responseTimeMs = Date.now() - startTime;
 
         if (response.status !== 200) {
-          clearTimeout(timeout);
           result.error = `HTTP ${response.status}`;
-          // Close response body
-          if (response.body) {
-            try { const r = response.body.getReader(); await r.cancel(); } catch {}
-          }
+          await discardBody(response);
           return result;
         }
 
@@ -1480,13 +1493,12 @@ export async function registerRoutes(
             if (!done && value) {
               result.bytesReceived = value.length;
             }
-            await reader.cancel();
           } catch {
             // Stream read failed but connection was ok
+          } finally {
+            await reader.cancel().catch(() => {});
           }
         }
-
-        clearTimeout(timeout);
 
         // Determine status based on results
         const isAudioContent = result.contentType?.includes("audio") ||
@@ -1510,8 +1522,8 @@ export async function registerRoutes(
         }
       } catch (err: any) {
         result.responseTimeMs = Date.now() - startTime;
-        if (err.name === "AbortError") {
-          result.error = "Timeout (>6s)";
+        if (err.name === "AbortError" || err.name === "TimeoutError") {
+          result.error = "Timeout (>5s)";
         } else {
           result.error = err.message || "Connection failed";
         }
@@ -1532,8 +1544,12 @@ export async function registerRoutes(
       error: results.filter(r => r.status === "error").length,
     };
 
-    res.json({ summary, stations: results });
-  });
+    return { summary, stations: results };
+  }, PUBLIC_CACHE_TTL_MS);
+
+  app.get("/api/radio/validate", asyncHandler(async (_req: Request, res: Response) => {
+    res.json(await getRadioValidation());
+  }));
 
   // Radio metadata endpoint - fetches ICY stream metadata (now playing info)
   app.get("/api/radio/metadata", async (req: Request, res: Response) => {
@@ -1706,10 +1722,10 @@ export async function registerRoutes(
           // Fetch current price and historical data for Bitcoin (max range for 10Y)
           fetchPromises.push(
             Promise.all([
-              fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true")
+              fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true", { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
                 .then(r => r.ok ? r.json() : null)
                 .catch(() => null),
-              fetch("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=3650")
+              fetch("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=3650", { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
                 .then(r => r.ok ? r.json() : null)
                 .catch(() => null)
             ]).then(([data, historical]) => ({ symbol, data, historical }))
@@ -1717,7 +1733,7 @@ export async function registerRoutes(
         } else if (config.yahooSymbol) {
           // Fetch 10 year data for historical analysis
           fetchPromises.push(
-            fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(config.yahooSymbol)}?interval=1mo&range=10y`)
+            fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(config.yahooSymbol)}?interval=1mo&range=10y`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
               .then(r => r.ok ? r.json() : null)
               .then(data => ({ symbol, data }))
               .catch(() => ({ symbol, data: null }))
@@ -2037,6 +2053,7 @@ export async function registerRoutes(
         if (validToken) {
           try {
             const response = await fetch("https://photoslibrary.googleapis.com/v1/albums?pageSize=5", {
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
               headers: { Authorization: `Bearer ${validToken}` }
             });
             const rawText = await response.text();
@@ -2070,7 +2087,7 @@ export async function registerRoutes(
         let tokenInfo: any = { tested: false };
         if (validToken) {
           try {
-            const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${validToken}`);
+            const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${validToken}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
             const rawText = await response.text();
             
             let data: any = {};
@@ -2101,6 +2118,7 @@ export async function registerRoutes(
         if (validToken) {
           try {
             const response = await fetch("https://photoslibrary.googleapis.com/v1/sharedAlbums?pageSize=5", {
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
               headers: { Authorization: `Bearer ${validToken}` }
             });
             const rawText = await response.text();
@@ -2637,8 +2655,14 @@ export async function registerRoutes(
     "autumn colors", "winter landscape", "spring flowers", "summer beach"
   ];
 
+  const pixabayCache = new Map<string, { expires: number; body: unknown }>();
+
   app.get("/api/pixabay/photos", async (req: Request, res: Response) => {
     try {
+      if (!req.headers["x-clerk-user-id"]) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       if (!PIXABAY_API_KEY) {
         res.status(500).json({ error: "Pixabay API key not configured" });
         return;
@@ -2646,11 +2670,18 @@ export async function registerRoutes(
 
       // Get optional tag from query or pick random from ambient tags
       const requestedTag = req.query.tag as string;
-      const page = parseInt(req.query.page as string) || 1;
-      const perPage = parseInt(req.query.per_page as string) || 20;
-      
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const perPage = Math.min(Math.max(1, parseInt(req.query.per_page as string) || 20), PIXABAY_MAX_PER_PAGE);
+
       // Pick a random ambient tag if none provided
       const tag = requestedTag || AMBIENT_TAGS[Math.floor(Math.random() * AMBIENT_TAGS.length)];
+
+      const cacheKey = `${tag}\u0000${page}\u0000${perPage}`;
+      const hit = pixabayCache.get(cacheKey);
+      if (hit && hit.expires > Date.now()) {
+        res.json(hit.body);
+        return;
+      }
 
       const params = new URLSearchParams({
         key: PIXABAY_API_KEY,
@@ -2660,11 +2691,11 @@ export async function registerRoutes(
         editors_choice: "true",
         safesearch: "true",
         min_width: "1920",
-        per_page: String(Math.min(perPage, 200)),
+        per_page: String(perPage),
         page: String(page),
       });
 
-      const response = await fetch(`https://pixabay.com/api/?${params.toString()}`);
+      const response = await fetch(`https://pixabay.com/api/?${params.toString()}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       
       if (!response.ok) {
         console.error("Pixabay API error:", response.status, response.statusText);
@@ -2698,12 +2729,18 @@ export async function registerRoutes(
         user: hit.user,
       }));
 
-      res.json({
+      const body = {
         photos,
         total: data.totalHits,
         tag,
         page,
+      };
+      const now = Date.now();
+      pixabayCache.forEach((entry, key) => {
+        if (entry.expires <= now) pixabayCache.delete(key);
       });
+      pixabayCache.set(cacheKey, { expires: now + PIXABAY_CACHE_TTL_MS, body });
+      res.json(body);
     } catch (error) {
       console.error("Pixabay API error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -3411,7 +3448,7 @@ export async function registerRoutes(
 
     try {
       const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-      const response = await fetch(oembedUrl);
+      const response = await fetch(oembedUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
       if (!response.ok) {
         res.status(404).json({ error: "Video not found" });
@@ -3449,7 +3486,7 @@ export async function registerRoutes(
       videoIds.map(async (videoId: string) => {
         try {
           const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
-          const response = await fetch(oembedUrl);
+          const response = await fetch(oembedUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
           if (!response.ok) {
             return { videoId, title: `Track`, error: "not found" };
