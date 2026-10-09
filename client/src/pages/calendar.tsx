@@ -40,7 +40,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toISODateString } from "@/lib/format";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -270,7 +271,22 @@ export default function CalendarPage() {
   const { toast } = useToast();
   const { user } = useUser();
   const [currentDate, setCurrentDate] = useState(new Date());
+  // Bumped at local midnight so "today" highlighting and filters re-evaluate on always-on displays.
+  const [, setDayTick] = useState(0);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      timer = setTimeout(() => {
+        setDayTick((t) => t + 1);
+        schedule();
+      }, nextMidnight.getTime() - now.getTime() + 50);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [editEventOpen, setEditEventOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -413,8 +429,8 @@ export default function CalendarPage() {
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
-    form.setValue("startDate", date.toISOString().split("T")[0]);
-    form.setValue("endDate", date.toISOString().split("T")[0]);
+    form.setValue("startDate", toISODateString(date));
+    form.setValue("endDate", toISODateString(date));
   };
 
   if (eventsLoading || peopleLoading) {

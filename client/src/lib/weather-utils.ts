@@ -1,4 +1,5 @@
 // Re-export weather code descriptions from shared module (single source of truth)
+import { parseLocalDate } from "@/lib/format";
 import { weatherCodeDescriptions, getWeatherInfo } from "@shared/weather-codes";
 export { weatherCodeDescriptions, getWeatherInfo };
 
@@ -13,9 +14,9 @@ export function formatTemperature(temp: number, unit: "celsius" | "fahrenheit"):
   return `${Math.round(temp)}°C`;
 }
 
-export function formatDay(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleDateString([], { weekday: "short" });
+export function formatDay(isoString: string, locale: string | string[] = []): string {
+  const date = parseLocalDate(isoString);
+  return date.toLocaleDateString(locale, { weekday: "short" });
 }
 
 // --- Outdoor advisory logic ---
