@@ -104,25 +104,35 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
 function RouteErrorRecovery({ error, onReset }: { error: Error | null; onReset: () => void }) {
   const [, navigate] = useLocation();
 
+  // Already on Home: redirecting home would just re-crash in a loop
+  const onHome = window.location.pathname === "/";
+
   useEffect(() => {
+    if (onHome) return;
     // Auto-navigate home after a short delay so the user sees the message
     const timer = setTimeout(() => {
       onReset();
       navigate("/");
     }, 2000);
     return () => clearTimeout(timer);
-  }, [navigate, onReset]);
+  }, [navigate, onReset, onHome]);
 
   return (
     <div className="h-full flex items-center justify-center p-8">
       <div className="text-center max-w-md">
         <p className="text-lg font-medium mb-1">This page hit an error</p>
         <p className="text-sm text-muted-foreground mb-4">
-          {error?.message || "Unknown error"} — redirecting home...
+          {error?.message || "Unknown error"}{onHome ? "" : " — redirecting home..."}
         </p>
-        <Button variant="outline" size="sm" onClick={() => { onReset(); navigate("/"); }}>
-          Go Home Now
-        </Button>
+        {onHome ? (
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => { onReset(); navigate("/"); }}>
+            Go Home Now
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -176,25 +186,43 @@ function guarded(PageComponent: React.ComponentType) {
   };
 }
 
+// Created once at module scope so component identity stays stable across renders
+const GuardedHome = guarded(HomePage);
+const GuardedClock = guarded(ClockPage);
+const GuardedWeather = guarded(WeatherPage);
+const GuardedPhotos = guarded(PhotosPage);
+const GuardedCalendar = guarded(CalendarPage);
+const GuardedChores = guarded(ChoresPage);
+const GuardedRecipes = guarded(RecipesPage);
+const GuardedNotepad = guarded(NotepadPage);
+const GuardedMessages = guarded(MessagesPage);
+const GuardedRadio = guarded(RadioPage);
+const GuardedBabySongs = guarded(BabySongsPage);
+const GuardedTV = guarded(TVPage);
+const GuardedShopping = guarded(ShoppingPage);
+const GuardedStocks = guarded(StocksPage);
+const GuardedScreensaver = guarded(ScreensaverPage);
+const GuardedSettings = guarded(SettingsPage);
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={guarded(HomePage)} />
-      <Route path="/clock" component={guarded(ClockPage)} />
-      <Route path="/weather" component={guarded(WeatherPage)} />
-      <Route path="/photos" component={guarded(PhotosPage)} />
-      <Route path="/calendar" component={guarded(CalendarPage)} />
-      <Route path="/chores" component={guarded(ChoresPage)} />
-      <Route path="/recipes" component={guarded(RecipesPage)} />
-      <Route path="/notepad" component={guarded(NotepadPage)} />
-      <Route path="/messages" component={guarded(MessagesPage)} />
-      <Route path="/radio" component={guarded(RadioPage)} />
-      <Route path="/baby-songs" component={guarded(BabySongsPage)} />
-      <Route path="/tv" component={guarded(TVPage)} />
-      <Route path="/shopping" component={guarded(ShoppingPage)} />
-      <Route path="/stocks" component={guarded(StocksPage)} />
-      <Route path="/screensaver" component={guarded(ScreensaverPage)} />
-      <Route path="/settings" component={guarded(SettingsPage)} />
+      <Route path="/" component={GuardedHome} />
+      <Route path="/clock" component={GuardedClock} />
+      <Route path="/weather" component={GuardedWeather} />
+      <Route path="/photos" component={GuardedPhotos} />
+      <Route path="/calendar" component={GuardedCalendar} />
+      <Route path="/chores" component={GuardedChores} />
+      <Route path="/recipes" component={GuardedRecipes} />
+      <Route path="/notepad" component={GuardedNotepad} />
+      <Route path="/messages" component={GuardedMessages} />
+      <Route path="/radio" component={GuardedRadio} />
+      <Route path="/baby-songs" component={GuardedBabySongs} />
+      <Route path="/tv" component={GuardedTV} />
+      <Route path="/shopping" component={GuardedShopping} />
+      <Route path="/stocks" component={GuardedStocks} />
+      <Route path="/screensaver" component={GuardedScreensaver} />
+      <Route path="/settings" component={GuardedSettings} />
       <Route component={NotFound} />
     </Switch>
   );
