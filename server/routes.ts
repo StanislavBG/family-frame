@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { initializeFirebase, getUserData, setUserData, updateUserData, getUserByUsername, setSharedNote, deleteSharedNote, getAllSharedNotes } from "./firebase";
 import { asyncHandler, getOrCreateUser, toArray, type UserData } from "./middleware";
+import { z } from "zod";
+import { createApiToken, listApiTokens, revokeApiToken, firebaseTokenStore, ApiTokenError, API_TOKEN_SCOPES } from "./api-tokens";
 
 // Secret for signing OAuth state - use SESSION_SECRET or fallback
 const STATE_SECRET = process.env.SESSION_SECRET || "oauth-state-secret-fallback";
@@ -189,6 +191,64 @@ export async function registerRoutes(
     await updateUserData(userId, { settings: updatedSettings });
 
     res.json(updatedSettings);
+  }));
+
+  // API token management: browser (Clerk) sessions only, never PAT-authenticated requests
+  const createTokenSchema = z.object({
+    name: z.string().trim().min(1).max(60),
+    scopes: z.array(z.enum(API_TOKEN_SCOPES)).min(1),
+  });
+
+  function getTokenManagerId(req: Request, res: Response): string | null {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return null;
+    }
+    if (req.headers["x-ff-auth"] === "pat") {
+      res.status(403).json({ error: "API tokens cannot manage tokens" });
+      return null;
+    }
+    return userId;
+  }
+
+  app.get("/api/tokens", asyncHandler(async (req: Request, res: Response) => {
+    const userId = getTokenManagerId(req, res);
+    if (!userId) return;
+    res.json(await listApiTokens(firebaseTokenStore, userId));
+  }));
+
+  app.post("/api/tokens/new", asyncHandler(async (req: Request, res: Response) => {
+    const userId = getTokenManagerId(req, res);
+    if (!userId) return;
+
+    const parseResult = createTokenSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: "Invalid token data", details: parseResult.error.errors });
+      return;
+    }
+
+    try {
+      const { token, record } = await createApiToken(firebaseTokenStore, userId, parseResult.data.name, parseResult.data.scopes);
+      res.json({ token, record });
+    } catch (err) {
+      if (err instanceof ApiTokenError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }));
+
+  app.delete("/api/tokens/:id", asyncHandler(async (req: Request, res: Response) => {
+    const userId = getTokenManagerId(req, res);
+    if (!userId) return;
+    const revoked = await revokeApiToken(firebaseTokenStore, userId, req.params.id);
+    if (!revoked) {
+      res.status(404).json({ error: "Token not found" });
+      return;
+    }
+    res.json({ success: true });
   }));
 
   app.get("/api/people/list", asyncHandler(async (req: Request, res: Response) => {
