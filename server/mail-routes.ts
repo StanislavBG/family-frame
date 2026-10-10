@@ -2,6 +2,13 @@ import type { Express, Request, Response } from "express";
 import { asyncHandler } from "./middleware";
 import { mailService, MailError, type MailService } from "./mail-service";
 import { markEmailsReadSchema } from "@shared/agent-data";
+import { z } from "zod";
+import { mailRehoster, type MailRehoster } from "./mail-rehost";
+
+const rehostBodySchema = z.object({
+  emailIds: z.array(z.string().min(1)).max(50).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+});
 
 type MailHandler = (req: Request, res: Response, userId: string) => Promise<void>;
 
@@ -29,7 +36,7 @@ function queryString(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-export function registerMailRoutes(app: Express, service: MailService = mailService): void {
+export function registerMailRoutes(app: Express, service: MailService = mailService, rehoster: MailRehoster = mailRehoster): void {
   app.post("/api/mail/messages", mailHandler(async (req, res, userId) => {
     res.json(await service.upsertEmails(userId, req.body?.emails === undefined ? req.body : { emails: req.body.emails }));
   }));
@@ -60,6 +67,24 @@ export function registerMailRoutes(app: Express, service: MailService = mailServ
       return;
     }
     res.json(await service.setRead(userId, parsed.data.ids, parsed.data.read ?? true));
+  }));
+
+  app.post("/api/mail/messages/rehost", mailHandler(async (req, res, userId) => {
+    if (req.headers["x-ff-auth"] === "pat") {
+      const scopes = ((req.headers["x-ff-scopes"] as string) || "").split(",");
+      if (!scopes.includes("media:write")) {
+        res.status(403).json({ error: "This token needs the media:write scope to rehost images" });
+        return;
+      }
+    }
+    const parsed = rehostBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const path = issue.path.join(".");
+      res.status(400).json({ error: path ? `${path}: ${issue.message}` : issue.message });
+      return;
+    }
+    res.json(await rehoster.rehostEmailImages(userId, parsed.data));
   }));
 
   app.get("/api/mail/messages/:id", mailHandler(async (req, res, userId) => {

@@ -6,6 +6,7 @@
   "GET /api/mail/messages",
   "GET /api/mail/unread-count",
   "POST /api/mail/messages/read",
+  "POST /api/mail/messages/rehost",
   "GET /api/mail/messages/:id",
   "DELETE /api/mail/messages/:id",
   "GET /api/data/schemas",

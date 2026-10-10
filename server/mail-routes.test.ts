@@ -22,7 +22,10 @@ function setup(overrides: Partial<MailService> = {}) {
     unreadCount: async () => 3,
     ...overrides,
   };
-  registerMailRoutes(app as Express, service as MailService);
+  const rehoster: any = {
+    rehostEmailImages: async (...a: any[]) => (calls.push(["rehost", ...a]), { processed: 1, imported: 2, failed: [], remaining: 0 }),
+  };
+  registerMailRoutes(app as Express, service as MailService, rehoster);
   return { routes, calls };
 }
 
@@ -43,12 +46,13 @@ async function call(routes: Map<string, Handler>, key: string, req: any = {}) {
   return out;
 }
 
-test("registers the six routes in order", () => {
+test("registers the seven routes in order", () => {
   assert.deepEqual([...setup().routes.keys()], [
     "POST /api/mail/messages",
     "GET /api/mail/messages",
     "GET /api/mail/unread-count",
     "POST /api/mail/messages/read",
+    "POST /api/mail/messages/rehost",
     "GET /api/mail/messages/:id",
     "DELETE /api/mail/messages/:id",
   ]);
@@ -106,4 +110,31 @@ test("get/delete 404 and success", async () => {
   const del = await call(ok.routes, "DELETE /api/mail/messages/:id", { params: { id: "x" } });
   assert.equal(del.status, 204);
   assert.equal(del.ended, true);
+});
+
+test("rehost success passes body options", async () => {
+  const { routes, calls } = setup();
+  const out = await call(routes, "POST /api/mail/messages/rehost", { body: { emailIds: ["a"], limit: 5 } });
+  assert.equal(out.status, 200);
+  assert.deepEqual(out.body, { processed: 1, imported: 2, failed: [], remaining: 0 });
+  assert.deepEqual(calls.find((c) => c[0] === "rehost")!.slice(1), ["u1", { emailIds: ["a"], limit: 5 }]);
+  assert.equal((await call(routes, "POST /api/mail/messages/rehost", { body: undefined })).status, 200);
+});
+
+test("rehost invalid body gives 400", async () => {
+  const { routes } = setup();
+  for (const body of [{ limit: 0 }, { limit: 51 }, { emailIds: Array(51).fill("a") }, { emailIds: "a" }]) {
+    assert.equal((await call(routes, "POST /api/mail/messages/rehost", { body })).status, 400);
+  }
+});
+
+test("rehost PAT without media:write gives 403", async () => {
+  const { routes, calls } = setup();
+  const headers = { "x-clerk-user-id": "u1", "x-ff-auth": "pat", "x-ff-scopes": "mail:write" };
+  const out = await call(routes, "POST /api/mail/messages/rehost", { headers });
+  assert.equal(out.status, 403);
+  assert.deepEqual(out.body, { error: "This token needs the media:write scope to rehost images" });
+  assert.equal(calls.some((c) => c[0] === "rehost"), false);
+  const ok = await call(routes, "POST /api/mail/messages/rehost", { headers: { ...headers, "x-ff-scopes": "mail:write,media:write" } });
+  assert.equal(ok.status, 200);
 });
