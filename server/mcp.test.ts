@@ -145,11 +145,13 @@ async function connect(
   mail?: MailService,
   data?: DatasetService,
   media?: MediaStore,
+  extra: Record<string, unknown> = {},
 ) {
   const server = buildFamilyFrameMcpServer({ userId: "u1", username: "user", scopes }, service, {
     ...(mail ? { mail } : {}),
     ...(data ? { data } : {}),
     ...(media ? { media } : {}),
+    ...extra,
   });
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "1.0.0" });
@@ -160,7 +162,7 @@ async function connect(
 const text = (r: any) => (r.content as any[])[0].text as string;
 const RW = ["calendar:read", "calendar:write"];
 
-test("lists the 22 tools", async () => {
+test("lists the 24 tools", async () => {
   const { service } = makeFakeService();
   const client = await connect(RW, service);
   const { tools } = await client.listTools();
@@ -183,9 +185,11 @@ test("lists the 22 tools", async () => {
       "mail_get_email",
       "mail_list_emails",
       "mail_mark_read",
+      "mail_rehost_images",
       "mail_upsert_emails",
       "media_delete",
       "media_get_meta",
+      "media_import_url",
       "media_list",
       "media_upload",
       "update_event",
@@ -403,4 +407,53 @@ test("media:write token uploads decoded bytes and rejects bad base64", async () 
   const del = await client.callTool({ name: "media_delete", arguments: { id: "abc" } });
   assert.ok(!del.isError);
   assert.equal(calls[1].method, "deleteMedia");
+});
+
+test("media_import_url imports via the importer and returns meta with url", async () => {
+  const { service } = makeFakeService();
+  const calls: any[][] = [];
+  const importer = {
+    async importFromUrl(...args: any[]) {
+      calls.push(args);
+      return { meta: { id: "u 1", filename: "p.png" }, created: true, fetched: true };
+    },
+  };
+  const client = await connect(["media:write"], service, undefined, undefined, undefined, { importer });
+  const r = await client.callTool({ name: "media_import_url", arguments: { url: "https://x.test/p.png", tags: ["t"] } });
+  assert.ok(!r.isError);
+  const out = JSON.parse(text(r));
+  assert.equal(out.created, true);
+  assert.equal(out.meta.url, "/api/files/u%201");
+  assert.equal(calls[0][0], "u1");
+  assert.equal(calls[0][1].url, "https://x.test/p.png");
+  const denied = await (await connect(["media:read"], service, undefined, undefined, undefined, { importer })).callTool({
+    name: "media_import_url",
+    arguments: { url: "https://x.test/p.png" },
+  });
+  assert.equal(denied.isError, true);
+  assert.equal(calls.length, 1);
+});
+
+test("mail_rehost_images needs both mail:write and media:write", async () => {
+  const { service } = makeFakeService();
+  const calls: any[][] = [];
+  const result = { processed: 2, imported: 3, failed: [], remaining: 0 };
+  const rehoster = {
+    async rehostEmailImages(...args: any[]) {
+      calls.push(args);
+      return result;
+    },
+  };
+  const denied = await (await connect(["mail:write"], service, undefined, undefined, undefined, { rehoster })).callTool({
+    name: "mail_rehost_images",
+    arguments: {},
+  });
+  assert.equal(denied.isError, true);
+  assert.match(text(denied), /media:write/);
+  assert.equal(calls.length, 0);
+  const client = await connect(["mail:write", "media:write"], service, undefined, undefined, undefined, { rehoster });
+  const r = await client.callTool({ name: "mail_rehost_images", arguments: { limit: 5 } });
+  assert.ok(!r.isError);
+  assert.deepEqual(JSON.parse(text(r)), result);
+  assert.deepEqual(calls[0], ["u1", { limit: 5 }]);
 });

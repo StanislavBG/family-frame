@@ -6,6 +6,8 @@ import { calendarService, CalendarError, type CalendarService } from "./calendar
 import { mailService, MailError, type MailService } from "./mail-service";
 import { datasetService, DatasetError, type DatasetService } from "./dataset-service";
 import { mediaStore, MediaError, MEDIA_LIMITS, type MediaStore, type MediaMeta } from "./media-store";
+import { mediaImporter, type MediaImporter } from "./media-import";
+import { mailRehoster, type MailRehoster } from "./mail-rehost";
 import { API_TOKEN_SCOPES } from "./api-tokens";
 import { insertDataRecordSchema, insertEmailSchema, DATA_LIMITS, MAIL_LIMITS, SCHEMA_ID_PATTERN } from "@shared/agent-data";
 import { EventType, type EventTypeValue, type InsertCalendarEvent } from "@shared/schema";
@@ -67,6 +69,8 @@ export interface McpServices {
   mail?: MailService;
   data?: DatasetService;
   media?: MediaStore;
+  importer?: Pick<MediaImporter, "importFromUrl">;
+  rehoster?: Pick<MailRehoster, "rehostEmailImages">;
 }
 
 export function buildFamilyFrameMcpServer(
@@ -77,6 +81,8 @@ export function buildFamilyFrameMcpServer(
   const mail = services.mail ?? mailService;
   const data = services.data ?? datasetService;
   const media = services.media ?? mediaStore;
+  const importer = services.importer ?? mediaImporter;
+  const rehoster = services.rehoster ?? mailRehoster;
   const mcpServer = new McpServer({ name: "family-frame", version: "1.0.0" });
   // The SDK's registerTool generics blow up tsc with zod 3 shapes; register through a loose signature
   // and type each handler's args explicitly with z.infer.
@@ -429,6 +435,41 @@ export function buildFamilyFrameMcpServer(
         if (!(await media.deleteMedia(ctx.userId, id))) throw new ToolError(`File "${id}" not found.`);
         return { deleted: id };
       })(),
+  );
+
+  server.registerTool(
+    "media_import_url",
+    {
+      description: "Fetch an https image or PDF by URL and store it in private media (rehosting an expiring link). The id derives from the URL, so repeating an import costs no fetch. Returns meta (with a url serving the file) and created.",
+      inputSchema: {
+        url: z.string().min(1),
+        id: z.string().min(1).optional(),
+        filename: z.string().min(1).max(MEDIA_LIMITS.filenameMax).optional(),
+        tags: z.array(z.string()).max(MEDIA_LIMITS.tagsMax).optional(),
+        emailIds: z.array(z.string()).max(MEDIA_LIMITS.emailIdsMax).optional(),
+      },
+    },
+    async (args: { url: string; id?: string; filename?: string; tags?: string[]; emailIds?: string[] }) =>
+      run(MEDIA_WRITE, async () => {
+        const { meta, created } = await importer.importFromUrl(ctx.userId, args);
+        return { meta: withUrl(meta), created };
+      })(),
+  );
+
+  server.registerTool(
+    "mail_rehost_images",
+    {
+      description: "Rehost the imageUrls of mailbox emails into private media and link the resulting ids in each email's mediaIds. Processes a bounded batch; call it repeatedly until remaining is 0. Requires both mail:write and media:write.",
+      inputSchema: {
+        emailIds: z.array(z.string()).max(MAIL_LIMITS.batchMax).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+    },
+    async (args: { emailIds?: string[]; limit?: number }) => {
+      const missing = ["mail:write", "media:write"].filter((s) => !ctx.scopes.includes(s));
+      if (missing.length) return fail(`This token lacks the ${missing.join(" and ")} scope required for this tool.`);
+      return run(null, () => rehoster.rehostEmailImages(ctx.userId, args))();
+    },
   );
 
   return mcpServer;
