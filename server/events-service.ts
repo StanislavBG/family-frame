@@ -1,7 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { getFirebaseDb } from "./firebase";
 import {
   EVENTS_LIMITS,
+  eventPreferencesSchema,
+  postFeedbackSchema,
   putRecommendationsSchema,
+  type EventPreferences,
+  type FeedbackEntry,
+  type FeedbackSignal,
   type FfEvent,
   type HouseholdResponse,
 } from "@shared/events";
@@ -19,6 +25,8 @@ export interface EventsDeps {
   // Multi-path update: keys are relative paths ("eventId"), null deletes.
   update(path: string, values: Record<string, any>): Promise<void>;
   remove(path: string): Promise<void>;
+  // Appends under a generated key (RTDB ref.push).
+  push(path: string, value: any): Promise<void>;
   now?(): Date;
 }
 
@@ -99,6 +107,29 @@ export interface RunMeta {
 }
 
 const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+const FEEDBACK_DEFAULT_LIMIT = 500;
+const FEEDBACK_MAX_LIMIT = 5000;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const AXIS: Record<FeedbackSignal, keyof EventFeedback> = {
+  relevant: "relevance",
+  "not-relevant": "relevance",
+  liked: "sentiment",
+  disliked: "sentiment",
+  "more-like-this": "steer",
+  "less-like-this": "steer",
+};
+
+function weekdayIndex(startIso: string, timeZone: string): number {
+  const date = new Date(startIso);
+  let short: string;
+  try {
+    short = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(date);
+  } catch {
+    short = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short" }).format(date);
+  }
+  return Math.max(0, WEEKDAYS.indexOf(short));
+}
+
 const byteSize = (s: string) => Buffer.byteLength(s);
 
 const isHidden = (r: Pick<StoredRecommendation, "response" | "withdrawn">) =>
@@ -162,6 +193,26 @@ export function createEventsService(deps: EventsDeps) {
   const recsPath = (u: string) => `eventRecs/${u}`;
   const recPath = (u: string, id: string) => `eventRecs/${u}/${id}`;
   const runMetaPath = (u: string) => `eventRunMeta/${u}`;
+  const feedbackPath = (u: string) => `eventFeedback/${u}`;
+  const prefsPath = (u: string) => `eventPrefs/${u}`;
+
+  async function pushFeedback(userId: string, eventId: string, signal: FeedbackEntry["signal"], reason: string | undefined, raw: StoredRecommendation) {
+    const event = parseJson<FfEvent>(raw.eventJson, "eventJson", eventId);
+    if (!event) throw new EventsError("Event not found", 404);
+    const rec = parseJson<RecExplanation>(raw.recJson, "recJson", eventId);
+    const snapshot: FeedbackEntry["snapshot"] = {
+      title: event.title,
+      category: event.category,
+      tags: event.tags,
+      isFree: event.cost.isFree,
+      weekday: weekdayIndex(event.schedule.start, event.schedule.timezone),
+      ageBands: event.audience.ageBands,
+    };
+    if (rec?.distanceKm !== undefined) snapshot.distanceKm = rec.distanceKm;
+    const entry: FeedbackEntry = { id: randomUUID(), at: now(), eventId, signal, snapshot };
+    if (reason) entry.reason = reason;
+    await deps.push(feedbackPath(userId), entry);
+  }
 
   async function loadAll(userId: string): Promise<Record<string, StoredRecommendation>> {
     const raw = await deps.get(recsPath(userId));
@@ -308,7 +359,56 @@ export function createEventsService(deps: EventsDeps) {
       return meta;
     },
 
-    // ---- Feedback and preferences (added by a later PRD) ----
+    // ---- Feedback and preferences ----
+    async appendFeedback(userId: string, eventId: string, body: unknown): Promise<FeedbackEntry["signal"]> {
+      const parsed = postFeedbackSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new EventsError(`Invalid feedback: ${parsed.error.issues[0]?.message ?? "invalid"}`, 400);
+      }
+      const { signal, reason } = parsed.data;
+      const raw = await loadOne(userId, eventId);
+      await pushFeedback(userId, eventId, signal, reason, raw);
+      await deps.update(recPath(userId, eventId), { feedback: { ...(raw.feedback ?? {}), [AXIS[signal]]: signal } });
+      return signal;
+    },
+
+    async appendResponseFeedback(userId: string, eventId: string, response: Exclude<HouseholdResponse, "new">, reason?: string): Promise<void> {
+      const raw = await loadOne(userId, eventId);
+      await pushFeedback(userId, eventId, `response:${response}` as FeedbackEntry["signal"], reason, raw);
+    },
+
+    async listFeedback(userId: string, opts: { since?: string; limit?: number } = {}): Promise<FeedbackEntry[]> {
+      const limit = Math.min(Math.max(Math.floor(opts.limit ?? FEEDBACK_DEFAULT_LIMIT) || FEEDBACK_DEFAULT_LIMIT, 1), FEEDBACK_MAX_LIMIT);
+      const since = opts.since ? Date.parse(opts.since) : undefined;
+      const raw = await deps.get(feedbackPath(userId));
+      const entries: FeedbackEntry[] = raw && typeof raw === "object" ? (Object.values(raw) as FeedbackEntry[]) : [];
+      return entries
+        .filter((e) => e && (since === undefined || Date.parse(e.at) > since))
+        .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+        .slice(0, limit);
+    },
+
+    async getPreferences(userId: string): Promise<EventPreferences> {
+      const stored = await deps.get(prefsPath(userId));
+      return eventPreferencesSchema.parse(stored ?? {});
+    },
+
+    async putPreferences(userId: string, body: unknown): Promise<EventPreferences> {
+      const parsed = eventPreferencesSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new EventsError(`Invalid preferences: ${parsed.error.issues[0]?.message ?? "invalid"}`, 400);
+      }
+      await deps.set(prefsPath(userId), parsed.data);
+      return parsed.data;
+    },
+
+    // Erases all events data for a household; calendar entries are left alone.
+    async deleteAllForHousehold(userId: string): Promise<void> {
+      await deps.remove(recsPath(userId));
+      await deps.remove(feedbackPath(userId));
+      await deps.remove(prefsPath(userId));
+      await deps.remove(runMetaPath(userId));
+    },
 
     // ---- Respond and calendar sync (added by a later PRD) ----
   };
@@ -333,6 +433,9 @@ function defaultService(): EventsService {
       async remove(path) {
         await getFirebaseDb().ref(path).remove();
       },
+      async push(path, value) {
+        await getFirebaseDb().ref(path).push(value);
+      },
     });
   }
   return instance;
@@ -346,4 +449,10 @@ export const eventsService: EventsService = {
   withdraw: (...args) => defaultService().withdraw(...args),
   markSeen: (...args) => defaultService().markSeen(...args),
   recordRun: (...args) => defaultService().recordRun(...args),
+  appendFeedback: (...args) => defaultService().appendFeedback(...args),
+  appendResponseFeedback: (...args) => defaultService().appendResponseFeedback(...args),
+  listFeedback: (...args) => defaultService().listFeedback(...args),
+  getPreferences: (...args) => defaultService().getPreferences(...args),
+  putPreferences: (...args) => defaultService().putPreferences(...args),
+  deleteAllForHousehold: (...args) => defaultService().deleteAllForHousehold(...args),
 };

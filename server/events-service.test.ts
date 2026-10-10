@@ -6,6 +6,7 @@ import { EVENTS_LIMITS, SAMPLE_RECOMMENDATION_INPUT, type RecommendationInput } 
 // Map-backed fake: nested object tree addressed by slash paths, like RTDB (null deletes).
 function makeDeps(nowIso = "2026-10-10T00:00:00.000Z") {
   const root: any = {};
+  let pushSeq = 0;
   const walk = (path: string, create: boolean) => {
     const parts = path.split("/").filter(Boolean);
     let node = root;
@@ -34,6 +35,9 @@ function makeDeps(nowIso = "2026-10-10T00:00:00.000Z") {
     async remove(path: string) {
       const [n, k] = walk(path, false);
       if (n) delete n[k];
+    },
+    async push(path: string, value: any) {
+      await deps.set(`${path}/-k${++pushSeq}`, value);
     },
     now: () => new Date(nowIso),
   };
@@ -249,4 +253,103 @@ test("recordRun stores eventRunMeta/<userId>", async () => {
     lastRun: { runId: "run-9", found: 12, published: 5 },
   });
   await rejects(svc.recordRun("u1", {} as any), 400);
+});
+
+test("appendFeedback pushes snapshot entry and sets the matching axis", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createEventsService(deps);
+  const id = "pumpkin-festival-2026";
+  await svc.upsertRecommendations("u1", { runId: "r", recommendations: [{ ...SAMPLE_RECOMMENDATION_INPUT, distanceKm: 4.2 } as any] });
+  await svc.appendFeedback("u1", id, { signal: "relevant" });
+  await svc.appendFeedback("u1", id, { signal: "disliked", reason: "too crowded" });
+  await svc.appendFeedback("u1", id, { signal: "more-like-this" });
+  await svc.appendFeedback("u1", id, { signal: "not-relevant" });
+  assert.deepEqual(root.eventRecs.u1[id].feedback, { relevance: "not-relevant", sentiment: "disliked", steer: "more-like-this" });
+  const entries = Object.values<any>(root.eventFeedback.u1);
+  assert.equal(entries.length, 4);
+  const e = entries[1];
+  assert.equal(e.signal, "disliked");
+  assert.equal(e.reason, "too crowded");
+  assert.equal(e.eventId, id);
+  assert.ok(e.id);
+  assert.equal(e.at, "2026-10-10T00:00:00.000Z");
+  assert.deepEqual(e.snapshot, {
+    title: "Riverside Family Pumpkin Festival",
+    category: "holiday-seasonal",
+    tags: ["pumpkins", "hayride", "costume-parade", "harvest"],
+    isFree: false,
+    distanceKm: 4.2,
+    weekday: 6,
+    ageBands: ["baby", "toddler", "preschool", "school-age", "adult"],
+  });
+  await rejects(svc.appendFeedback("u1", "missing", { signal: "liked" }), 404);
+  await rejects(svc.appendFeedback("u1", id, { signal: "bogus" }), 400);
+});
+
+test("feedback survives event pruning", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createEventsService(deps);
+  await svc.upsertRecommendations("u1", { runId: "r", recommendations: [SAMPLE_RECOMMENDATION_INPUT] });
+  await svc.appendFeedback("u1", "pumpkin-festival-2026", { signal: "liked" });
+  await svc.withdraw("u1", "pumpkin-festival-2026");
+  assert.equal(root.eventRecs.u1["pumpkin-festival-2026"], undefined);
+  assert.equal((await svc.listFeedback("u1")).length, 1);
+});
+
+test("appendResponseFeedback pushes a response:<response> entry", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createEventsService(deps);
+  await svc.upsertRecommendations("u1", { runId: "r", recommendations: [SAMPLE_RECOMMENDATION_INPUT] });
+  await svc.appendResponseFeedback("u1", "pumpkin-festival-2026", "going");
+  const [entry] = Object.values<any>(root.eventFeedback.u1);
+  assert.equal(entry.signal, "response:going");
+  assert.equal(entry.snapshot.title, "Riverside Family Pumpkin Festival");
+  assert.equal(root.eventRecs.u1["pumpkin-festival-2026"].feedback, undefined);
+  await rejects(svc.appendResponseFeedback("u1", "missing", "going"), 404);
+});
+
+test("listFeedback is newest first, filters by since, clamps limit", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createEventsService(deps);
+  await svc.upsertRecommendations("u1", { runId: "r", recommendations: [SAMPLE_RECOMMENDATION_INPUT] });
+  const snap = { title: "t", category: "holiday-seasonal", tags: [], isFree: true, weekday: 1, ageBands: [] };
+  root.eventFeedback = {
+    u1: {
+      a: { id: "a", at: "2026-10-01T00:00:00Z", eventId: "x", signal: "liked", snapshot: snap },
+      b: { id: "b", at: "2026-10-03T00:00:00Z", eventId: "x", signal: "liked", snapshot: snap },
+      c: { id: "c", at: "2026-10-02T00:00:00Z", eventId: "x", signal: "liked", snapshot: snap },
+    },
+  };
+  assert.deepEqual((await svc.listFeedback("u1")).map((e) => e.id), ["b", "c", "a"]);
+  assert.deepEqual((await svc.listFeedback("u1", { since: "2026-10-01T00:00:00Z" })).map((e) => e.id), ["b", "c"]);
+  assert.deepEqual((await svc.listFeedback("u1", { limit: 1 })).map((e) => e.id), ["b"]);
+  assert.deepEqual(await svc.listFeedback("nobody"), []);
+});
+
+test("preferences default, validate and store", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createEventsService(deps);
+  const defaults = await svc.getPreferences("u1");
+  assert.equal(defaults.maxDistanceKm, 30);
+  assert.equal(defaults.budget, "any");
+  await rejects(svc.putPreferences("u1", { maxDistanceKm: 9999 }), 400);
+  await rejects(svc.putPreferences("u1", { nope: 1 }), 400);
+  const saved = await svc.putPreferences("u1", { budget: "free", maxDistanceKm: 10 });
+  assert.equal(root.eventPrefs.u1.budget, "free");
+  assert.deepEqual(await svc.getPreferences("u1"), saved);
+});
+
+test("deleteAllForHousehold removes events data but not calendar", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createEventsService(deps);
+  await svc.upsertRecommendations("u1", { runId: "r", recommendations: [SAMPLE_RECOMMENDATION_INPUT] });
+  await svc.upsertRecommendations("u2", { runId: "r", recommendations: [SAMPLE_RECOMMENDATION_INPUT] });
+  await svc.appendFeedback("u1", "pumpkin-festival-2026", { signal: "liked" });
+  await svc.putPreferences("u1", { budget: "low" });
+  await svc.recordRun("u1", { runId: "r" });
+  root.calendar = { u1: { c1: { title: "keep" } } };
+  await svc.deleteAllForHousehold("u1");
+  for (const k of ["eventRecs", "eventFeedback", "eventPrefs", "eventRunMeta"]) assert.equal(root[k]?.u1, undefined, k);
+  assert.ok(root.eventRecs.u2);
+  assert.ok(root.calendar.u1.c1);
 });
