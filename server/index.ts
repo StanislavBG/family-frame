@@ -41,13 +41,18 @@ const clerkClient = createClerkClient({
 
 app.use(cookieParser());
 
+const jsonVerify = (req: import("http").IncomingMessage, _res: unknown, buf: Buffer) => {
+  req.rawBody = buf;
+};
+
+// Larger body limit for agent uploads (mailbox batches, datasets, MCP); mounted
+// before the global parser, which skips bodies that are already parsed.
 app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
+  ["/api/mail", "/api/data", "/mcp"],
+  express.json({ limit: "2mb", verify: jsonVerify }),
 );
+
+app.use(express.json({ verify: jsonVerify }));
 
 app.use(express.urlencoded({ extended: false }));
 

@@ -2,7 +2,14 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { getFirebaseDb } from "./firebase";
 
 export const API_TOKEN_PREFIX = "ff_pat_";
-export const API_TOKEN_SCOPES = ["calendar:read", "calendar:write"] as const;
+export const API_TOKEN_SCOPES = [
+  "calendar:read",
+  "calendar:write",
+  "mail:read",
+  "mail:write",
+  "data:read",
+  "data:write",
+] as const;
 export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
 
 const MAX_TOKENS_PER_USER = 10;

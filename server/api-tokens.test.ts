@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   API_TOKEN_PREFIX,
+  API_TOKEN_SCOPES,
   ApiTokenError,
   createApiToken,
   listApiTokens,
@@ -53,6 +54,14 @@ test("only the hash is stored", async () => {
   assert.ok(!dump.includes(secret));
   const [key] = [...store.map.keys()];
   assert.match(key, /^[0-9a-f]{64}$/);
+});
+
+test("scope list includes mail and data scopes and new scopes verify", async () => {
+  assert.deepEqual([...API_TOKEN_SCOPES], ["calendar:read", "calendar:write", "mail:read", "mail:write", "data:read", "data:write"]);
+  const store = memoryStore();
+  const { token } = await createApiToken(store, "u1", "Agent", ["mail:write", "data:read"]);
+  const v = await verifyApiToken(store, token);
+  assert.deepEqual(v?.scopes, ["mail:write", "data:read"]);
 });
 
 test("wrong prefix, unknown and malformed tokens return null", async () => {

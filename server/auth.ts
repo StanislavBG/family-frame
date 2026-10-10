@@ -27,10 +27,40 @@ const PAT_BEARER_PREFIX = "Bearer ff_pat_";
 function isPatPathAllowed(path: string): boolean {
   return (
     path.startsWith("/api/calendar/") ||
+    path.startsWith("/api/mail/") ||
+    path.startsWith("/api/data/") ||
     path === "/api/people/list" ||
     path === "/mcp" ||
     path.startsWith("/mcp/")
   );
+}
+
+const PAT_SCOPED_AREAS: ReadonlyArray<{
+  prefix: string;
+  readScope: string | null;
+  writeScope: string;
+}> = [
+  { prefix: "/api/calendar/", readScope: null, writeScope: "calendar:write" },
+  { prefix: "/api/mail/", readScope: "mail:read", writeScope: "mail:write" },
+  { prefix: "/api/data/", readScope: "data:read", writeScope: "data:write" },
+];
+
+/**
+ * Scope check for a PAT request on an already-allowlisted path. Paths with no
+ * scoped area (/api/people/list, /mcp) pass; reads need the read or write
+ * scope (null read scope = implicit); every other method needs the write scope.
+ */
+export function patScopeAllows(path: string, method: string, scopes: string[]): boolean {
+  const area = PAT_SCOPED_AREAS.find((a) => path.startsWith(a.prefix));
+  if (!area) return true;
+  if (method === "GET" || method === "HEAD") {
+    return (
+      area.readScope === null ||
+      scopes.includes(area.readScope) ||
+      scopes.includes(area.writeScope)
+    );
+  }
+  return scopes.includes(area.writeScope);
 }
 
 /**
@@ -77,11 +107,7 @@ export function createSessionHeaderMiddleware(
         res.status(403).json({ error: "API tokens cannot access this endpoint" });
         return;
       }
-      if (
-        req.path.startsWith("/api/calendar/") &&
-        req.method !== "GET" &&
-        !verified.scopes.includes("calendar:write")
-      ) {
+      if (!patScopeAllows(req.path, req.method, verified.scopes)) {
         res.status(403).json({ error: "API tokens cannot access this endpoint" });
         return;
       }

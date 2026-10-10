@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 process.env.CLERK_SECRET_KEY ??= "sk_test_dummy";
-const { createSessionHeaderMiddleware } = await import("./auth");
+const { createSessionHeaderMiddleware, patScopeAllows } =await import("./auth");
 
 type FakeReq = {
   headers: Record<string, string | undefined>;
@@ -168,6 +168,50 @@ test("write PAT can POST /api/calendar/new-event", async () => {
   const req: FakeReq = { headers: { authorization: PAT }, path: "/api/calendar/new-event", method: "POST" };
   const r = await runWithRes(req, patDeps(["calendar:write"]));
   assert.equal(r.next, 1);
+});
+
+async function patStatus(path: string, method: string, scopes: string[]) {
+  const req: FakeReq = { headers: { authorization: PAT }, path, method };
+  const r = await runWithRes(req, patDeps(scopes));
+  return r.next === 1 ? "next" : r.status;
+}
+
+test("calendar-only token is forbidden on mail and data areas", async () => {
+  assert.equal(await patStatus("/api/mail/messages", "GET", ["calendar:read", "calendar:write"]), 403);
+  assert.equal(await patStatus("/api/data/records/x", "POST", ["calendar:read", "calendar:write"]), 403);
+});
+
+test("mail:read token reads but cannot write mail", async () => {
+  assert.equal(await patStatus("/api/mail/messages", "GET", ["mail:read"]), "next");
+  assert.equal(await patStatus("/api/mail/messages", "POST", ["mail:read"]), 403);
+});
+
+test("mail:write token can read and write mail", async () => {
+  assert.equal(await patStatus("/api/mail/messages", "GET", ["mail:write"]), "next");
+  assert.equal(await patStatus("/api/mail/messages", "POST", ["mail:write"]), "next");
+});
+
+test("data:write token passes GET /api/data/schemas; data:read cannot POST", async () => {
+  assert.equal(await patStatus("/api/data/schemas", "GET", ["data:write"]), "next");
+  assert.equal(await patStatus("/api/data/schemas", "POST", ["data:read"]), 403);
+});
+
+test("/api/tokens stays off the PAT allowlist", async () => {
+  const all = ["calendar:write", "mail:write", "data:write"];
+  assert.equal(await patStatus("/api/tokens/list", "GET", all), 403);
+  assert.equal(await patStatus("/api/tokens", "POST", all), 403);
+});
+
+test("patScopeAllows unit cases", () => {
+  assert.equal(patScopeAllows("/api/people/list", "GET", []), true);
+  assert.equal(patScopeAllows("/mcp", "POST", []), true);
+  assert.equal(patScopeAllows("/api/calendar/events", "GET", []), true);
+  assert.equal(patScopeAllows("/api/calendar/events", "HEAD", []), true);
+  assert.equal(patScopeAllows("/api/calendar/events", "DELETE", ["calendar:read"]), false);
+  assert.equal(patScopeAllows("/api/calendar/events", "DELETE", ["calendar:write"]), true);
+  assert.equal(patScopeAllows("/api/mail/x", "HEAD", ["mail:read"]), true);
+  assert.equal(patScopeAllows("/api/mail/x", "PUT", ["mail:read"]), false);
+  assert.equal(patScopeAllows("/api/data/x", "GET", []), false);
 });
 
 test("spoofed x-ff-auth and x-ff-scopes are stripped", async () => {
