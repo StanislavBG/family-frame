@@ -14,30 +14,41 @@ import {
   usePersonDays,
   usePersonWeeks,
 } from "@/lib/agent-data";
+import { pickCurrentDay, pickCurrentWeek } from "@/lib/person-day";
 import { formatDateDisplay, getRelativeDayLabel, parseLocalDate, toISODateString } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
-const UPCOMING_COUNT = 5;
-const UNREAD_SUBJECTS = 3;
+// Sized so the whole Dashboard fits one wall screen without scrolling.
+const UPCOMING_COUNT = 3;
+const UNREAD_SUBJECTS = 2;
 const PHOTO_COUNT = 6;
 
 function CardLink({
   href,
   testId,
   title,
+  className,
+  contentClassName,
   children,
 }: {
   href: string;
   testId: string;
   title: string;
+  className?: string;
+  contentClassName?: string;
   children: React.ReactNode;
 }) {
   return (
-    <Link href={href} className="block rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring" data-testid={testId}>
-      <Card className="h-full hover-elevate">
-        <CardHeader className="pb-2">
+    <Link
+      href={href}
+      className={cn("block rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring", className)}
+      data-testid={testId}
+    >
+      <Card className="h-full flex flex-col hover-elevate">
+        <CardHeader className="p-4 pb-2">
           <CardTitle className="text-xl">{title}</CardTitle>
         </CardHeader>
-        <CardContent>{children}</CardContent>
+        <CardContent className={cn("p-4 pt-0", contentClassName)}>{children}</CardContent>
       </Card>
     </Link>
   );
@@ -47,21 +58,22 @@ export default function PersonDashboard({ person }: { person: Person }) {
   const base = `/${encodeURIComponent(person.id)}`;
   const todayIso = toISODateString(new Date());
 
+  // The server lists these reserved schemas by their own date, newest first.
   const days = usePersonDays(person.id, { limit: 30 });
   const weeks = usePersonWeeks(person.id, { limit: 10 });
   const unread = useMailMessages({ personId: person.id, unreadOnly: true, limit: 50 });
   const photos = useMediaList({ personId: person.id, kind: "image", limit: PHOTO_COUNT });
   const eventsQuery = useQuery<CalendarEvent[]>({ queryKey: ["/api/calendar/events"] });
 
-  const latestDay = useMemo(() => {
-    const records = days.data?.records ?? [];
-    return records.map((r) => r.data).sort((a, b) => b.date.localeCompare(a.date))[0];
-  }, [days.data]);
+  const latestDay = useMemo(
+    () => pickCurrentDay((days.data?.records ?? []).map((r) => r.data).filter((d) => !!d?.date), todayIso),
+    [days.data, todayIso],
+  );
 
-  const latestWeek = useMemo(() => {
-    const records = weeks.data?.records ?? [];
-    return records.map((r) => r.data).sort((a, b) => (b.weekStart ?? "").localeCompare(a.weekStart ?? ""))[0];
-  }, [weeks.data]);
+  const currentWeek = useMemo(
+    () => pickCurrentWeek((weeks.data?.records ?? []).map((r) => r.data).filter((w) => !!w?.weekStart), todayIso),
+    [weeks.data, todayIso],
+  );
 
   const upcoming = useMemo(
     () =>
@@ -78,16 +90,17 @@ export default function PersonDashboard({ person }: { person: Person }) {
 
   const loading =
     days.isLoading || weeks.isLoading || unread.isLoading || photos.isLoading || eventsQuery.isLoading;
-  const hasAnything =
-    !!latestDay || !!latestWeek || upcoming.length > 0 || unreadCount > 0 || photoItems.length > 0;
+  const hasMain = !!latestDay || !!currentWeek;
+  const hasSide = upcoming.length > 0 || unreadCount > 0 || photoItems.length > 0;
+  const hasAnything = hasMain || hasSide;
 
   return (
-    <div className="space-y-6 p-4 md:p-6" data-testid="person-dashboard-content">
-      <header>
+    <div className="flex flex-col gap-4 p-4 lg:h-full lg:overflow-hidden" data-testid="person-dashboard-content">
+      <header className="flex flex-wrap items-baseline gap-x-4">
         <h2 className="text-2xl font-semibold" data-testid="text-dashboard-title">
           {person.name}'s week
         </h2>
-        <p className="text-muted-foreground" data-testid="text-dashboard-date">
+        <p className="text-lg text-muted-foreground" data-testid="text-dashboard-date">
           {formatDateDisplay(new Date())}
         </p>
       </header>
@@ -102,77 +115,95 @@ export default function PersonDashboard({ person }: { person: Person }) {
         />
       )}
 
-      {latestWeek && (
-        <section
-          className="rounded-xl border bg-card p-4 md:p-6 space-y-1"
-          data-testid="dashboard-week-summary"
+      {hasAnything && (
+        <div
+          className={cn("grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1", hasMain && hasSide && "lg:grid-cols-3")}
         >
-          <h3 className="text-lg font-semibold">{latestWeek.title}</h3>
-          {latestWeek.summary && (
-            <p className="text-foreground whitespace-pre-line">{latestWeek.summary}</p>
-          )}
-        </section>
-      )}
+          {hasMain && (
+            <div className="flex flex-col gap-4 lg:col-span-2 lg:min-h-0">
+              {currentWeek && (
+                <section className="rounded-xl border bg-card px-4 py-3" data-testid="dashboard-week-summary">
+                  <h3 className="text-xl font-semibold">{currentWeek.title}</h3>
+                  {currentWeek.summary && (
+                    <p className="text-lg line-clamp-2">{currentWeek.summary}</p>
+                  )}
+                </section>
+              )}
 
-      {latestDay && (
-        <section className="space-y-3" data-testid="dashboard-sheet">
-          <Link
-            href={`${base}/sheets`}
-            className="inline-block text-xl font-semibold hover:underline"
-            data-testid="link-dashboard-sheets"
-          >
-            {latestDay.date === todayIso ? "Today's sheet" : "Latest sheet"}
-          </Link>
-          <DaySheetCard day={latestDay} personName={person.name} compact />
-          <DayTimeline timeline={latestDay.timeline} personName={person.name} />
-        </section>
-      )}
+              {latestDay && (
+                <section className="flex flex-col gap-2" data-testid="dashboard-sheet">
+                  <Link
+                    href={`${base}/sheets`}
+                    className="self-start text-xl font-semibold underline-offset-4 hover:underline"
+                    data-testid="link-dashboard-sheets"
+                  >
+                    {latestDay.date === todayIso ? "Today's sheet" : "Latest sheet"}
+                  </Link>
+                  <DaySheetCard day={latestDay} personName={person.name} compact />
+                  <DayTimeline timeline={latestDay.timeline} personName={person.name} compact />
+                </section>
+              )}
+            </div>
+          )}
 
-      {(upcoming.length > 0 || unreadCount > 0 || photoItems.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {upcoming.length > 0 && (
-            <CardLink href={`${base}/calendar`} testId="card-dashboard-upcoming" title="Upcoming">
-              <ul className="space-y-2">
-                {upcoming.map((e) => (
-                  <li key={e.id} className="flex flex-col">
-                    <span className="font-medium">{e.title}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {getRelativeDayLabel(parseLocalDate(e.startDate))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </CardLink>
-          )}
-          {unreadCount > 0 && (
-            <CardLink href={`${base}/inbox`} testId="card-dashboard-inbox" title="Inbox">
-              <p className="text-sm text-muted-foreground mb-2" data-testid="text-dashboard-unread">
-                {unreadCount}
-                {unread.data?.nextBefore ? "+" : ""} unread
-              </p>
-              <ul className="space-y-1">
-                {unreadEmails.slice(0, UNREAD_SUBJECTS).map((m) => (
-                  <li key={m.id} className="truncate font-medium">
-                    {m.subject || "(no subject)"}
-                  </li>
-                ))}
-              </ul>
-            </CardLink>
-          )}
-          {photoItems.length > 0 && (
-            <CardLink href={`${base}/photos`} testId="card-dashboard-photos" title="Photos">
-              <div className="grid grid-cols-3 gap-2">
-                {photoItems.map((m) => (
-                  <img
-                    key={m.id}
-                    src={mediaUrl(m.id)}
-                    alt={`Photo of ${person.name}`}
-                    loading="lazy"
-                    className="aspect-square w-full rounded-md object-cover"
-                  />
-                ))}
-              </div>
-            </CardLink>
+          {hasSide && (
+            <div className="flex flex-col gap-4 lg:min-h-0">
+              {upcoming.length > 0 && (
+                <CardLink href={`${base}/calendar`} testId="card-dashboard-upcoming" title="Next up">
+                  <ul className="space-y-2">
+                    {upcoming.map((e, i) => (
+                      <li key={e.id} className="flex items-baseline justify-between gap-3">
+                        <span className={cn("truncate font-medium", i === 0 ? "text-xl" : "text-lg")}>
+                          {e.title}
+                        </span>
+                        <span className="shrink-0 text-base text-muted-foreground">
+                          {getRelativeDayLabel(parseLocalDate(e.startDate))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardLink>
+              )}
+              {unreadCount > 0 && (
+                <CardLink href={`${base}/inbox`} testId="card-dashboard-inbox" title="Inbox">
+                  <p className="text-lg text-muted-foreground" data-testid="text-dashboard-unread">
+                    <span className="text-2xl font-semibold text-foreground">
+                      {unreadCount}
+                      {unread.data?.nextBefore ? "+" : ""}
+                    </span>{" "}
+                    unread
+                  </p>
+                  <ul>
+                    {unreadEmails.slice(0, UNREAD_SUBJECTS).map((m) => (
+                      <li key={m.id} className="truncate text-lg">
+                        {m.subject || "(no subject)"}
+                      </li>
+                    ))}
+                  </ul>
+                </CardLink>
+              )}
+              {photoItems.length > 0 && (
+                <CardLink
+                  href={`${base}/photos`}
+                  testId="card-dashboard-photos"
+                  title="Photos"
+                  className="lg:min-h-0 lg:flex-1"
+                  contentClassName="lg:min-h-0 lg:flex-1"
+                >
+                  <div className="grid grid-cols-3 gap-2 lg:h-full lg:auto-rows-fr">
+                    {photoItems.map((m) => (
+                      <img
+                        key={m.id}
+                        src={mediaUrl(m.id)}
+                        alt={`Photo of ${person.name}`}
+                        loading="lazy"
+                        className="aspect-square w-full rounded-md bg-muted object-cover lg:aspect-auto lg:h-full lg:min-h-0"
+                      />
+                    ))}
+                  </div>
+                </CardLink>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -1,11 +1,23 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRoute } from "wouter";
-import { ArrowLeft, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  ClipboardList,
+  Database,
+  Image,
+  LayoutDashboard,
+  Mail,
+  PanelLeft,
+  PanelLeftClose,
+  UserRound,
+} from "lucide-react";
 import type { Person } from "@shared/schema";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/lib/api";
 import {
@@ -18,6 +30,7 @@ import {
   type DataRecordsResponse,
 } from "@/lib/agent-data";
 import { apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 import PersonDashboard from "@/components/person/person-dashboard";
 import PersonCalendar from "@/components/person/person-calendar";
 import PersonInbox from "@/components/person/person-inbox";
@@ -26,12 +39,12 @@ import PersonSheets from "@/components/person/person-sheets";
 import PersonMore from "@/components/person/person-more";
 
 const TABS = [
-  { id: "dashboard", label: "Dashboard", Component: PersonDashboard },
-  { id: "calendar", label: "Calendar", Component: PersonCalendar },
-  { id: "inbox", label: "Inbox", Component: PersonInbox },
-  { id: "photos", label: "Photos", Component: PersonPhotos },
-  { id: "sheets", label: "Sheets", Component: PersonSheets },
-  { id: "more", label: "More", Component: PersonMore },
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, Component: PersonDashboard },
+  { id: "calendar", label: "Calendar", icon: CalendarDays, Component: PersonCalendar },
+  { id: "inbox", label: "Inbox", icon: Mail, Component: PersonInbox },
+  { id: "photos", label: "Photos", icon: Image, Component: PersonPhotos },
+  { id: "sheets", label: "Sheets", icon: ClipboardList, Component: PersonSheets },
+  { id: "more", label: "More", icon: Database, Component: PersonMore },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -88,49 +101,165 @@ function PersonCard({ person }: { person: Person }) {
   );
 }
 
-function PersonView({ person, tab }: { person: Person; tab?: string }) {
+function navItemClass(isActive: boolean, collapsed: boolean) {
+  return cn(
+    "w-full flex items-center rounded-md text-left text-base transition-all duration-200",
+    collapsed ? "justify-center px-2 py-3" : "gap-3 px-3 py-3",
+    isActive
+      ? "bg-primary/10 text-primary font-medium"
+      : "hover-elevate text-muted-foreground hover:text-foreground",
+  );
+}
+
+/** Second-level left menu, same pattern as Global Config: person picker, then sections. */
+function PersonView({ person, people, tab }: { person: Person; people: Person[]; tab?: string }) {
   const visible = usePersonTabs(person.id);
   const active = TABS.find((t) => t.id === tab) ?? TABS[0];
   const visibleTabs = TABS.filter((t) => visible.includes(t.id) || t.id === active.id);
   const Active = active.Component;
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const personBase = (p: Person) => `/${encodeURIComponent(p.id)}`;
+
+  const renderPeople = (collapsed: boolean) =>
+    people.length > 1 && (
+      <div className="space-y-1" role="list" aria-label="Family members">
+        {people.map((p) => {
+          const isActive = p.id === person.id;
+          return (
+            <Link
+              key={p.id}
+              // Keep the current section when switching person; hidden-empty sections fall back to Dashboard.
+              href={`${personBase(p)}/${active.id}`}
+              role="listitem"
+              onClick={() => setMobileNavOpen(false)}
+              className={navItemClass(isActive, collapsed)}
+              aria-current={isActive ? "page" : undefined}
+              title={collapsed ? p.name : undefined}
+              data-testid={`nav-person-${p.id}`}
+            >
+              <UserRound className="h-5 w-5 shrink-0" />
+              {!collapsed && <span className="truncate">{p.name}</span>}
+            </Link>
+          );
+        })}
+      </div>
+    );
+
+  const renderSections = (collapsed: boolean) => (
+    <nav className="space-y-1" aria-label={`${person.name} sections`}>
+      {visibleTabs.map((t) => {
+        const Icon = t.icon;
+        const isActive = t.id === active.id;
+        return (
+          <Link
+            key={t.id}
+            href={`${personBase(person)}/${t.id}`}
+            onClick={() => setMobileNavOpen(false)}
+            className={navItemClass(isActive, collapsed)}
+            aria-current={isActive ? "page" : undefined}
+            aria-label={`${t.label} section`}
+            title={collapsed ? t.label : undefined}
+            data-testid={`tab-person-${t.id}`}
+          >
+            <Icon className="h-5 w-5 shrink-0" />
+            {!collapsed && <span className="truncate">{t.label}</span>}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+
+  const backButton = (
+    <Button asChild variant="ghost" size="icon" className="shrink-0">
+      <Link href="/" aria-label="Back to people" data-testid="button-people-back">
+        <ArrowLeft className="h-5 w-5" />
+      </Link>
+    </Button>
+  );
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center gap-4 p-6 pb-2">
-        <Button asChild variant="ghost" size="icon">
-          <Link href="/" aria-label="Back to people" data-testid="button-people-back">
-            <ArrowLeft className="h-6 w-6" />
-          </Link>
+    <div className="h-full flex flex-col md:flex-row">
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center justify-between gap-2 p-4 border-b">
+        <div className="flex items-center gap-2 min-w-0">
+          {backButton}
+          <h1 className="text-lg font-semibold truncate" data-testid="text-person-name">
+            {person.name}
+          </h1>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setMobileNavOpen(!mobileNavOpen)}
+          aria-expanded={mobileNavOpen}
+          data-testid="button-person-mobile-nav"
+        >
+          {active.label}
         </Button>
-        <h1 className="text-3xl font-semibold" data-testid="text-person-name">
-          {person.name}
-        </h1>
       </div>
-      <nav
-        role="tablist"
-        aria-label={`${person.name} sections`}
-        className="flex gap-2 px-6 py-2 overflow-x-auto border-b"
+
+      {/* Mobile Nav Dropdown */}
+      {mobileNavOpen && (
+        <div className="md:hidden border-b bg-background p-4 space-y-3">
+          {renderPeople(false)}
+          {people.length > 1 && <div className="border-t" />}
+          {renderSections(false)}
+        </div>
+      )}
+
+      {/* Left Navigation Panel - Desktop */}
+      <div
+        className={cn(
+          "hidden md:flex flex-col border-r bg-muted/30 shrink-0 transition-all duration-300",
+          sidebarCollapsed ? "w-14" : "w-60",
+        )}
       >
-        {visibleTabs.map((t) => (
+        <div
+          className={cn(
+            "border-b flex items-center transition-all duration-300",
+            sidebarCollapsed ? "p-2 justify-center" : "p-4 gap-2",
+          )}
+        >
+          {backButton}
+          {!sidebarCollapsed && (
+            <h1 className="text-xl font-semibold truncate" data-testid="text-person-name-desktop">
+              {person.name}
+            </h1>
+          )}
+        </div>
+
+        <ScrollArea className="flex-1">
+          <div className={cn("space-y-3 transition-all duration-300", sidebarCollapsed ? "p-2" : "p-4")}>
+            {renderPeople(sidebarCollapsed)}
+            {people.length > 1 && <div className="border-t" />}
+            {renderSections(sidebarCollapsed)}
+          </div>
+        </ScrollArea>
+
+        <div className={cn("border-t transition-all duration-300", sidebarCollapsed ? "p-2" : "p-4")}>
           <Button
-            key={t.id}
-            asChild
-            variant={t.id === active.id ? "default" : "ghost"}
-            size="lg"
+            variant="ghost"
+            size={sidebarCollapsed ? "icon" : "default"}
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className={cn("w-full", sidebarCollapsed && "justify-center")}
+            data-testid="button-toggle-person-sidebar"
+            title={sidebarCollapsed ? "Expand menu" : "Collapse menu"}
           >
-            <Link
-              href={`/${encodeURIComponent(person.id)}/${t.id}`}
-              role="tab"
-              aria-selected={t.id === active.id}
-              aria-label={`${t.label} tab`}
-              data-testid={`tab-person-${t.id}`}
-            >
-              {t.label}
-            </Link>
+            {sidebarCollapsed ? (
+              <PanelLeft className="h-4 w-4" />
+            ) : (
+              <>
+                <PanelLeftClose className="h-4 w-4 mr-2" />
+                <span>Collapse</span>
+              </>
+            )}
           </Button>
-        ))}
-      </nav>
-      <div className="flex-1 min-h-0 overflow-auto" role="tabpanel">
+        </div>
+      </div>
+
+      {/* Right Content Panel */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-auto" role="region" aria-label={`${person.name} ${active.label}`}>
         <Active person={person} />
       </div>
     </div>
@@ -177,7 +306,7 @@ export default function PeoplePage() {
         />
       );
     }
-    return <PersonView person={person} tab={params.tab} />;
+    return <PersonView person={person} people={people} tab={params.tab} />;
   }
 
   return (

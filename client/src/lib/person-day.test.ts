@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDayTimeline, formatDurationMinutes, spanMinutes } from "./person-day";
+import { layoutDayTimeline, formatDurationMinutes, spanMinutes, pickCurrentDay, pickCurrentWeek, isCurrentWeek } from "./person-day";
 
 const toddler = {
   start: "09:37",
@@ -79,5 +79,35 @@ describe("durations", () => {
   it("computes span minutes", () => {
     expect(spanMinutes("13:07", "14:20")).toBe(73);
     expect(spanMinutes("14:20", "13:07")).toBe(0);
+  });
+});
+
+describe("pickCurrentDay", () => {
+  const days = ["2026-09-09", "2026-10-09", "2026-10-12"].map((date) => ({ date }));
+  it("prefers today, else the newest past day", () => {
+    expect(pickCurrentDay(days, "2026-10-09")?.date).toBe("2026-10-09");
+    expect(pickCurrentDay(days, "2026-10-10")?.date).toBe("2026-10-09");
+  });
+  it("falls back to the soonest future day, and handles empty", () => {
+    expect(pickCurrentDay(days, "2026-01-01")?.date).toBe("2026-09-09");
+    expect(pickCurrentDay([], "2026-10-10")).toBeUndefined();
+  });
+});
+
+describe("pickCurrentWeek", () => {
+  const weeks = ["2026-10-19", "2026-10-05", "2026-10-12"].map((weekStart) => ({ weekStart }));
+  it("picks the week containing today, not the newest", () => {
+    expect(pickCurrentWeek(weeks, "2026-10-10")?.weekStart).toBe("2026-10-05");
+    expect(pickCurrentWeek(weeks, "2026-10-12")?.weekStart).toBe("2026-10-12");
+    expect(pickCurrentWeek(weeks, "2026-10-18")?.weekStart).toBe("2026-10-12");
+  });
+  it("falls back to the nearest past week, then the soonest future one", () => {
+    expect(pickCurrentWeek(weeks, "2026-11-30")?.weekStart).toBe("2026-10-19");
+    expect(pickCurrentWeek(weeks, "2026-09-01")?.weekStart).toBe("2026-10-05");
+    expect(pickCurrentWeek([], "2026-10-10")).toBeUndefined();
+  });
+  it("isCurrentWeek covers seven days across a month boundary", () => {
+    expect(isCurrentWeek("2026-09-28", "2026-10-04")).toBe(true);
+    expect(isCurrentWeek("2026-09-28", "2026-10-05")).toBe(false);
   });
 });

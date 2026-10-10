@@ -21,6 +21,11 @@ import {
   RESERVED_SCHEMA_PREFIX,
 } from "@shared/person-views";
 
+const RESERVED_DATE_KEYS: Record<string, string> = {
+  [PERSON_DAY_SCHEMA_ID]: "date",
+  [PERSON_WEEK_SCHEMA_ID]: "weekStart",
+};
+
 export class DatasetError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -238,7 +243,18 @@ export function createDatasetService(deps: DatasetDeps) {
       let list = Object.values<any>(all).map(toRecord);
       if (opts.emailId) list = list.filter((r) => r.emailIds.includes(opts.emailId!));
       if (opts.personId) list = list.filter((r) => r.personIds.includes(opts.personId!));
-      list.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+      const desc = (a: string, b: string) => (a < b ? 1 : a > b ? -1 : 0);
+      // Reserved person views sort by their own date so "latest" survives bulk upserts
+      // that give every record the same updatedAt.
+      const dateKey = RESERVED_DATE_KEYS[schemaId];
+      list.sort((a, b) => {
+        if (dateKey) {
+          const field = (r: DataRecord) => String((r.data as Record<string, unknown> | null)?.[dateKey] ?? "");
+          const byDate = desc(field(a), field(b));
+          if (byDate !== 0) return byDate;
+        }
+        return desc(a.updatedAt, b.updatedAt);
+      });
       const limit = Math.min(Math.max(opts.limit ?? DATA_LIMITS.listLimitDefault, 1), DATA_LIMITS.listLimitMax);
       const offset = Math.max(opts.offset ?? 0, 0);
       return { records: list.slice(offset, offset + limit), total: list.length };

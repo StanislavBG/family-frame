@@ -4,18 +4,18 @@ How a household points its own agent at its own Family Frame account so the **Pe
 
 ## 1. What the People app shows
 
-The People app picks one household member and filters existing stores by that person. It adds no storage of its own.
+The People app picks one household member and filters existing stores by that person. It adds no storage of its own. Sections sit in a left menu; sections with no data for the person are hidden.
 
-| Tab | Shows | Fed by |
+| Section | Shows | Fed by |
 | --- | --- | --- |
-| Dashboard | Today's and this week's summary, metrics, highlights | `ff-person-day` and `ff-person-week` records for the person |
+| Dashboard | One wall screen: the current week (the one containing today, else the nearest past week), today's or the latest past day with metrics and timeline, next events, unread mail, newest photos | `ff-person-day` and `ff-person-week` records for the person |
 | Inbox | Emails about the person | Mailbox emails with the person in `personIds` |
 | Calendar | The person's events | Calendar events with the person in `people` |
 | Photos | The person's images and PDFs | Media files with the person in `personIds` |
 | Sheets | Daily sheets, one per day, with timeline, tags and highlights | `ff-person-day` records for the person |
 | More | Any other dataset records tagged with the person | Records in agent-registered datasets with the person in `personIds` |
 
-Note: the People page in the client is still a placeholder at the time of writing; the stores and tools below are in place and tagged data is kept until the tabs render it.
+Record lists for `ff-person-day` and `ff-person-week` come back sorted by `date` / `weekStart` (newest first), so publishing every record in one bulk call is fine. Publishing upcoming weeks is fine too; they show once their week starts.
 
 ## 2. Setup per household
 

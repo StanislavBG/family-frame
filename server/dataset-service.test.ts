@@ -277,6 +277,24 @@ test("ff-person-day accepts toddler and older-child records; personId filter wor
   });
 });
 
+test("ff-person-day and ff-person-week list by data date desc, not updatedAt", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  // One bulk upsert: every record shares an updatedAt.
+  const dates = ["2026-09-09", "2026-10-09", "2026-10-01", "2026-09-30"];
+  await svc.putRecords("u1", PERSON_DAY_SCHEMA_ID, {
+    records: dates.map((date) => ({ id: `p1-${date}`, data: { ...toddlerDay, date }, personIds: ["p1"] })),
+  });
+  const days = await svc.listRecords("u1", PERSON_DAY_SCHEMA_ID, { personId: "p1", limit: 2 });
+  assert.deepEqual(days.records.map((r) => (r.data as any).date), ["2026-10-09", "2026-10-01"]);
+  assert.equal(days.total, 4);
+  const weeks = ["2026-10-05", "2026-10-19", "2026-10-12"];
+  await svc.putRecords("u1", PERSON_WEEK_SCHEMA_ID, {
+    records: weeks.map((weekStart) => ({ id: `p1-${weekStart}`, data: { weekStart, title: weekStart } })),
+  });
+  const w = await svc.listRecords("u1", PERSON_WEEK_SCHEMA_ID);
+  assert.deepEqual(w.records.map((r) => (r.data as any).weekStart), ["2026-10-19", "2026-10-12", "2026-10-05"]);
+});
+
 test("ff-person-day rejects missing date, bad time, unknown property", async () => {
   const svc = createDatasetService(makeDeps().deps);
   const put = (data: any) => svc.putRecords("u1", PERSON_DAY_SCHEMA_ID, { records: [{ id: "x", data }] });

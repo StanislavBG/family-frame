@@ -149,7 +149,7 @@ Records:
 | Route | Purpose |
 | --- | --- |
 | `POST /api/data/records/:schemaId` | Upsert by id. Body `{ "records": [{ "id", "data", "emailIds"?, "personIds"? }] }`. |
-| `GET /api/data/records/:schemaId` | List, newest-updated first. Query: `emailId`, `limit` (default 100, max 500), `offset`. |
+| `GET /api/data/records/:schemaId` | List, newest-updated first (`ff-person-day` by `date` desc, `ff-person-week` by `weekStart` desc). Query: `emailId`, `limit` (default 100, max 500), `offset`. |
 | `GET /api/data/records/:schemaId/:recordId` | One record. |
 | `DELETE /api/data/records/:schemaId/:recordId` | Delete; 204. |
 

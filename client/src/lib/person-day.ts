@@ -114,3 +114,31 @@ export function layoutDayTimeline(timeline: PersonTimeline | undefined): DayTime
       .map((e) => ({ left: pct(e.t), time: e.time, kind: e.kind, label: e.label })),
   };
 }
+
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Today's day, else the newest past day, else the soonest future one. */
+export function pickCurrentDay<T extends { date: string }>(days: T[], todayIso: string): T | undefined {
+  const past = days.filter((d) => d.date <= todayIso).sort((a, b) => b.date.localeCompare(a.date));
+  if (past.length > 0) return past[0];
+  return [...days].sort((a, b) => a.date.localeCompare(b.date))[0];
+}
+
+/**
+ * The week containing today (weekStart <= today < weekStart + 7), else the nearest
+ * past week, else the soonest upcoming one. Publishers send future weeks on purpose.
+ */
+export function pickCurrentWeek<T extends { weekStart: string }>(weeks: T[], todayIso: string): T | undefined {
+  const valid = weeks.filter((w) => /^\d{4}-\d{2}-\d{2}$/.test(w.weekStart ?? ""));
+  const past = valid.filter((w) => w.weekStart <= todayIso).sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  if (past.length > 0) return past[0];
+  return valid.sort((a, b) => a.weekStart.localeCompare(b.weekStart))[0];
+}
+
+export function isCurrentWeek(weekStart: string, todayIso: string): boolean {
+  return weekStart <= todayIso && todayIso < addDaysIso(weekStart, 7);
+}
