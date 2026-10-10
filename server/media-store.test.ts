@@ -211,6 +211,39 @@ test("listMedia filters, orders newest first, paginates and reports usage", asyn
   assert.equal((await store.listMedia("u1", { limit: 100000 })).items.length, 3);
 });
 
+test("listMedia filters by any of several personIds", async () => {
+  const { deps } = makeDeps();
+  const store = createMediaStore(deps);
+  const putImg = (n: string, personIds: string[]) =>
+    store.putMedia("u1", { filename: `${n}.jpg`, mimeType: "image/jpeg", buffer: jpeg(n), personIds });
+  const a = await putImg("a", ["p1"]);
+  const b = await putImg("b", ["p2"]);
+  const c = await putImg("c", ["p3", "p1"]);
+  const d = await store.putMedia("u1", { filename: "d.pdf", mimeType: "application/pdf", buffer: pdf("d"), personIds: ["p1"] });
+  const ids = async (opts: Parameters<typeof store.listMedia>[1]) =>
+    (await store.listMedia("u1", opts)).items.map((m) => m.id);
+
+  // match one
+  assert.deepEqual(await ids({ personIds: ["p2"] }), [b.meta.id]);
+  // match several (any-of), newest first
+  assert.deepEqual(await ids({ personIds: ["p2", "p3"] }), [c.meta.id, b.meta.id]);
+  assert.deepEqual(await ids({ personIds: ["p1", "p2"] }), [d.meta.id, c.meta.id, b.meta.id, a.meta.id]);
+  // empty any-of set matches nothing; omitted keeps everything
+  const none = await store.listMedia("u1", { personIds: [] });
+  assert.deepEqual(none.items, []);
+  assert.equal(none.total, 0);
+  assert.equal((await store.listMedia("u1", {})).total, 4);
+  // combined with kind (AND)
+  assert.deepEqual(await ids({ personIds: ["p1", "p2"], kind: "image" }), [c.meta.id, b.meta.id, a.meta.id]);
+  assert.deepEqual(await ids({ personIds: ["p1"], kind: "pdf" }), [d.meta.id]);
+  // combined with personId (AND)
+  assert.deepEqual(await ids({ personIds: ["p1", "p2"], personId: "p3" }), [c.meta.id]);
+  // total counts the filtered set, independent of the page
+  const page = await store.listMedia("u1", { personIds: ["p1", "p2"], limit: 1, offset: 1 });
+  assert.deepEqual(page.items.map((m) => m.id), [c.meta.id]);
+  assert.equal(page.total, 4);
+});
+
 test("quota: total bytes and item count produce 507", async () => {
   const { deps, dump } = makeDeps();
   const store = createMediaStore(deps);

@@ -68,6 +68,8 @@ export interface ListMediaOptions {
   tag?: string;
   emailId?: string;
   personId?: string;
+  /** Any-of: keep files linked to at least one of these people. `[]` matches nothing. */
+  personIds?: string[];
   limit?: number;
   offset?: number;
 }
@@ -266,11 +268,13 @@ export function createMediaStore(deps: MediaDeps) {
     const all = await readAllMeta(userId);
     const usage = { bytes: all.reduce((sum, m) => sum + (m.size || 0), 0), count: all.length };
     const tag = opts.tag?.toLowerCase();
+    const anyPersonIds = opts.personIds ? new Set(opts.personIds) : null;
     const filtered = all
       .filter((m) => (opts.kind ? m.kind === opts.kind : true))
       .filter((m) => (tag ? m.tags.includes(tag) : true))
       .filter((m) => (opts.emailId ? m.emailIds.includes(opts.emailId) : true))
       .filter((m) => (opts.personId ? m.personIds.includes(opts.personId) : true))
+      .filter((m) => (anyPersonIds ? m.personIds.some((p) => anyPersonIds.has(p)) : true))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1));
     const limit = Math.min(
       Math.max(1, Math.floor(opts.limit ?? MEDIA_LIMITS.listLimitDefault)),
