@@ -5,6 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildFamilyFrameMcpServer } from "./mcp";
 import { CalendarError, type CalendarService } from "./calendar-service";
 import type { MailService } from "./mail-service";
+import { DatasetError, type DatasetService } from "./dataset-service";
 
 function makeFakeService() {
   const calls: { method: string; args: any[] }[] = [];
@@ -66,8 +67,48 @@ function makeFakeMail() {
   return { mail, calls };
 }
 
-async function connect(scopes: string[], service: CalendarService, mail?: MailService) {
-  const server = buildFamilyFrameMcpServer({ userId: "u1", username: "user", scopes }, service, mail ? { mail } : {});
+function makeFakeData() {
+  const calls: { method: string; args: any[] }[] = [];
+  const data = {
+    async putSchema(...args: any[]) {
+      calls.push({ method: "putSchema", args });
+      return { id: args[1], version: 1, ...args[2] };
+    },
+    async listSchemas(...args: any[]) {
+      calls.push({ method: "listSchemas", args });
+      return [];
+    },
+    async getSchema(...args: any[]) {
+      calls.push({ method: "getSchema", args });
+      throw new DatasetError("Schema not found", 404);
+    },
+    async deleteSchema(...args: any[]) {
+      calls.push({ method: "deleteSchema", args });
+    },
+    async putRecords(...args: any[]) {
+      calls.push({ method: "putRecords", args });
+      return { created: args[2].records.length, updated: 0, ids: args[2].records.map((r: any) => r.id) };
+    },
+    async listRecords(...args: any[]) {
+      calls.push({ method: "listRecords", args });
+      return { records: [], total: 0 };
+    },
+    async getRecord(...args: any[]) {
+      calls.push({ method: "getRecord", args });
+      throw new DatasetError("Record not found", 404);
+    },
+    async deleteRecord(...args: any[]) {
+      calls.push({ method: "deleteRecord", args });
+    },
+  } as unknown as DatasetService;
+  return { data, calls };
+}
+
+async function connect(scopes: string[], service: CalendarService, mail?: MailService, data?: DatasetService) {
+  const server = buildFamilyFrameMcpServer({ userId: "u1", username: "user", scopes }, service, {
+    ...(mail ? { mail } : {}),
+    ...(data ? { data } : {}),
+  });
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "1.0.0" });
   await Promise.all([server.connect(serverT), client.connect(clientT)]);
@@ -77,7 +118,7 @@ async function connect(scopes: string[], service: CalendarService, mail?: MailSe
 const text = (r: any) => (r.content as any[])[0].text as string;
 const RW = ["calendar:read", "calendar:write"];
 
-test("lists the 10 tools", async () => {
+test("lists the 18 tools", async () => {
   const { service } = makeFakeService();
   const client = await connect(RW, service);
   const { tools } = await client.listTools();
@@ -85,6 +126,14 @@ test("lists the 10 tools", async () => {
     tools.map((t) => t.name).sort(),
     [
       "create_event",
+      "data_delete_record",
+      "data_delete_schema",
+      "data_get_record",
+      "data_get_schema",
+      "data_list_records",
+      "data_list_schemas",
+      "data_put_records",
+      "data_put_schema",
       "delete_event",
       "list_events",
       "list_people",
@@ -207,5 +256,55 @@ test("mail:write token upserts emails", async () => {
   assert.ok(!r.isError);
   assert.equal(calls[0].method, "upsertEmails");
   assert.equal(calls[0].args[0], "u1");
+  assert.equal(JSON.parse(text(r)).created, 1);
+});
+
+const sampleRecord = { id: "r1", data: { a: 1 }, emailIds: ["m1"] };
+
+test("mail-only token is denied data_put_records", async () => {
+  const { service } = makeFakeService();
+  const { data, calls } = makeFakeData();
+  const client = await connect(["mail:write"], service, undefined, data);
+  const r = await client.callTool({ name: "data_put_records", arguments: { schemaId: "s1", records: [sampleRecord] } });
+  assert.equal(r.isError, true);
+  assert.match(text(r), /data:write/);
+  assert.equal(calls.length, 0);
+});
+
+test("data:read token can list records but not put schemas; DatasetError is isError", async () => {
+  const { service } = makeFakeService();
+  const { data, calls } = makeFakeData();
+  const client = await connect(["data:read"], service, undefined, data);
+  const list = await client.callTool({ name: "data_list_records", arguments: { schemaId: "s1", limit: 5 } });
+  assert.ok(!list.isError);
+  assert.equal(calls[0].method, "listRecords");
+  assert.deepEqual(calls[0].args.slice(0, 2), ["u1", "s1"]);
+  const put = await client.callTool({
+    name: "data_put_schema",
+    arguments: { schemaId: "s1", title: "S", jsonSchema: { type: "object" } },
+  });
+  assert.equal(put.isError, true);
+  assert.match(text(put), /data:write/);
+  const get = await client.callTool({ name: "data_get_schema", arguments: { schemaId: "s1" } });
+  assert.equal(get.isError, true);
+  assert.match(text(get), /not found/);
+  assert.equal(calls.length, 2);
+});
+
+test("data:write token puts a schema then records", async () => {
+  const { service } = makeFakeService();
+  const { data, calls } = makeFakeData();
+  const client = await connect(["data:write"], service, undefined, data);
+  const s = await client.callTool({
+    name: "data_put_schema",
+    arguments: { schemaId: "s1", title: "S", jsonSchema: { type: "object" } },
+  });
+  assert.ok(!s.isError);
+  assert.equal(calls[0].method, "putSchema");
+  assert.deepEqual(calls[0].args[2], { title: "S", jsonSchema: { type: "object" } });
+  const r = await client.callTool({ name: "data_put_records", arguments: { schemaId: "s1", records: [sampleRecord] } });
+  assert.ok(!r.isError);
+  assert.equal(calls[1].method, "putRecords");
+  assert.deepEqual(calls[1].args[2], { records: [sampleRecord] });
   assert.equal(JSON.parse(text(r)).created, 1);
 });

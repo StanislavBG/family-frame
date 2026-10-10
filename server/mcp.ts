@@ -4,8 +4,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { calendarService, CalendarError, type CalendarService } from "./calendar-service";
 import { mailService, MailError, type MailService } from "./mail-service";
+import { datasetService, DatasetError, type DatasetService } from "./dataset-service";
 import { API_TOKEN_SCOPES } from "./api-tokens";
-import { insertEmailSchema, MAIL_LIMITS } from "@shared/agent-data";
+import { insertDataRecordSchema, insertEmailSchema, DATA_LIMITS, MAIL_LIMITS, SCHEMA_ID_PATTERN } from "@shared/agent-data";
 import { EventType, type EventTypeValue, type InsertCalendarEvent } from "@shared/schema";
 
 export interface McpContext {
@@ -41,8 +42,14 @@ const CAL_WRITE = ["calendar:write"];
 const MAIL_READ = ["mail:read", "mail:write"];
 const MAIL_WRITE = ["mail:write"];
 
+const DATA_READ = ["data:read", "data:write"];
+const DATA_WRITE = ["data:write"];
+
+const schemaIdField = z.string().regex(SCHEMA_ID_PATTERN, "Lowercase letters, digits and hyphens; max 64 chars");
+
 export interface McpServices {
   mail?: MailService;
+  data?: DatasetService;
 }
 
 export function buildFamilyFrameMcpServer(
@@ -51,6 +58,7 @@ export function buildFamilyFrameMcpServer(
   services: McpServices = {},
 ): McpServer {
   const mail = services.mail ?? mailService;
+  const data = services.data ?? datasetService;
   const mcpServer = new McpServer({ name: "family-frame", version: "1.0.0" });
   // The SDK's registerTool generics blow up tsc with zod 3 shapes; register through a loose signature
   // and type each handler's args explicitly with z.infer.
@@ -72,7 +80,7 @@ export function buildFamilyFrameMcpServer(
     try {
       return ok(await fn());
     } catch (err) {
-      if (err instanceof ToolError || err instanceof CalendarError || err instanceof MailError) return fail(err.message);
+      if (err instanceof ToolError || err instanceof CalendarError || err instanceof MailError || err instanceof DatasetError) return fail(err.message);
       console.error("MCP tool error:", err);
       return fail("Internal error while processing the request.");
     }
@@ -247,6 +255,94 @@ export function buildFamilyFrameMcpServer(
       run(MAIL_WRITE, async () => {
         if (!(await mail.deleteEmail(ctx.userId, id))) throw new ToolError(`Email "${id}" not found.`);
         return { deleted: id };
+      })(),
+  );
+
+  server.registerTool(
+    "data_put_schema",
+    {
+      description: `Register or replace a custom dataset schema by schemaId. jsonSchema must be a JSON Schema draft 2020-12 document (max ${DATA_LIMITS.schemaBytesMax} bytes); remote $ref is not supported (no network fetches). Re-putting an existing schemaId bumps its version automatically; existing records are NOT revalidated and keep the version they were written with.`,
+      inputSchema: {
+        schemaId: schemaIdField,
+        title: z.string().min(1).max(DATA_LIMITS.titleMax),
+        description: z.string().max(DATA_LIMITS.descriptionMax).optional(),
+        jsonSchema: z.record(z.unknown()),
+      },
+    },
+    async ({ schemaId, ...rest }: { schemaId: string; title: string; description?: string; jsonSchema: Record<string, unknown> }) =>
+      run(DATA_WRITE, () => data.putSchema(ctx.userId, schemaId, rest))(),
+  );
+
+  server.registerTool(
+    "data_list_schemas",
+    { description: "List the registered dataset schemas (id, title, version, jsonSchema)." },
+    run(DATA_READ, () => data.listSchemas(ctx.userId)),
+  );
+
+  server.registerTool(
+    "data_get_schema",
+    { description: "Get one dataset schema by schemaId.", inputSchema: { schemaId: schemaIdField } },
+    async ({ schemaId }: { schemaId: string }) => run(DATA_READ, () => data.getSchema(ctx.userId, schemaId))(),
+  );
+
+  server.registerTool(
+    "data_delete_schema",
+    {
+      description: "Delete a dataset schema and ALL of its records.",
+      inputSchema: { schemaId: schemaIdField },
+    },
+    async ({ schemaId }: { schemaId: string }) =>
+      run(DATA_WRITE, async () => {
+        await data.deleteSchema(ctx.userId, schemaId);
+        return { deleted: schemaId };
+      })(),
+  );
+
+  server.registerTool(
+    "data_put_records",
+    {
+      description: `Insert or update records (by id) for a schema. Each record is {id, data, emailIds?}; data is validated against the schema's current version. All-or-nothing: one invalid record rejects the batch. Max ${DATA_LIMITS.batchMax} records per call.`,
+      inputSchema: { schemaId: schemaIdField, records: z.array(insertDataRecordSchema).min(1).max(DATA_LIMITS.batchMax) },
+    },
+    async ({ schemaId, records }: { schemaId: string; records: unknown[] }) =>
+      run(DATA_WRITE, () => data.putRecords(ctx.userId, schemaId, { records }))(),
+  );
+
+  server.registerTool(
+    "data_list_records",
+    {
+      description: "List records for a schema, newest-updated first. Optionally filter by emailId; page with limit and offset.",
+      inputSchema: {
+        schemaId: schemaIdField,
+        emailId: z.string().optional(),
+        limit: z.number().int().min(1).max(DATA_LIMITS.listLimitMax).optional(),
+        offset: z.number().int().min(0).optional(),
+      },
+    },
+    async ({ schemaId, ...opts }: { schemaId: string; emailId?: string; limit?: number; offset?: number }) =>
+      run(DATA_READ, () => data.listRecords(ctx.userId, schemaId, opts))(),
+  );
+
+  server.registerTool(
+    "data_get_record",
+    {
+      description: "Get one record by schemaId and recordId.",
+      inputSchema: { schemaId: schemaIdField, recordId: z.string().min(1) },
+    },
+    async ({ schemaId, recordId }: { schemaId: string; recordId: string }) =>
+      run(DATA_READ, () => data.getRecord(ctx.userId, schemaId, recordId))(),
+  );
+
+  server.registerTool(
+    "data_delete_record",
+    {
+      description: "Delete one record by schemaId and recordId.",
+      inputSchema: { schemaId: schemaIdField, recordId: z.string().min(1) },
+    },
+    async ({ schemaId, recordId }: { schemaId: string; recordId: string }) =>
+      run(DATA_WRITE, async () => {
+        await data.deleteRecord(ctx.userId, schemaId, recordId);
+        return { deleted: recordId };
       })(),
   );
 
