@@ -101,6 +101,71 @@ test("legacy events are normalized and saved back", async () => {
   assert.equal(store.get("u1").events[0].start, undefined);
 });
 
+const source = { app: "events" as const, refId: "evt-1" };
+const detailed = { startTime: "18:00", endTime: "20:30", location: "City Park", notes: "Bring blankets" };
+
+test("normalize carries detail fields through listing; absent stays absent", async () => {
+  const { svc } = makeService({
+    u1: { clerkId: "u1", username: "me", settings: {}, people: [], events: [ev("a", "Shared", { ...detailed, source, cancelled: true }), ev("b", "Shared")], connections: [] },
+  });
+  const [a, b] = await svc.listEvents("u1", "me");
+  assert.deepEqual({ startTime: a.startTime, endTime: a.endTime, location: a.location, notes: a.notes, source: a.source, cancelled: a.cancelled },
+    { ...detailed, source, cancelled: true });
+  for (const k of ["startTime", "endTime", "location", "notes", "source", "cancelled"]) assert.equal(k in b, false, k);
+});
+
+test("createEvent stores opts.source and detail fields", async () => {
+  const { svc, store } = makeService({
+    u1: { clerkId: "u1", username: "me", settings: {}, people: [], events: [], connections: [] },
+  });
+  const created = await svc.createEvent("u1", "me", { ...input, ...detailed }, { source });
+  assert.deepEqual(created.source, source);
+  assert.equal(created.location, "City Park");
+  assert.deepEqual(store.get("u1").events[0].source, source);
+  const plain = await svc.createEvent("u1", "me", input);
+  assert.equal("source" in plain, false);
+});
+
+test("updateEvent keeps source, cancelled and unsent detail fields", async () => {
+  const { svc, store } = makeService({
+    u1: { clerkId: "u1", username: "me", settings: {}, people: [], events: [ev("a", "Shared", { ...detailed, source, cancelled: true })], connections: [] },
+  });
+  const updated = await svc.updateEvent("u1", "me", "a", { ...input, title: "Renamed" });
+  assert.equal(updated.title, "Renamed");
+  assert.deepEqual(updated.source, source);
+  assert.equal(updated.cancelled, true);
+  assert.equal(updated.startTime, "18:00");
+  assert.equal(updated.location, "City Park");
+  assert.equal(store.get("u1").events[0].notes, "Bring blankets");
+});
+
+test("updateEvent sets new values and clears fields with empty string", async () => {
+  const { svc, store } = makeService({
+    u1: { clerkId: "u1", username: "me", settings: {}, people: [], events: [ev("a", "Shared", { ...detailed, source })], connections: [] },
+  });
+  const updated = await svc.updateEvent("u1", "me", "a", { ...input, startTime: "09:15", location: "", notes: "" });
+  assert.equal(updated.startTime, "09:15");
+  assert.equal(updated.endTime, "20:30");
+  for (const k of ["location", "notes"]) {
+    assert.equal(k in updated, false, k);
+    assert.equal(k in store.get("u1").events[0], false, k);
+  }
+  assert.deepEqual(updated.source, source);
+});
+
+test("setLinkedFields patches own event, can set cancelled/source, 403 otherwise", async () => {
+  const { svc, store } = makeService({
+    u1: { clerkId: "u1", username: "me", settings: {}, people: [], events: [ev("a", "Shared", detailed)], connections: [] },
+  });
+  const patched = await svc.setLinkedFields("u1", "me", "a", { cancelled: true, startDate: "2026-04-01", endDate: "2026-04-02", source });
+  assert.equal(patched.cancelled, true);
+  assert.equal(patched.startDate, "2026-04-01");
+  assert.equal(patched.startTime, "18:00");
+  assert.deepEqual(store.get("u1").events[0].source, source);
+  await assert.rejects(svc.setLinkedFields("u1", "me", "zzz", { cancelled: true }), (e: any) => e instanceof CalendarError && e.status === 403);
+  await rejects400(svc.setLinkedFields("u1", "me", "a", { startDate: "2026-05-05", endDate: "2026-05-01" }));
+});
+
 test("listPeople returns people or empty", async () => {
   const { svc } = makeService({
     u1: { clerkId: "u1", username: "me", settings: {}, people: [{ id: "p", name: "Gran" }], events: [], connections: [] },

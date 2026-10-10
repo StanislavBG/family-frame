@@ -47,9 +47,21 @@ export const calendarEventSchema = z.object({
   people: z.array(z.string()).default([]), // Array of person IDs
   creatorId: z.string().optional(), // Clerk user ID of creator
   creatorName: z.string().optional(), // Display name of creator household
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be HH:MM (24h)").optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be HH:MM (24h)").optional(),
+  location: z.string().max(300).optional(),
+  notes: z.string().max(1000).optional(),
+  source: z.object({ app: z.literal("events"), refId: z.string().min(1).max(80) }).optional(), // Server-owned link back to the Events app
+  cancelled: z.boolean().optional(), // Server-owned, set by the event pipeline
 });
 
-export const insertCalendarEventSchema = calendarEventSchema.omit({ id: true, creatorId: true, creatorName: true });
+export const insertCalendarEventSchema = calendarEventSchema.omit({
+  id: true,
+  creatorId: true,
+  creatorName: true,
+  source: true,
+  cancelled: true,
+});
 
 export type CalendarEvent = z.infer<typeof calendarEventSchema>;
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
