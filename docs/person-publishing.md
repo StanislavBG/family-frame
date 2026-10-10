@@ -8,11 +8,11 @@ The People app picks one household member and filters existing stores by that pe
 
 | Section | Shows | Fed by |
 | --- | --- | --- |
-| Dashboard | One wall screen: the current week (the one containing today, else the nearest past week), today's or the latest past day with metrics and timeline, next events, unread mail, newest photos | `ff-person-day` and `ff-person-week` records for the person |
+| Dashboard | Today's or the latest past day (metrics as tinted tiles, day strip, `highlights` as moments, `tags` as lesson chips, `mediaIds` as photos); the current week's `summary` (the week containing today, else the nearest past week); next events; next week's dated `highlights` per weekday; photo and email strips | `ff-person-day` and `ff-person-week` records for the person |
 | Inbox | Emails about the person | Mailbox emails with the person in `personIds` |
-| Calendar | The person's events | Calendar events with the person in `people` |
+| Calendar | Month grid with the person's events, a ☾ mark and photo thumbnails on days with a daily sheet, and a day panel | Calendar events with the person in `people` |
 | Photos | The person's images and PDFs | Media files with the person in `personIds` |
-| Sheets | Daily sheets, one per day, with timeline, tags and highlights | `ff-person-day` records for the person |
+| Sheets | Daily sheets: weekly nap chart (spans labelled "Nap"), dated list, and a detail card with metrics, timeline, moments, lessons and photos | `ff-person-day` records for the person |
 | More | Any other dataset records tagged with the person | Records in agent-registered datasets with the person in `personIds` |
 
 Record lists for `ff-person-day` and `ff-person-week` come back sorted by `date` / `weekStart` (newest first), so publishing every record in one bulk call is fine. Publishing upcoming weeks is fine too; they show once their week starts.

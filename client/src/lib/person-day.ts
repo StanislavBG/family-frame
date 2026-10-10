@@ -212,3 +212,15 @@ export function eventTypeLabel(kind: string, label: string): string {
   if (tone === "wet") return "Wet";
   return label;
 }
+
+/** 42 day cells (6 weeks) covering a month, starting on Monday or Sunday. */
+export function buildMonthCells(year: number, month: number, weekStartsMonday: boolean): { iso: string; inMonth: boolean }[] {
+  const first = new Date(Date.UTC(year, month, 1));
+  const lead = weekStartsMonday ? (first.getUTCDay() + 6) % 7 : first.getUTCDay();
+  const cells: { iso: string; inMonth: boolean }[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(Date.UTC(year, month, 1 - lead + i));
+    cells.push({ iso: d.toISOString().slice(0, 10), inMonth: d.getUTCMonth() === month });
+  }
+  return cells;
+}

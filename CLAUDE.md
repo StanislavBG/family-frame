@@ -59,6 +59,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       ├── pages/              # Route pages (home, clock, weather, photos, calendar, messages, radio, tv, baby-songs, shopping, stocks, notepad, chores, recipes, screensaver, settings, ...)
 │       ├── components/
 │       │   ├── ui/             # shadcn components
+│       │   ├── person/         # People app person views (Satchel design; see below)
 │       │   ├── app-sidebar.tsx # Navigation sidebar
 │       │   ├── app-picker.tsx  # App Picker (enable/disable apps)
 │       │   ├── empty-state.tsx # Reusable empty state component
@@ -214,6 +215,17 @@ Framework for agents (e.g. the "Self" project) to publish private data that futu
 - Scopes `mail:read|write`, `data:read|write`, `media:read|write` (write implies read); MCP tools `mail_*`, `data_*` and `media_*` in `server/mcp.ts` reuse the services.
 - Per-person publishing (`personIds`/`personId`, reserved `ff-person-day` / `ff-person-week` schemas): see `docs/person-publishing.md` and `shared/person-views.ts`.
 - Rule: this data is private per account and never exposed through household connections.
+
+### People person views (Satchel design)
+The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day Timeline Zoom" for the day timeline): warm parchment surfaces, tinted tiles, serif headings.
+- `client/src/pages/people.tsx` - shell: Satchel left nav (identity card, tinted section icons with counts, sync footer), `/:personId/:tab?` routing, hide-empty sections
+- `client/src/components/person/satchel.tsx` - design tokens and primitives only (`SATCHEL_TONES`, `DOW_TONES`, `SERIF`/`MONO`, `MetricTile`, `DateBadge`, `ToneChip`, `OwlAvatar`)
+- `client/src/components/person/satchel-day.tsx` - day-sheet blocks shared by Dashboard and Daily sheets (`MetricTiles`, `MiniTimeline`, `Moments`, `LessonGroups`)
+- `client/src/components/person/person-day-sheet.tsx` - full `DayTimeline` (Day Timeline Zoom)
+- `client/src/components/person/person-{dashboard,inbox,calendar,photos,sheets,more}.tsx` - one file per section
+- `client/src/lib/person-day.ts` - pure, unit-tested logic (timeline layout, current day/week pick, month grid, lanes); keep logic here, not in components
+- Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
+- Not built (no data source yet): the design's Ask bar, "Needs you" card, email category filters and photo favourite/hide/review states.
 
 ### App Registry (framework vs apps)
 - `shared/apps.ts` is the single list of apps: `APP_IDS`, `APP_MANIFESTS`, `defaultEnabled`.

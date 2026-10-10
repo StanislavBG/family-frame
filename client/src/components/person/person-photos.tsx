@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { mediaUrl, useMediaList, type MediaMeta } from "@/lib/agent-data";
 import { getRelativeDayLabel } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { MUTED, SERIF } from "./satchel";
 
 const PAGE_SIZE = 60;
 
@@ -46,12 +48,17 @@ export default function PersonPhotos({ person }: { person: Person }) {
   const total = data?.total ?? items.length;
 
   const groups = useMemo(() => {
-    const map = new Map<string, { label: string; entries: { item: MediaMeta; index: number }[] }>();
+    const map = new Map<string, { label: string; date: string; entries: { item: MediaMeta; index: number }[] }>();
     items.forEach((item, index) => {
       const key = dayKey(item.createdAt);
       let group = map.get(key);
       if (!group) {
-        group = { label: getRelativeDayLabel(new Date(item.createdAt)), entries: [] };
+        const created = new Date(item.createdAt);
+        group = {
+          label: getRelativeDayLabel(created),
+          date: created.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }),
+          entries: [],
+        };
         map.set(key, group);
       }
       group.entries.push({ item, index });
@@ -101,22 +108,30 @@ export default function PersonPhotos({ person }: { person: Person }) {
   const current = viewerIndex !== null ? items[viewerIndex] : null;
 
   return (
-    <div className="p-6 space-y-6" data-testid="person-photos-content">
-      <p className="text-sm text-muted-foreground" data-testid="person-photos-count">
-        {total} {total === 1 ? "photo" : "photos"}
-      </p>
+    <div className="flex flex-col gap-6 px-8 pb-8 pt-6" data-testid="person-photos-content">
+      <header>
+        <div className="text-sm font-semibold text-[#2e5a3e] dark:text-[#8fc49d]" data-testid="person-photos-count">
+          {total} {total === 1 ? "photo" : "photos"}
+        </div>
+        <h1 className={cn(SERIF, "mt-1 text-4xl font-bold leading-tight")}>Photos</h1>
+      </header>
 
       {groups.map(([key, group]) => (
         <section key={key} aria-label={group.label}>
-          <h3 className="text-base font-semibold text-foreground mb-2">{group.label}</h3>
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+          <div className="mb-2.5 flex flex-wrap items-baseline gap-3">
+            <h3 className={cn(SERIF, "m-0 text-2xl font-bold")}>{group.label}</h3>
+            <span className={cn("text-sm", MUTED)}>
+              {group.date} · {group.entries.length} {group.entries.length === 1 ? "photo" : "photos"}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
             {group.entries.map(({ item, index }) => (
               <button
                 key={item.id}
                 type="button"
                 aria-label={`Open ${item.filename}`}
                 onClick={() => setViewerIndex(index)}
-                className="aspect-square overflow-hidden rounded-md bg-muted hover-elevate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="aspect-square overflow-hidden rounded-xl bg-muted hover-elevate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 data-testid={`person-photo-${item.id}`}
               >
                 <img

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDayTimeline, formatDurationMinutes, spanMinutes, pickCurrentDay, pickCurrentWeek, isCurrentWeek, formatClock12, axisHourLabel, halfHourTicks, eventLanes, eventTone, eventTypeLabel } from "./person-day";
+import { layoutDayTimeline, formatDurationMinutes, spanMinutes, pickCurrentDay, pickCurrentWeek, isCurrentWeek, formatClock12, axisHourLabel, halfHourTicks, eventLanes, eventTone, eventTypeLabel, buildMonthCells } from "./person-day";
 
 const toddler = {
   start: "09:37",
@@ -145,5 +145,18 @@ describe("timeline display helpers", () => {
     expect(eventTone("meal")).toBe("other");
     expect(eventTypeLabel("bm", "BM/Wet diaper")).toBe("BM");
     expect(eventTypeLabel("meal", "Lunch")).toBe("Lunch");
+  });
+});
+
+describe("buildMonthCells", () => {
+  it("builds six Monday-first weeks for October 2026", () => {
+    const cells = buildMonthCells(2026, 9, true);
+    expect(cells).toHaveLength(42);
+    expect(cells[0]).toEqual({ iso: "2026-09-28", inMonth: false });
+    expect(cells[3]).toEqual({ iso: "2026-10-01", inMonth: true });
+    expect(cells[41].iso).toBe("2026-11-08");
+  });
+  it("supports Sunday-first weeks", () => {
+    expect(buildMonthCells(2026, 9, false)[0].iso).toBe("2026-09-27");
   });
 });

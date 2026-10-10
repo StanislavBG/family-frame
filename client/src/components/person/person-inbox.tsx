@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
+import { LINE, SERIF, SURFACE } from "./satchel";
 import { formatRelativeTime } from "@/lib/format";
 import { mediaUrl, useMailMessage, useMailMessages, useMarkMailRead } from "@/lib/agent-data";
 
@@ -38,25 +39,21 @@ function MailRow({
         aria-current={selected}
         data-testid={`mail-row-${email.id}`}
         className={cn(
-          "w-full text-left px-4 py-3 border-b hover-elevate flex gap-3",
-          selected && "bg-accent/40",
+          "flex w-full gap-3 rounded-[18px] border-2 px-4 py-3 text-left",
+          selected ? cn(SURFACE, "border-[#a83818] dark:border-[#e07a52]") : "border-transparent hover:bg-[#fffaf0] dark:hover:bg-card",
         )}
       >
         <span
-          className={cn("mt-2 h-2.5 w-2.5 shrink-0 rounded-full", unread ? "bg-primary" : "bg-transparent")}
+          className={cn("mt-2 h-2.5 w-2.5 shrink-0 rounded-full", unread ? "bg-[#2e5a3e] dark:bg-[#8fc49d]" : "bg-transparent")}
           aria-label={unread ? "Unread" : undefined}
         />
         <span className="min-w-0 flex-1">
-          <span className="flex items-baseline justify-between gap-2">
-            <span className={cn("truncate", unread ? "font-semibold" : "text-muted-foreground")}>
-              {senderLabel(email.from)}
-            </span>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {formatRelativeTime(email.receivedAt)}
-            </span>
+          <span className={cn("block line-clamp-2 text-base leading-snug", unread ? "font-bold" : "font-medium")}>
+            {email.subject}
           </span>
-          <span className={cn("block truncate", unread && "font-medium")}>{email.subject}</span>
-          <span className="block truncate text-sm text-muted-foreground">{email.snippet}</span>
+          <span className="block truncate text-sm text-muted-foreground">
+            {senderLabel(email.from)} · {formatRelativeTime(email.receivedAt)}
+          </span>
         </span>
       </button>
     </li>
@@ -185,7 +182,7 @@ function MailDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {email && (
           <article className="space-y-4">
             <header className="space-y-1">
-              <h2 className="text-2xl font-semibold break-words">{email.subject}</h2>
+              <h2 className={cn(SERIF, "break-words text-3xl font-bold leading-tight")}>{email.subject}</h2>
               <p className="text-sm text-muted-foreground">
                 From {senderLabel(email.from)}
                 {email.from.name ? ` <${email.from.email}>` : ""}
@@ -267,14 +264,21 @@ export default function PersonInbox({ person }: { person: Person }) {
   const pages: Array<string | undefined> = [undefined, ...cursors];
 
   return (
-    <div className="flex h-full min-h-0 flex-col lg:flex-row" data-testid="person-inbox-content">
+    <div className="flex h-full min-h-0 flex-col gap-4 px-8 pb-6 pt-6" data-testid="person-inbox-content">
+      <header>
+        <div className="text-sm font-semibold text-[#3d6a8f] dark:text-[#8fb4d4]">
+          {unreadIds.length > 0 ? `${unreadIds.length} to check` : "All checked"}
+        </div>
+        <h1 className={cn(SERIF, "mt-1 text-4xl font-bold leading-tight")}>Inbox</h1>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
       <section
         className={cn(
-          "min-h-0 flex-col border-b lg:flex lg:w-[26rem] lg:shrink-0 lg:border-b-0 lg:border-r",
+          "min-h-0 flex-col lg:flex lg:w-[24rem] lg:shrink-0",
           selectedId ? "hidden" : "flex",
         )}
       >
-        <div className="space-y-3 border-b p-3">
+        <div className="space-y-3 pb-3">
           <Input
             type="search"
             value={search}
@@ -299,7 +303,7 @@ export default function PersonInbox({ person }: { person: Person }) {
             </Button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto [&_ul]:flex [&_ul]:flex-col [&_ul]:gap-1">
           {pages.map((before, i) => (
             <MailPage
               key={before ?? "first"}
@@ -316,7 +320,14 @@ export default function PersonInbox({ person }: { person: Person }) {
           ))}
         </div>
       </section>
-      <section className={cn("min-h-0 min-w-0 flex-1 lg:block", selectedId ? "block" : "hidden")}>
+      <section
+        className={cn(
+          "min-h-0 min-w-0 flex-1 overflow-hidden rounded-3xl border lg:block",
+          SURFACE,
+          LINE,
+          selectedId ? "block" : "hidden",
+        )}
+      >
         {selectedId ? (
           <MailDetail key={selectedId} id={selectedId} onBack={() => setSelectedId("")} />
         ) : (
@@ -325,6 +336,7 @@ export default function PersonInbox({ person }: { person: Person }) {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }
