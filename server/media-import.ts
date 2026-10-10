@@ -227,7 +227,11 @@ export function createMediaImporter(deps: MediaImportDeps) {
     }
     const id = input.id ?? rehostIdForUrl(input.url);
     const existing = await deps.store.getMedia(userId, id);
-    if (existing) return { meta: existing.meta, created: false, fetched: false };
+    if (existing) {
+      // A repeat import adds its email/person links to the stored file instead of dropping them.
+      const linked = await deps.store.linkMedia(userId, id, { emailIds: input.emailIds, personIds: input.personIds });
+      return { meta: linked ?? existing.meta, created: false, fetched: false };
+    }
 
     const buffer = await download(input.url);
     const mimeType = sniffMediaType(buffer);

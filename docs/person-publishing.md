@@ -215,7 +215,7 @@ A school-age child has no naps or diapers; use the same fields for classes, home
 - **Record ids are stable**: `<personId>-<date>` for `ff-person-day` (for example `p_ev1-2026-10-09`) and `<personId>-<weekStart>` for `ff-person-week`. Record ids allow `[A-Za-z0-9_-]{1,128}`, so use person ids as-is; if a person id contains other characters, slug it.
 - Re-posting the same id **updates** the record, so an agent can re-run a day or a week safely. A batch is all-or-nothing and holds at most 100 records.
 - Emails: use the source message id as the email `id`; re-posting updates it and keeps its read state.
-- Media: identical bytes under the same id are a no-op (`created: false`); `media_import_url` derives the id from the URL, so repeats cost no fetch.
+- Media: identical bytes under the same id are a no-op (`created: false`); `media_import_url` derives the id from the URL, so repeats cost no fetch; a repeat adds its `emailIds` and `personIds` to the existing file (links are only ever added). `mail_rehost_images` copies an email's `personIds` onto the images it rehosts, so those images show in the person's Photos tab.
 - Calendar: `create_event` always creates a new event. List first (`list_events`) and use `update_event` on reruns. Create school and daycare events as `Private`.
 
 ## 6. Privacy

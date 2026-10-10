@@ -120,7 +120,12 @@ export function createMailRehoster(deps: RehostDeps) {
       const outcomes = await runLimited(
         urls.map((url) => async () => {
           try {
-            await importer.importFromUrl(userId, { url, tags: ["email"], emailIds: [summary.id] });
+            await importer.importFromUrl(userId, {
+              url,
+              tags: ["email"],
+              emailIds: [summary.id],
+              ...(summary.personIds.length ? { personIds: summary.personIds } : {}),
+            });
             return { url, error: null as string | null };
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);

@@ -301,3 +301,22 @@ test("listMedia personId filter ANDs with other filters; two-person file lists f
   assert.equal((await ids({})).length, 3);
   assert.ok(c);
 });
+
+test("linkMedia unions email and person links, caps them and never removes", async () => {
+  const { deps } = makeDeps();
+  const store = createMediaStore(deps);
+  await store.putMedia("u1", { id: "lk", filename: "a.jpg", mimeType: "image/jpeg", buffer: jpeg("lk"), emailIds: ["e1"], personIds: ["p1"] });
+  const merged = await store.linkMedia("u1", "lk", { emailIds: ["e2", "e1"], personIds: ["p2"] });
+  assert.deepEqual(merged!.emailIds, ["e1", "e2"]);
+  assert.deepEqual(merged!.personIds, ["p1", "p2"]);
+  assert.deepEqual((await store.getMedia("u1", "lk"))!.meta.personIds, ["p1", "p2"]);
+  const same = await store.linkMedia("u1", "lk", {});
+  assert.deepEqual(same!.personIds, ["p1", "p2"]);
+  const many = Array.from({ length: MEDIA_LIMITS.emailIdsMax }, (_, i) => `m${i}`);
+  const capped = await store.linkMedia("u1", "lk", { emailIds: many });
+  assert.equal(capped!.emailIds.length, MEDIA_LIMITS.emailIdsMax);
+  assert.deepEqual(capped!.emailIds.slice(0, 2), ["e1", "e2"]);
+  assert.equal(await store.linkMedia("u1", "missing", { personIds: ["p1"] }), null);
+  await rejects(store.linkMedia("u1", "lk", { personIds: [""] }), 400);
+  await rejects(store.linkMedia("u1", "lk", { emailIds: ["bad id"] }), 400);
+});

@@ -225,6 +225,30 @@ export function createMediaStore(deps: MediaDeps) {
     return { meta, created: true };
   }
 
+  // Adds email/person links to an existing file (union, capped); never removes any.
+  async function linkMedia(
+    userId: string,
+    id: string,
+    links: { emailIds?: string[]; personIds?: string[] },
+  ): Promise<MediaMeta | null> {
+    if (!AGENT_ID_PATTERN.test(id)) return null;
+    const emailIds = cleanEmailIds(links.emailIds);
+    const personIds = cleanPersonIds(links.personIds);
+    const raw = await deps.get(`${base(userId)}/meta/${id}`);
+    if (!raw) return null;
+    const current = normalizeMeta(raw);
+    const merged: MediaMeta = {
+      ...current,
+      emailIds: Array.from(new Set([...current.emailIds, ...emailIds])).slice(0, MEDIA_LIMITS.emailIdsMax),
+      personIds: Array.from(new Set([...current.personIds, ...personIds])).slice(0, PERSON_IDS_MAX),
+    };
+    if (merged.emailIds.length === current.emailIds.length && merged.personIds.length === current.personIds.length) {
+      return current;
+    }
+    await deps.update(base(userId), { [`meta/${id}`]: merged });
+    return merged;
+  }
+
   async function getMedia(userId: string, id: string): Promise<{ meta: MediaMeta; buffer: Buffer } | null> {
     if (!AGENT_ID_PATTERN.test(id)) return null;
     const [rawMeta, blob] = await Promise.all([
@@ -264,7 +288,7 @@ export function createMediaStore(deps: MediaDeps) {
     return true;
   }
 
-  return { putMedia, getMedia, listMedia, deleteMedia };
+  return { putMedia, linkMedia, getMedia, listMedia, deleteMedia };
 }
 
 export type MediaStore = ReturnType<typeof createMediaStore>;
@@ -294,6 +318,7 @@ function defaultStore(): MediaStore {
 // Lazy: Firebase is only touched when a method is called, never on import.
 export const mediaStore: MediaStore = {
   putMedia: (...args) => defaultStore().putMedia(...args),
+  linkMedia: (...args) => defaultStore().linkMedia(...args),
   getMedia: (...args) => defaultStore().getMedia(...args),
   listMedia: (...args) => defaultStore().listMedia(...args),
   deleteMedia: (...args) => defaultStore().deleteMedia(...args),

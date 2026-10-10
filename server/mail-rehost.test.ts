@@ -8,6 +8,7 @@ interface FakeEmail {
   receivedAt: string;
   imageUrls: string[];
   mediaIds: string[];
+  personIds: string[];
   readAt: string | null;
   ingestedAt: string;
   updatedAt: string;
@@ -20,7 +21,7 @@ const url = (n: number | string) => `https://cdn.example.com/img/${n}.jpg?token=
 function setup(emails: FakeEmail[], opts: { failing?: Set<string>; pageSize?: number } = {}) {
   const store = new Map<string, FakeEmail>(emails.map((e) => [e.id, structuredClone(e)]));
   const upserts: any[] = [];
-  const imports: { url: string; tags?: string[]; emailIds?: string[] }[] = [];
+  const imports: { url: string; tags?: string[]; emailIds?: string[]; personIds?: string[] }[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
   const failing = opts.failing ?? new Set<string>();
@@ -50,7 +51,7 @@ function setup(emails: FakeEmail[], opts: { failing?: Set<string>; pageSize?: nu
     },
   };
   const importer = {
-    async importFromUrl(_userId: string, input: { url: string; tags?: string[]; emailIds?: string[] }) {
+    async importFromUrl(_userId: string, input: { url: string; tags?: string[]; emailIds?: string[]; personIds?: string[] }) {
       imports.push(input);
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
@@ -80,6 +81,7 @@ const email = (id: string, urls: string[], extra: Partial<FakeEmail> = {}): Fake
   receivedAt: `2026-02-${id.padStart(2, "0").slice(-2)}T10:00:00.000Z`,
   imageUrls: urls,
   mediaIds: [],
+  personIds: [],
   readAt: null,
   ingestedAt: "2026-02-01T00:00:00.000Z",
   updatedAt: "2026-02-01T00:00:00.000Z",
@@ -101,7 +103,16 @@ test("selects only emails with un-rehosted urls and records mediaIds", async () 
   for (const i of imports) {
     assert.deepEqual(i.tags, ["email"]);
     assert.deepEqual(i.emailIds, ["12"]);
+    assert.equal(i.personIds, undefined);
   }
+});
+
+test("imports carry the parent email's personIds", async () => {
+  const { rehoster, store, imports } = setup([email("12", [url(1), url(2)], { personIds: ["Evolet", "Mila"] })]);
+  const r = await rehoster.rehostEmailImages("u1", {});
+  assert.equal(r.imported, 2);
+  for (const i of imports) assert.deepEqual(i.personIds, ["Evolet", "Mila"]);
+  assert.deepEqual(store.get("12")!.personIds, ["Evolet", "Mila"]);
 });
 
 test("limit bounds the batch and remaining counts the rest", async () => {

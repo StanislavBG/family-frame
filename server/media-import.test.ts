@@ -19,9 +19,26 @@ function fakeStore() {
       return items.get(id) ?? null;
     },
     async putMedia(_u: string, input: any) {
-      const meta = { id: input.id, filename: input.filename, mimeType: input.mimeType, size: input.buffer.length };
+      const meta = {
+        id: input.id,
+        filename: input.filename,
+        mimeType: input.mimeType,
+        size: input.buffer.length,
+        emailIds: input.emailIds ?? [],
+        personIds: input.personIds ?? [],
+      };
       items.set(input.id, { meta, buffer: input.buffer });
       return { meta, created: true };
+    },
+    async linkMedia(_u: string, id: string, links: { emailIds?: string[]; personIds?: string[] }) {
+      const item = items.get(id);
+      if (!item) return null;
+      item.meta = {
+        ...item.meta,
+        emailIds: Array.from(new Set([...item.meta.emailIds, ...(links.emailIds ?? [])])),
+        personIds: Array.from(new Set([...item.meta.personIds, ...(links.personIds ?? [])])),
+      };
+      return item.meta;
     },
   } as unknown as MediaStore;
   return { store, items };
@@ -112,6 +129,16 @@ test("repeat import dedupes without fetching", async () => {
   assert.equal(again.fetched, false);
   assert.equal(again.created, false);
   assert.equal(fetched.length, 1);
+});
+
+test("repeat import merges new email and person links without fetching", async () => {
+  const { importer, fetched } = makeImporter({ respond: ok });
+  await importer.importFromUrl("u1", { url: URL1, emailIds: ["e1"], personIds: ["Evolet"] });
+  const again = await importer.importFromUrl("u1", { url: URL1, emailIds: ["e2"], personIds: ["Evolet", "Mila"] });
+  assert.equal(again.fetched, false);
+  assert.equal(fetched.length, 1);
+  assert.deepEqual(again.meta.emailIds, ["e1", "e2"]);
+  assert.deepEqual(again.meta.personIds, ["Evolet", "Mila"]);
 });
 
 test("blocked resolved addresses are rejected before fetch", async () => {
