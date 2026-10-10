@@ -22,13 +22,6 @@ export default function PersonPhotos({ person }: { person: Person }) {
   const [items, setItems] = useState<MediaMeta[]>([]);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  // A different person starts over from the first page.
-  useEffect(() => {
-    setOffset(0);
-    setItems([]);
-    setViewerIndex(null);
-  }, [person.id]);
-
   const { data, isLoading, isFetching, isError } = useMediaList({
     personId: person.id,
     kind: "image",

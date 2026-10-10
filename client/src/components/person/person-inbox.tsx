@@ -45,8 +45,9 @@ function MailRow({
       >
         <span
           className={cn("mt-2 h-2.5 w-2.5 shrink-0 rounded-full", unread ? "bg-[#2e5a3e] dark:bg-[#8fc49d]" : "bg-transparent")}
-          aria-label={unread ? "Unread" : undefined}
+          aria-hidden
         />
+        {unread && <span className="sr-only">Unread</span>}
         <span className="min-w-0 flex-1">
           <span className={cn("block line-clamp-2 text-base leading-snug", unread ? "font-bold" : "font-medium")}>
             {email.subject}
@@ -272,70 +273,70 @@ export default function PersonInbox({ person }: { person: Person }) {
         <h1 className={cn(SERIF, "mt-1 text-4xl font-bold leading-tight")}>Inbox</h1>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-      <section
-        className={cn(
-          "min-h-0 flex-col lg:flex lg:w-[24rem] lg:shrink-0",
-          selectedId ? "hidden" : "flex",
-        )}
-      >
-        <div className="space-y-3 pb-3">
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search mail"
-            aria-label="Search mail"
-            data-testid="mail-search"
-          />
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Switch id="mail-unread-only" checked={unreadOnly} onCheckedChange={setUnreadOnly} />
-              <Label htmlFor="mail-unread-only">Unread only</Label>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={unreadIds.length === 0 || markAll.isPending}
-              onClick={handleMarkAll}
-              data-testid="mail-mark-all-read"
-            >
-              Mark all read
-            </Button>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto [&_ul]:flex [&_ul]:flex-col [&_ul]:gap-1">
-          {pages.map((before, i) => (
-            <MailPage
-              key={before ?? "first"}
-              personId={person.id}
-              q={q}
-              unreadOnly={unreadOnly}
-              before={before}
-              isLast={i === pages.length - 1}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onLoaded={onLoaded}
-              onLoadMore={(b) => setCursors((c) => (c.includes(b) ? c : [...c, b]))}
+        <section
+          className={cn(
+            "min-h-0 flex-col lg:flex lg:w-[24rem] lg:shrink-0",
+            selectedId ? "hidden" : "flex",
+          )}
+        >
+          <div className="space-y-3 pb-3">
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search mail"
+              aria-label="Search mail"
+              data-testid="mail-search"
             />
-          ))}
-        </div>
-      </section>
-      <section
-        className={cn(
-          "min-h-0 min-w-0 flex-1 overflow-hidden rounded-3xl border lg:block",
-          SURFACE,
-          LINE,
-          selectedId ? "block" : "hidden",
-        )}
-      >
-        {selectedId ? (
-          <MailDetail key={selectedId} id={selectedId} onBack={() => setSelectedId("")} />
-        ) : (
-          <div className="flex h-full items-center justify-center p-8 text-muted-foreground">
-            Select a message to read it.
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Switch id="mail-unread-only" checked={unreadOnly} onCheckedChange={setUnreadOnly} />
+                <Label htmlFor="mail-unread-only">Unread only</Label>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={unreadIds.length === 0 || markAll.isPending}
+                onClick={handleMarkAll}
+                data-testid="mail-mark-all-read"
+              >
+                Mark all read
+              </Button>
+            </div>
           </div>
-        )}
-      </section>
+          <div className="min-h-0 flex-1 overflow-y-auto [&_ul]:flex [&_ul]:flex-col [&_ul]:gap-1">
+            {pages.map((before, i) => (
+              <MailPage
+                key={before ?? "first"}
+                personId={person.id}
+                q={q}
+                unreadOnly={unreadOnly}
+                before={before}
+                isLast={i === pages.length - 1}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onLoaded={onLoaded}
+                onLoadMore={(b) => setCursors((c) => (c.includes(b) ? c : [...c, b]))}
+              />
+            ))}
+          </div>
+        </section>
+        <section
+          className={cn(
+            "min-h-0 min-w-0 flex-1 overflow-hidden rounded-3xl border lg:block",
+            SURFACE,
+            LINE,
+            selectedId ? "block" : "hidden",
+          )}
+        >
+          {selectedId ? (
+            <MailDetail key={selectedId} id={selectedId} onBack={() => setSelectedId("")} />
+          ) : (
+            <div className="flex h-full items-center justify-center p-8 text-muted-foreground">
+              Select a message to read it.
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

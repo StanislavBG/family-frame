@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { CalendarEvent, Person, UserSettings } from "@shared/schema";
 import type { PersonDay } from "@shared/person-views";
 import { Skeleton } from "@/components/ui/skeleton";
 import { mediaUrl, usePersonDays } from "@/lib/agent-data";
-import { buildMonthCells } from "@/lib/person-day";
-import { parseLocalDate, toISODateString } from "@/lib/format";
+import { buildMonthCells, WEEKDAY_SHORT as WEEKDAY } from "@/lib/person-day";
+import { useToday } from "@/hooks/use-today";
+import { parseLocalDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { DOW_TONES, LINE, MUTED, SATCHEL_TONES, SERIF, SURFACE, SectionLabel, ToneChip } from "./satchel";
 
 const UPCOMING_LIMIT = 5;
 const CELL_THUMBS = 3;
 const PANEL_PHOTOS = 8;
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function napText(day: PersonDay): string | undefined {
   return day.metrics?.find((m) => /nap/i.test(m.label))?.value;
@@ -70,8 +70,8 @@ function DayPanel({
       )}
       {photos.length > 0 && (
         <div className="grid grid-cols-4 gap-1.5">
-          {photos.map((id) => (
-            <Link key={id} href={`${base}/photos`}>
+          {photos.map((id, i) => (
+            <Link key={`${id}-${i}`} href={`${base}/photos`}>
               <img src={mediaUrl(id)} alt={`Photo from ${iso}`} loading="lazy" className="aspect-square w-full rounded-lg bg-muted object-cover" />
             </Link>
           ))}
@@ -102,13 +102,12 @@ function DayPanel({
 
 export default function PersonCalendar({ person }: { person: Person }) {
   const base = `/${encodeURIComponent(person.id)}`;
-  const todayIso = toISODateString(new Date());
+  const todayIso = useToday();
   const [month, setMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selected, setSelected] = useState(todayIso);
-  useEffect(() => setSelected(todayIso), [person.id, todayIso]);
 
   const { data: settings } = useQuery<UserSettings>({ queryKey: ["/api/settings"] });
   const weekStartsMonday = settings?.weekStartsMonday ?? true;
@@ -172,7 +171,7 @@ export default function PersonCalendar({ person }: { person: Person }) {
           {isLoading ? (
             <Skeleton className="h-96 w-full" />
           ) : (
-            <div className="grid grid-cols-7 gap-1.5" role="grid" aria-label="Month">
+            <div className="grid grid-cols-7 gap-1.5" aria-label="Month">
               {headers.map((dow) => (
                 <div key={dow} className={cn("px-2 pb-1 text-sm font-bold", SATCHEL_TONES[DOW_TONES[dow]].fg)}>
                   {WEEKDAY[dow]}
@@ -220,8 +219,8 @@ export default function PersonCalendar({ person }: { person: Person }) {
                     ))}
                     {thumbs.length > 0 && (
                       <div className="mt-auto flex items-center gap-1">
-                        {thumbs.slice(0, CELL_THUMBS).map((id) => (
-                          <img key={id} src={mediaUrl(id)} alt="" loading="lazy" className="h-6 w-6 rounded bg-muted object-cover" />
+                        {thumbs.slice(0, CELL_THUMBS).map((id, i) => (
+                          <img key={`${id}-${i}`} src={mediaUrl(id)} alt="" loading="lazy" className="h-6 w-6 rounded bg-muted object-cover" />
                         ))}
                         {thumbs.length > CELL_THUMBS && (
                           <span className={cn("text-[11px]", MUTED)}>+{thumbs.length - CELL_THUMBS}</span>

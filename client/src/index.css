@@ -44,7 +44,7 @@
   --chart-3: 44 85% 69%;
   --chart-4: 20 21% 35%;
   --chart-5: 35 45% 60%;
-  --font-sans: Inter, sans-serif;
+  --font-sans: "Inter Variable", Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
   --radius: .5rem;

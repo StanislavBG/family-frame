@@ -35,10 +35,15 @@ export function SectionLabel({ className, children }: { className?: string; chil
   );
 }
 
-export function ToneChip({ tone, className, children }: { tone: SatchelTone; className?: string; children: React.ReactNode }) {
+export function ToneChip({
+  tone,
+  className,
+  children,
+  ...rest
+}: { tone: SatchelTone } & React.HTMLAttributes<HTMLSpanElement>) {
   const t = SATCHEL_TONES[tone];
   return (
-    <span className={cn("whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-semibold", t.bg, t.fg, className)}>
+    <span {...rest} className={cn("whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-semibold", t.bg, t.fg, className)}>
       {children}
     </span>
   );

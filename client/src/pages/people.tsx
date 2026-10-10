@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRoute } from "wouter";
 import { ArrowLeft, CalendarDays, Database, Image, Mail, Moon, Sun, UserRound } from "lucide-react";
@@ -54,6 +54,8 @@ type TabId = (typeof TABS)[number]["id"];
 
 interface PersonNavInfo {
   tabs: TabId[];
+  /** All visibility queries have settled, so `tabs` is final. */
+  ready: boolean;
   counts: Partial<Record<TabId, string>>;
   source?: string;
   syncedAt?: string;
@@ -101,8 +103,16 @@ function usePersonTabs(personId: string): PersonNavInfo {
 
   const latestDay = days.data?.records[0];
   const stamps = [latestDay?.updatedAt, mail.data?.emails[0]?.receivedAt].filter((t): t is string => !!t);
+  const ready =
+    !mail.isLoading &&
+    !media.isLoading &&
+    !days.isLoading &&
+    !weeks.isLoading &&
+    schemas !== undefined &&
+    customRecords.every((q) => !q.isLoading);
   return {
     tabs,
+    ready,
     counts,
     source: latestDay?.data?.source,
     syncedAt: stamps.sort().at(-1),
@@ -175,7 +185,14 @@ function PersonView({ person, people, tab }: { person: Person; people: Person[];
   const visibleTabs = TABS.filter((t) => nav.tabs.includes(t.id) || t.id === active.id);
   const Active = active.Component;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [, setLocation] = useLocation();
   const personBase = (p: Person) => `/${encodeURIComponent(p.id)}`;
+
+  // A section with no data for this person (e.g. after switching person) falls back to Dashboard.
+  const hidden = nav.ready && !nav.tabs.includes(active.id);
+  useEffect(() => {
+    if (hidden) setLocation(`${personBase(person)}/dashboard`, { replace: true });
+  }, [hidden, person.id]);
   const others = people.filter((p) => p.id !== person.id);
   const close = () => setMobileNavOpen(false);
 
@@ -197,22 +214,24 @@ function PersonView({ person, people, tab }: { person: Person; people: Person[];
         ))}
       </nav>
       {others.length > 0 && (
-        <div className="mt-4 flex flex-col gap-1" role="list" aria-label="Other family members">
+        <div className="mt-4">
           <SectionLabel className="px-2.5 pb-1">Family</SectionLabel>
-          {others.map((p) => (
-            <Link
-              key={p.id}
-              // Keep the current section when switching person; hidden-empty sections fall back to Dashboard.
-              href={`${personBase(p)}/${active.id}`}
-              role="listitem"
-              onClick={close}
-              className="flex items-center gap-3 rounded-[14px] px-2.5 py-2 text-base font-medium hover:bg-[#fffaf0] dark:hover:bg-card"
-              data-testid={`nav-person-${p.id}`}
-            >
-              <UserRound className={cn("h-5 w-5", MUTED)} />
-              <span className="truncate">{p.name}</span>
-            </Link>
-          ))}
+          <ul className="m-0 flex list-none flex-col gap-1 p-0" aria-label="Other family members">
+            {others.map((p) => (
+              <li key={p.id}>
+                <Link
+                  // Keep the current section when switching person; hidden-empty sections fall back to Dashboard.
+                  href={`${personBase(p)}/${active.id}`}
+                  onClick={close}
+                  className="flex items-center gap-3 rounded-[14px] px-2.5 py-2 text-base font-medium hover:bg-[#fffaf0] dark:hover:bg-card"
+                  data-testid={`nav-person-${p.id}`}
+                >
+                  <UserRound className={cn("h-5 w-5", MUTED)} />
+                  <span className="truncate">{p.name}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </>
@@ -289,7 +308,8 @@ function PersonView({ person, people, tab }: { person: Person; people: Person[];
 
       {/* Right Content Panel */}
       <div className="flex-1 min-h-0 min-w-0 overflow-auto" role="region" aria-label={`${person.name} ${active.label}`}>
-        <Active person={person} />
+        {/* Keyed by person so every section starts with fresh per-person state. */}
+        <Active key={person.id} person={person} />
       </div>
     </div>
   );

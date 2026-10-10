@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { UserRound } from "lucide-react";
@@ -13,29 +13,21 @@ import {
   usePersonDays,
   usePersonWeeks,
 } from "@/lib/agent-data";
-import { pickCurrentDay, pickCurrentWeek } from "@/lib/person-day";
-import { parseLocalDate, toISODateString } from "@/lib/format";
+import { addDaysIso, isCurrentWeek, mondayOfIso, pickCurrentDay, pickCurrentWeek, WEEKDAY_SHORT as WEEKDAY } from "@/lib/person-day";
+import { parseLocalDate } from "@/lib/format";
+import { useToday } from "@/hooks/use-today";
 import { cn } from "@/lib/utils";
 import { DateBadge, DOW_TONES, LINE, MUTED, SATCHEL_TONES, SERIF, SURFACE, SectionLabel, ToneChip } from "./satchel";
 import { LessonGroups, MetricTiles, MiniTimeline, Moments } from "./satchel-day";
 
 const UPCOMING_COUNT = 3;
 const STRIP_PHOTOS = 10;
-const DAY_MS = 86_400_000;
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const longDate = (d: Date) => d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-const addDays = (iso: string, n: number) => toISODateString(new Date(parseLocalDate(iso).getTime() + n * DAY_MS));
 
 /** Mon–Fri ISO dates of the week starting at `weekStart`. */
 function weekdays(weekStart: string): string[] {
-  return [0, 1, 2, 3, 4].map((i) => addDays(weekStart, i));
-}
-
-function mondayOf(iso: string): string {
-  const d = parseLocalDate(iso);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return toISODateString(d);
+  return [0, 1, 2, 3, 4].map((i) => addDaysIso(weekStart, i));
 }
 
 function TodaySheet({
@@ -112,8 +104,8 @@ function TodaySheet({
               {(day.mediaIds ?? []).length} {(day.mediaIds ?? []).length === 1 ? "photo" : "photos"}
             </SectionLabel>
             <div className="grid grid-cols-3 gap-1.5">
-              {photos.map((id) => (
-                <Link key={id} href={`${base}/photos`}>
+              {photos.map((id, i) => (
+                <Link key={`${id}-${i}`} href={`${base}/photos`}>
                   <img
                     src={mediaUrl(id)}
                     alt={`Photo from ${day.date}`}
@@ -130,14 +122,16 @@ function TodaySheet({
   );
 }
 
-function WeekInShort({ week, dayCount }: { week: PersonWeek; dayCount: number }) {
+function WeekInShort({ week, dayCount, current }: { week: PersonWeek; dayCount: number; current: boolean }) {
   return (
     <div
       className="relative overflow-hidden rounded-[22px] bg-[#fcecc4] px-6 py-5 dark:bg-[#f4b942]/15"
       data-testid="dashboard-week-summary"
     >
       <div className="absolute -right-8 -top-8 h-[120px] w-[120px] rounded-full bg-[#f4b942] opacity-45" />
-      <SectionLabel className="relative mb-2 text-[#7a5200] dark:text-[#f4b942]">This week, in short</SectionLabel>
+      <SectionLabel className="relative mb-2 text-[#7a5200] dark:text-[#f4b942]">
+        {current ? "This week, in short" : week.title}
+      </SectionLabel>
       <p className={cn(SERIF, "relative m-0 text-xl leading-normal")}>{week.summary || week.title}</p>
       <div className="relative mt-2.5 text-xs text-[#7a5200] dark:text-[#f4b942]">
         {week.title}
@@ -222,20 +216,25 @@ function NextWeek({ week }: { week: PersonWeek }) {
 
 export default function PersonDashboard({ person }: { person: Person }) {
   const base = `/${encodeURIComponent(person.id)}`;
-  const todayIso = toISODateString(new Date());
+  const todayIso = useToday();
 
   // The server lists these reserved schemas by their own date, newest first.
   const days = usePersonDays(person.id, { limit: 30 });
-  const weeks = usePersonWeeks(person.id, { limit: 10 });
+  // Publishers send upcoming weeks too; 52 keeps the current week in the newest-first page.
+  const weeks = usePersonWeeks(person.id, { limit: 52 });
   const unread = useMailMessages({ personId: person.id, unreadOnly: true, limit: 50 });
   const latestMail = useMailMessages({ personId: person.id, limit: 1 });
   const photos = useMediaList({ personId: person.id, kind: "image", limit: STRIP_PHOTOS });
   const eventsQuery = useQuery<CalendarEvent[]>({ queryKey: ["/api/calendar/events"] });
 
-  const allDays = useMemo(
-    () => (days.data?.records ?? []).map((r) => r.data).filter((d): d is PersonDay => !!d?.date),
-    [days.data],
-  );
+  // One sheet per date (records are newest-date first).
+  const allDays = useMemo(() => {
+    const byDate = new Map<string, PersonDay>();
+    for (const r of days.data?.records ?? []) {
+      if (r.data?.date && !byDate.has(r.data.date)) byDate.set(r.data.date, r.data);
+    }
+    return Array.from(byDate.values());
+  }, [days.data]);
   const allWeeks = useMemo(
     () => (weeks.data?.records ?? []).map((r) => r.data).filter((w): w is PersonWeek => !!w?.weekStart),
     [weeks.data],
@@ -244,16 +243,15 @@ export default function PersonDashboard({ person }: { person: Person }) {
   const currentWeek = useMemo(() => pickCurrentWeek(allWeeks, todayIso), [allWeeks, todayIso]);
 
   const [picked, setPicked] = useState<string | null>(null);
-  useEffect(() => setPicked(null), [person.id]);
   const day = allDays.find((d) => d.date === picked) ?? currentDay;
-  const sheetWeekStart = day ? mondayOf(day.date) : null;
+  const sheetWeekStart = day ? mondayOfIso(day.date) : null;
   const weekDays = sheetWeekStart
-    ? allDays.filter((d) => mondayOf(d.date) === sheetWeekStart).sort((a, b) => a.date.localeCompare(b.date))
+    ? allDays.filter((d) => mondayOfIso(d.date) === sheetWeekStart).sort((a, b) => a.date.localeCompare(b.date))
     : [];
 
-  const nextWeekStart = addDays(mondayOf(todayIso), 7);
+  const nextWeekStart = addDaysIso(mondayOfIso(todayIso), 7);
   const nextWeek = allWeeks.find((w) => w.weekStart === nextWeekStart);
-  const currentWeekDays = currentWeek ? allDays.filter((d) => mondayOf(d.date) === mondayOf(currentWeek.weekStart)).length : 0;
+  const currentWeekDays = currentWeek ? allDays.filter((d) => mondayOfIso(d.date) === mondayOfIso(currentWeek.weekStart)).length : 0;
 
   const upcoming = useMemo(
     () =>
@@ -261,7 +259,7 @@ export default function PersonDashboard({ person }: { person: Person }) {
         .filter((e) => e.people?.includes(person.id) && e.endDate >= todayIso)
         .sort((a, b) => a.startDate.localeCompare(b.startDate))
         .slice(0, UPCOMING_COUNT),
-    [eventsQuery.data, todayIso],
+    [eventsQuery.data, person.id, todayIso],
   );
 
   const unreadCount = unread.data?.emails.length ?? 0;
@@ -275,7 +273,7 @@ export default function PersonDashboard({ person }: { person: Person }) {
     <div className="flex flex-col gap-4 px-8 pb-8 pt-6" data-testid="person-dashboard-content">
       <header>
         <div className="text-sm font-semibold text-[#a83818] dark:text-[#e07a52]" data-testid="text-dashboard-date">
-          {longDate(new Date())}
+          {longDate(parseLocalDate(todayIso))}
         </div>
         <h1 className={cn(SERIF, "mt-1 text-4xl font-bold leading-tight")} data-testid="text-dashboard-title">
           {person.name}'s week
@@ -296,7 +294,11 @@ export default function PersonDashboard({ person }: { person: Person }) {
 
       {(currentWeek || upcoming.length > 0) && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3.5">
-          {currentWeek && <WeekInShort week={currentWeek} dayCount={currentWeekDays} />}
+          {currentWeek && <WeekInShort
+              week={currentWeek}
+              dayCount={currentWeekDays}
+              current={isCurrentWeek(currentWeek.weekStart, todayIso)}
+            />}
           {upcoming.length > 0 && <ComingUp events={upcoming} base={base} />}
         </div>
       )}

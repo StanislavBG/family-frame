@@ -1,25 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CalendarX } from "lucide-react";
 import type { Person } from "@shared/schema";
 import type { PersonDay } from "@shared/person-views";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { mediaUrl, usePersonDays } from "@/lib/agent-data";
-import { formatClock12, formatDurationMinutes, spanMinutes } from "@/lib/person-day";
-import { parseLocalDate, toISODateString } from "@/lib/format";
+import { formatClock12, formatDurationMinutes, mondayOfIso, spanMinutes, WEEKDAY_SHORT as WEEKDAY } from "@/lib/person-day";
+import { parseLocalDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { DayTimeline } from "./person-day-sheet";
 import { DateBadge, DOW_TONES, LINE, MUTED, SERIF, SURFACE, SectionLabel } from "./satchel";
 import { LessonGroups, MetricTiles } from "./satchel-day";
 
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const NAP_BAR_MAX = 60; // px
-
-function mondayOf(iso: string): string {
-  const d = parseLocalDate(iso);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return toISODateString(d);
-}
 
 function napMinutes(day: PersonDay): number {
   return (day.timeline?.spans ?? [])
@@ -65,8 +58,6 @@ export default function PersonSheets({ person }: { person: Person }) {
   const daysQuery = usePersonDays(person.id, { limit: 60 });
   const [selected, setSelected] = useState<string | null>(null);
 
-  useEffect(() => setSelected(null), [person.id]);
-
   const days = useMemo(() => {
     const byDate = new Map<string, PersonDay>();
     for (const r of daysQuery.data?.records ?? []) {
@@ -101,7 +92,7 @@ export default function PersonSheets({ person }: { person: Person }) {
   }
 
   const day = days.find((d) => d.date === selected) ?? days[0];
-  const weekDays = days.filter((d) => mondayOf(d.date) === mondayOf(day.date)).sort((a, b) => a.date.localeCompare(b.date));
+  const weekDays = days.filter((d) => mondayOfIso(d.date) === mondayOfIso(day.date)).sort((a, b) => a.date.localeCompare(b.date));
   const date = parseLocalDate(day.date);
   const total = daysQuery.data?.total ?? days.length;
   const photos = day.mediaIds ?? [];
@@ -119,7 +110,7 @@ export default function PersonSheets({ person }: { person: Person }) {
       <div className="grid items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
         <div className="flex flex-col gap-3">
           <NapChart days={weekDays} selected={day.date} />
-          <div className="flex max-h-[70vh] flex-col gap-1 overflow-y-auto" role="tablist" aria-label="Days">
+          <div className="flex max-h-[70vh] flex-col gap-1 overflow-y-auto" aria-label="Days">
             {days.map((d) => {
               const dd = parseLocalDate(d.date);
               const on = d.date === day.date;
@@ -128,8 +119,7 @@ export default function PersonSheets({ person }: { person: Person }) {
                 <button
                   key={d.date}
                   type="button"
-                  role="tab"
-                  aria-selected={on}
+                  aria-pressed={on}
                   onClick={() => setSelected(d.date)}
                   className={cn(
                     "flex items-start gap-3 rounded-[18px] border-2 px-3 py-2.5 text-left",
@@ -182,8 +172,8 @@ export default function PersonSheets({ person }: { person: Person }) {
             <div>
               <SectionLabel className="mb-2">Photos that day</SectionLabel>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2" data-testid="day-sheet-photos">
-                {photos.map((id) => (
-                  <a key={id} href={mediaUrl(id)} target="_blank" rel="noopener noreferrer">
+                {photos.map((id, i) => (
+                  <a key={`${id}-${i}`} href={mediaUrl(id)} target="_blank" rel="noopener noreferrer">
                     <img
                       src={mediaUrl(id)}
                       alt={`${person.name}'s photo from ${day.date}`}

@@ -246,7 +246,7 @@ export function createDatasetService(deps: DatasetDeps) {
       const desc = (a: string, b: string) => (a < b ? 1 : a > b ? -1 : 0);
       // Reserved person views sort by their own date so "latest" survives bulk upserts
       // that give every record the same updatedAt.
-      const dateKey = RESERVED_DATE_KEYS[schemaId];
+      const dateKey = Object.hasOwn(RESERVED_DATE_KEYS, schemaId) ? RESERVED_DATE_KEYS[schemaId] : undefined;
       list.sort((a, b) => {
         if (dateKey) {
           const field = (r: DataRecord) => String((r.data as Record<string, unknown> | null)?.[dateKey] ?? "");

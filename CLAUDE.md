@@ -66,7 +66,8 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       │   ├── fullscreen-button.tsx # Reusable fullscreen toggle
 │       │   └── [widgets].tsx   # Clock, Weather, Stock widgets
 │       ├── hooks/
-│       │   └── use-fullscreen.ts # Fullscreen hook with auto-enter support
+│       │   ├── use-fullscreen.ts # Fullscreen hook with auto-enter support
+│       │   └── use-today.ts    # Local YYYY-MM-DD that rolls over at midnight
 │       └── lib/
 │           ├── api.ts          # Query keys, mutation helpers
 │           ├── agent-data.ts   # Typed hooks and URL builders for mail and data routes
@@ -223,7 +224,9 @@ The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day
 - `client/src/components/person/satchel-day.tsx` - day-sheet blocks shared by Dashboard and Daily sheets (`MetricTiles`, `MiniTimeline`, `Moments`, `LessonGroups`)
 - `client/src/components/person/person-day-sheet.tsx` - full `DayTimeline` (Day Timeline Zoom)
 - `client/src/components/person/person-{dashboard,inbox,calendar,photos,sheets,more}.tsx` - one file per section
-- `client/src/lib/person-day.ts` - pure, unit-tested logic (timeline layout, current day/week pick, month grid, lanes); keep logic here, not in components
+- `client/src/lib/person-day.ts` - pure, unit-tested logic (timeline layout, current day/week pick, month grid, lanes, `addDaysIso`/`mondayOfIso`/`WEEKDAY_SHORT`); keep logic and date math here, not in components
+- `PersonView` renders each section with `key={person.id}`, so sections need no "reset on person change" effects; sections without data redirect to Dashboard once visibility queries settle
+- "Today" comes from `useToday()` (`client/src/hooks/use-today.ts`), never `new Date()` at render, so wall displays roll over at midnight
 - Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
 - Not built (no data source yet): the design's Ask bar, "Needs you" card, email category filters and photo favourite/hide/review states.
 
@@ -272,6 +275,7 @@ app.get("/api/resource", asyncHandler(async (req, res) => {
 - CSS variables (HSL format) for theming
 - Dark mode via `dark` class on HTML element
 - Custom utilities: `hover-elevate`, `toggle-elevate`
+- Fonts are self-hosted via `@fontsource*` imports in `client/src/main.tsx` (Inter Variable, Source Serif 4, JetBrains Mono). Do not add Google Fonts or other third-party font links: they send visitors' IPs to a third party (GDPR)
 
 ### API Design
 - RESTful endpoints: `GET /api/resource`, `POST /api/resource/new`, `PATCH /api/resource/:id`

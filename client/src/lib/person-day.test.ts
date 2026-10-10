@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDayTimeline, formatDurationMinutes, spanMinutes, pickCurrentDay, pickCurrentWeek, isCurrentWeek, formatClock12, axisHourLabel, halfHourTicks, eventLanes, eventTone, eventTypeLabel, buildMonthCells } from "./person-day";
+import { layoutDayTimeline, formatDurationMinutes, spanMinutes, pickCurrentDay, pickCurrentWeek, isCurrentWeek, formatClock12, axisHourLabel, halfHourTicks, eventLanes, eventTone, eventTypeLabel, buildMonthCells, addDaysIso, mondayOfIso, weekdayOfIso } from "./person-day";
 
 const toddler = {
   start: "09:37",
@@ -158,5 +158,18 @@ describe("buildMonthCells", () => {
   });
   it("supports Sunday-first weeks", () => {
     expect(buildMonthCells(2026, 9, false)[0].iso).toBe("2026-09-27");
+  });
+});
+
+describe("ISO date helpers", () => {
+  it("adds calendar days across the US DST fall-back", () => {
+    expect(addDaysIso("2026-10-26", 7)).toBe("2026-11-02");
+    expect(addDaysIso("2026-03-01", -1)).toBe("2026-02-28");
+  });
+  it("finds the Monday on or before a date", () => {
+    expect(mondayOfIso("2026-10-10")).toBe("2026-10-05");
+    expect(mondayOfIso("2026-10-05")).toBe("2026-10-05");
+    expect(mondayOfIso("2026-10-11")).toBe("2026-10-05");
+    expect(weekdayOfIso("2026-10-10")).toBe(6);
   });
 });

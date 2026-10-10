@@ -13,10 +13,9 @@ import {
 } from "@/lib/person-day";
 import { parseLocalDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { MONO, SERIF } from "./satchel";
 
-const MONO = "font-['JetBrains_Mono',ui-monospace,monospace]";
 const MONO_DARK = "dark:font-['JetBrains_Mono',ui-monospace,monospace]";
-const SERIF = "font-['Source_Serif_4',Georgia,serif]";
 
 // Daily-sheet palette from the "Day Timeline Zoom" design: light, then dark.
 const TONE_STYLES: Record<EventTone, { pill: string; dot: string; legend: string }> = {
@@ -81,13 +80,11 @@ export function DayTimeline({
   personName,
   date,
   source,
-  compact = false,
 }: {
   timeline: PersonTimeline | undefined;
   personName: string;
   date?: string;
   source?: string;
-  compact?: boolean;
 }) {
   const layout = layoutDayTimeline(timeline);
   if (!layout) return null;
@@ -111,7 +108,6 @@ export function DayTimeline({
   }
   const diaperCount = layout.events.filter((e) => eventTone(e.kind) !== "other").length;
   const otherCount = layout.events.length - diaperCount;
-  const tones = Array.from(new Set(layout.events.map((e) => eventTone(e.kind))));
   const legend = Array.from(
     new Map(layout.events.map((e) => [eventTypeLabel(e.kind, e.label), eventTone(e.kind)])).entries(),
   );
@@ -124,7 +120,7 @@ export function DayTimeline({
       className={cn(
         "flex flex-col rounded-3xl border border-[#e3dcc8] bg-[#fffaf0] text-[#1a1612]",
         "dark:rounded-2xl dark:border-[#3a342b] dark:bg-[#221d18] dark:text-[#f5f0e6]",
-        compact ? "gap-3 px-5 py-4" : "gap-4 px-[26px] pb-5 pt-[22px]",
+        "gap-4 px-[26px] pb-5 pt-[22px]",
       )}
       data-testid="day-timeline"
     >
@@ -272,7 +268,7 @@ export function DayTimeline({
         </div>
       </div>
 
-      {!compact && (legend.length > 0 || tones.length > 0) && (
+      {legend.length > 0 && (
         <div
           className="flex flex-wrap gap-[18px] text-[13px] text-[#5d5648] dark:text-[#c9bfa9]"
           data-testid="day-timeline-legend"

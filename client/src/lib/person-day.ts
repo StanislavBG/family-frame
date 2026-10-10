@@ -115,10 +115,23 @@ export function layoutDayTimeline(timeline: PersonTimeline | undefined): DayTime
   };
 }
 
-function addDaysIso(iso: string, days: number): string {
+export const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/** Calendar-day arithmetic on YYYY-MM-DD strings (UTC, so DST never shifts the date). */
+export function addDaysIso(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Weekday index (0 = Sunday) of a YYYY-MM-DD string. */
+export function weekdayOfIso(iso: string): number {
+  return new Date(`${iso}T00:00:00Z`).getUTCDay();
+}
+
+/** The Monday on or before a YYYY-MM-DD date. */
+export function mondayOfIso(iso: string): string {
+  return addDaysIso(iso, -((weekdayOfIso(iso) + 6) % 7));
 }
 
 /** Today's day, else the newest past day, else the soonest future one. */
