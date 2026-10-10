@@ -15,6 +15,7 @@ import { registerTvRoutes } from "./apps/tv";
 import { registerMediaProxyRoutes } from "./media-proxy";
 import { registerMailRoutes } from "./mail-routes";
 import { registerDataRoutes } from "./data-routes";
+import { registerMediaRoutes } from "./media-routes";
 import { FETCH_TIMEOUT_MS, PUBLIC_CACHE_TTL_MS, memoTTL, discardBody } from "./route-helpers";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
@@ -73,6 +74,7 @@ export async function registerRoutes(
   registerMcpRoutes(app);
   registerMailRoutes(app);
   registerDataRoutes(app);
+  registerMediaRoutes(app);
 
   // Config endpoint - provides environment-specific settings to frontend
   app.get("/api/config", (_req: Request, res: Response) => {
