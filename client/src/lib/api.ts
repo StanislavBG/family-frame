@@ -55,6 +55,15 @@ export const queryKeys = {
     meta: (id: string) => ["/api/files", id, "meta"] as const,
   },
 
+  // Events (params are the last key element)
+  events: {
+    status: () => ["/api/events/status"] as const,
+    items: (params: object = {}) => ["/api/events/items", params] as const,
+    item: (id: string) => ["/api/events/items", id] as const,
+    preferences: () => ["/api/events/preferences"] as const,
+    feedback: () => ["/api/events/feedback"] as const,
+  },
+
   // Notes
   notes: () => ["/api/notes"] as const,
 
