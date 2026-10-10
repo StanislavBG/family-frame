@@ -94,7 +94,7 @@ function CalendarSkeleton() {
   );
 }
 
-interface CalendarGridProps {
+export interface CalendarGridProps {
   currentDate: Date;
   events: CalendarEvent[];
   onDateClick: (date: Date) => void;
@@ -103,7 +103,7 @@ interface CalendarGridProps {
   weekStartsMonday?: boolean;
 }
 
-function CalendarGrid({ currentDate, events, onDateClick, selectedDate, people = [], weekStartsMonday = true }: CalendarGridProps) {
+export function CalendarGrid({ currentDate, events, onDateClick, selectedDate, people = [], weekStartsMonday = true }: CalendarGridProps) {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   
