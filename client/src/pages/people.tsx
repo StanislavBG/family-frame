@@ -36,19 +36,6 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-function ageFromBirthday(birthday?: string): number | null {
-  if (!birthday) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(birthday);
-  if (!m) return null;
-  const now = new Date();
-  let age = now.getFullYear() - Number(m[1]);
-  const before =
-    now.getMonth() + 1 < Number(m[2]) ||
-    (now.getMonth() + 1 === Number(m[2]) && now.getDate() < Number(m[3]));
-  if (before) age -= 1;
-  return age >= 0 ? age : null;
-}
-
 /** Which tabs have data for this person. Dashboard and Calendar are always visible. */
 function usePersonTabs(personId: string): TabId[] {
   const mail = useMailMessages({ personId, limit: 1 });
@@ -83,7 +70,6 @@ function usePersonTabs(personId: string): TabId[] {
 }
 
 function PersonCard({ person }: { person: Person }) {
-  const age = ageFromBirthday(person.birthday);
   return (
     <Link
       href={`/${encodeURIComponent(person.id)}`}
@@ -96,11 +82,6 @@ function PersonCard({ person }: { person: Person }) {
             <UserRound className="h-10 w-10 text-primary" />
           </div>
           <div className="text-2xl font-semibold">{person.name}</div>
-          {age !== null && (
-            <div className="text-muted-foreground" data-testid={`text-person-age-${person.id}`}>
-              {age} {age === 1 ? "year" : "years"} old
-            </div>
-          )}
         </CardContent>
       </Card>
     </Link>
