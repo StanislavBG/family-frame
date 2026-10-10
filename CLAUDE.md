@@ -92,6 +92,10 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── mail-routes.ts          # /api/mail/* routes
 │   ├── dataset-service.ts      # Agent-registered JSON Schemas + records (REST + MCP)
 │   ├── data-routes.ts          # /api/data/* routes
+│   ├── media-store.ts          # Private file store (MEDIA_LIMITS, MediaDeps)
+│   ├── media-routes.ts         # /api/files/* routes
+│   ├── media-import.ts         # URL rehosting (SSRF-guarded fetch)
+│   ├── mail-rehost.ts          # Rehost email imageUrls into media
 │   ├── firebase.ts             # Firebase initialization & helpers
 │   ├── weather.ts              # Open-Meteo integration
 │   ├── google-photos.ts        # Google Photos OAuth & picker
@@ -199,13 +203,15 @@ Operator guide: `docs/agent-access.md`. Agents authenticate with personal access
 - Rule: any new PAT-reachable path must be added to the allowlist in `server/auth.ts` with a scope; new MCP tools check scope in `server/mcp.ts` and reuse a service, never duplicate route logic.
 - Tokens cannot manage tokens (`/api/tokens/*` stays off the allowlist).
 
-### Agent data (mailbox + datasets)
+### Agent data (mailbox + datasets + media)
 Framework for agents (e.g. the "Self" project) to publish private data that future apps read. Details and limits: `docs/agent-access.md`.
 - `shared/agent-data.ts` - Zod schemas, types and `MAIL_LIMITS` / `DATA_LIMITS`
 - `server/mail-service.ts` + `server/mail-routes.ts` - mailbox (`/api/mail/*`), RTDB `mailbox/<userId>`
 - `server/dataset-service.ts` + `server/data-routes.ts` - agent-registered JSON Schemas (draft 2020-12, Ajv) and records (`/api/data/*`), RTDB `appData/<userId>`
+- `server/media-store.ts` + `server/media-routes.ts` - private images/PDFs (`/api/files/*`), RTDB `media/<userId>`; `server/media-import.ts` rehosts https URLs (`POST /api/files/import`); `server/mail-rehost.ts` rehosts email `imageUrls` into `mediaIds` (`POST /api/mail/messages/rehost`), retry state at RTDB `mailbox/<userId>/rehostFailures`
+- Media storage is RTDB base64 behind `MediaDeps` (project sash-d5c2d has no Storage bucket); swap the deps to move to a bucket later. `/api/media/proxy` (in `server/media-proxy.ts`) is the unrelated radio/TV stream proxy.
 - `client/src/lib/agent-data.ts` - typed hooks and URL builders for both route sets
-- Scopes `mail:read|write`, `data:read|write` (write implies read); MCP tools `mail_*` and `data_*` in `server/mcp.ts` reuse the services.
+- Scopes `mail:read|write`, `data:read|write`, `media:read|write` (write implies read); MCP tools `mail_*`, `data_*` and `media_*` in `server/mcp.ts` reuse the services.
 - Rule: this data is private per account and never exposed through household connections.
 
 ### App Registry (framework vs apps)
