@@ -60,6 +60,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       ├── components/
 │       │   ├── ui/             # shadcn components
 │       │   ├── person/         # People app person views (Satchel design; see below)
+│       │   ├── events/         # Events app UI (hero, month view, actions, preferences)
 │       │   ├── app-sidebar.tsx # Navigation sidebar
 │       │   ├── app-picker.tsx  # App Picker (enable/disable apps)
 │       │   ├── empty-state.tsx # Reusable empty state component
@@ -72,6 +73,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       └── lib/
 │           ├── api.ts          # Query keys, mutation helpers
 │           ├── agent-data.ts   # Typed hooks and URL builders for mail and data routes
+│           ├── events.ts       # Typed hooks for /api/events/* and /api/household/*
 │           ├── app-registry.ts # APP_ICONS + app layout hook
 │           ├── format.ts       # Formatting utilities (dates, temps)
 │           ├── queryClient.ts  # React Query setup + apiRequest helper
@@ -82,8 +84,11 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── routes.ts               # All API endpoints
 │   ├── middleware.ts           # Auth middleware, async handler, utilities
 │   ├── auth.ts                 # Clerk verification + PAT auth branch
-│   ├── apps/                   # Per-app route modules (apps/<id>.ts)
+│   ├── apps/                   # Per-app route modules (apps/<id>.ts; events.ts = /api/events/*)
 │   ├── media-proxy.ts          # Media proxy, radio and TV routes
+│   ├── household-*.ts          # Household address + events-sharing consent (profile service, /api/household/* routes)
+│   ├── events-service.ts       # Events recommendations, feedback, calendar linking (events-service-routes.ts: /api/service/events/*)
+│   ├── service-token.ts        # ff_svc_ service token verification (EVENTS_SERVICE_TOKEN_SHA256)
 │   ├── route-inventory.test.ts # Guards the route inventory
 │   ├── config.ts               # getAppBaseUrl() (APP_BASE_URL)
 │   ├── url-guards.ts           # Outbound URL validation (SSRF guards)
@@ -108,7 +113,12 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 ├── shared/                      # Shared schemas & types
 │   ├── apps.ts                 # App registry: APP_IDS, APP_MANIFESTS
 │   ├── agent-data.ts           # Zod schemas, types and limits for mailbox + datasets
+│   ├── household.ts            # Household address + events-sharing consent schemas
+│   ├── events.ts               # Event JSON schema, recommendations, feedback, preferences
+│   ├── events-preferences.ts   # Feedback -> preference weights (pure)
 │   └── schema.ts               # Zod schemas for validation
+├── services/
+│   └── events-pipeline/        # Local Events pipeline (cron, Node 22 only; see docs/events.md)
 └── script/
     └── build.ts                # Build script (esbuild + Vite)
 ```
@@ -139,6 +149,7 @@ SESSION_SECRET                # OAuth state signing secret
 GOOGLE_CLIENT_ID              # Google Photos OAuth client ID
 GOOGLE_CLIENT_SECRET          # Google Photos OAuth client secret
 PIXABAY_API_KEY               # Pixabay photo source
+EVENTS_SERVICE_TOKEN_SHA256   # SHA-256 hex of the ff_svc_ pipeline token; unset disables the service API
 PUBLISHABLE_KEY_PROD          # Server-side Clerk key override (prod)
 PUBLISHABLE_KEY_DEV           # Server-side Clerk key override (dev)
 
@@ -231,6 +242,15 @@ The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day
 - "Today" comes from `useToday()` (`client/src/hooks/use-today.ts`), never `new Date()` at render, so wall displays roll over at midnight
 - Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
 - Not built (no data source yet): the design's Ask bar, "Needs you" card, email category filters and photo favourite/hide/review states.
+
+### Events and household address
+Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`, operator's cron + Haiku) finds events for households that opted in and publishes them through the service API.
+- The street address lives only at `householdProfiles/<uid>` (`shared/household.ts`); never add it to `settings` or connections payloads (only city/country are copied to `settings.location`).
+- `/api/service/events/` is service-token only (`ff_svc_`, hash in `EVENTS_SERVICE_TOKEN_SHA256`) and every per-household route re-checks current consent (not sharing = 404).
+- LLM prompts never contain the street address, names or birthdays; the service API sends member ages only.
+- `services/events-pipeline` is Node 22 only (`node:sqlite`): keep it out of the root `npm test` / `npm run check`; use `npm run events:test` / `events:check`.
+- Every `claude -p` call pins `--model` (Haiku, `services/events-pipeline/haiku.ts`).
+- Preference weights come from the append-only feedback log via `shared/events-preferences.ts`; calendar linking rules live in `server/events-service.ts`.
 
 ### App Registry (framework vs apps)
 - `shared/apps.ts` is the single list of apps: `APP_IDS`, `APP_MANIFESTS`, `defaultEnabled`.
