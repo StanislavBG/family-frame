@@ -57,6 +57,7 @@ export function registerDataRoutes(app: Express, service: DatasetService = datas
   app.get("/api/data/records/:schemaId", dataHandler(async (req, res, userId) => {
     res.json(await service.listRecords(userId, req.params.schemaId, {
       emailId: queryString(req.query.emailId),
+      personId: queryString(req.query.personId),
       limit: queryNumber(req.query.limit),
       offset: queryNumber(req.query.offset),
     }));

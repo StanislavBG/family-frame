@@ -185,3 +185,38 @@ test("users are isolated", async () => {
   assert.deepEqual(await svc.listSchemas("u2"), []);
   assert.equal(root.users, undefined);
 });
+
+test("record personIds: round-trip, dedupe, legacy default, replace", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createDatasetService(deps);
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: {} });
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: 1, personIds: ["p1", "p2", "p1"] }, { id: "b", data: 2 }] });
+  assert.deepEqual((await svc.getRecord("u1", "s", "a")).personIds, ["p1", "p2"]);
+  assert.deepEqual((await svc.getRecord("u1", "s", "b")).personIds, []);
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: 1, personIds: ["p3"] }] });
+  assert.deepEqual((await svc.getRecord("u1", "s", "a")).personIds, ["p3"]);
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: 1 }] });
+  assert.deepEqual((await svc.getRecord("u1", "s", "a")).personIds, []);
+  root.appData.u1.records.s.legacy = { id: "legacy", schemaId: "s", schemaVersion: 1, dataJson: "1", createdAt: "t", updatedAt: "t" };
+  assert.deepEqual((await svc.getRecord("u1", "s", "legacy")).personIds, []);
+});
+
+test("listRecords filters by personId with correct total, paging and emailId AND", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: {} });
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: 1, personIds: ["p1"], emailIds: ["e1"] }] });
+  await svc.putRecords("u1", "s", { records: [{ id: "b", data: 2, personIds: ["p2"] }] });
+  await svc.putRecords("u1", "s", { records: [{ id: "c", data: 3, personIds: ["p1", "p2"], emailIds: ["e1"] }] });
+  await svc.putRecords("u1", "s", { records: [{ id: "d", data: 4, personIds: ["p1"] }] });
+  const p1 = await svc.listRecords("u1", "s", { personId: "p1" });
+  assert.equal(p1.total, 3);
+  assert.deepEqual(p1.records.map((r) => r.id), ["d", "c", "a"]);
+  const paged = await svc.listRecords("u1", "s", { personId: "p1", limit: 1, offset: 1 });
+  assert.equal(paged.total, 3);
+  assert.deepEqual(paged.records.map((r) => r.id), ["c"]);
+  const p2 = await svc.listRecords("u1", "s", { personId: "p2" });
+  assert.deepEqual(p2.records.map((r) => r.id), ["c", "b"]);
+  const both = await svc.listRecords("u1", "s", { personId: "p1", emailId: "e1" });
+  assert.deepEqual(both.records.map((r) => r.id), ["c", "a"]);
+  assert.equal((await svc.listRecords("u1", "s", { personId: "nobody" })).total, 0);
+});

@@ -28,6 +28,7 @@ export interface DatasetDeps {
 
 export interface ListRecordsOptions {
   emailId?: string;
+  personId?: string;
   limit?: number;
   offset?: number;
 }
@@ -58,7 +59,7 @@ function toSchema(raw: any): DataSchema {
 
 function toRecord(raw: any): DataRecord {
   const { dataJson, ...rest } = raw;
-  return { ...rest, data: JSON.parse(dataJson), emailIds: rest.emailIds ?? [] } as DataRecord;
+  return { ...rest, data: JSON.parse(dataJson), emailIds: rest.emailIds ?? [], personIds: rest.personIds ?? [] } as DataRecord;
 }
 
 export function createDatasetService(deps: DatasetDeps) {
@@ -187,6 +188,7 @@ export function createDatasetService(deps: DatasetDeps) {
           schemaVersion: schema.version,
           dataJson: JSON.stringify(rec.data),
           emailIds: rec.emailIds ?? [],
+          personIds: Array.from(new Set(rec.personIds ?? [])),
           createdAt: existing[rec.id]?.createdAt ?? ts,
           updatedAt: ts,
         };
@@ -201,6 +203,7 @@ export function createDatasetService(deps: DatasetDeps) {
       const all = (await deps.get(recordsPath(userId, schemaId))) ?? {};
       let list = Object.values<any>(all).map(toRecord);
       if (opts.emailId) list = list.filter((r) => r.emailIds.includes(opts.emailId!));
+      if (opts.personId) list = list.filter((r) => r.personIds.includes(opts.personId!));
       list.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
       const limit = Math.min(Math.max(opts.limit ?? DATA_LIMITS.listLimitDefault, 1), DATA_LIMITS.listLimitMax);
       const offset = Math.max(opts.offset ?? 0, 0);

@@ -104,9 +104,16 @@ test("success shapes", async () => {
   assert.deepEqual(calls.find((c) => c[0] === "putRecords")!.slice(1), ["u1", "s", { records: [] }]);
   assert.deepEqual((await call(routes, "GET /api/data/records/:schemaId", { params: { schemaId: "s" }, query: { emailId: "e", limit: "5", offset: "2" } })).body,
     { records: [], total: 0 });
-  assert.deepEqual(calls.find((c) => c[0] === "listRecords")!.slice(1), ["u1", "s", { emailId: "e", limit: 5, offset: 2 }]);
+  assert.deepEqual(calls.find((c) => c[0] === "listRecords")!.slice(1), ["u1", "s", { emailId: "e", personId: undefined, limit: 5, offset: 2 }]);
   assert.deepEqual((await call(routes, "GET /api/data/records/:schemaId/:recordId", { params: { schemaId: "s", recordId: "r" } })).body, { id: "r" });
   const delRec = await call(routes, "DELETE /api/data/records/:schemaId/:recordId", { params: { schemaId: "s", recordId: "r" } });
   assert.equal(delRec.status, 204);
   assert.equal(delRec.ended, true);
+});
+
+test("GET records passes personId to the service", async () => {
+  const { routes, calls } = setup();
+  await call(routes, "GET /api/data/records/:schemaId", { params: { schemaId: "s" }, query: { personId: "p1" } });
+  const opts = calls.find((c) => c[0] === "listRecords")![3];
+  assert.equal(opts.personId, "p1");
 });

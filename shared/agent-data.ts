@@ -144,6 +144,7 @@ export const insertDataRecordSchema = z
     id: agentIdSchema,
     data: z.unknown(),
     emailIds: z.array(agentIdSchema).max(DATA_LIMITS.emailIdsMax).optional(),
+    personIds: personIdsSchema.optional(),
   })
   .strict()
   .refine((r) => r.data !== undefined, { message: "data is required", path: ["data"] });
@@ -154,6 +155,7 @@ export const dataRecordSchema = z.object({
   schemaVersion: z.number().int(),
   data: z.unknown(),
   emailIds: z.array(z.string()),
+  personIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

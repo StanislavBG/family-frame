@@ -151,6 +151,7 @@ test("data record: batch and stored shape", () => {
       schemaVersion: 1,
       data: null,
       emailIds: [],
+      personIds: [],
       createdAt: "x",
       updatedAt: "y",
     }).success,
