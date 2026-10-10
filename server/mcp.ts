@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { calendarService, CalendarError, type CalendarService } from "./calendar-service";
 import { mailService, MailError, type MailService } from "./mail-service";
 import { datasetService, DatasetError, type DatasetService } from "./dataset-service";
+import { mediaStore, MediaError, MEDIA_LIMITS, type MediaStore, type MediaMeta } from "./media-store";
 import { API_TOKEN_SCOPES } from "./api-tokens";
 import { insertDataRecordSchema, insertEmailSchema, DATA_LIMITS, MAIL_LIMITS, SCHEMA_ID_PATTERN } from "@shared/agent-data";
 import { EventType, type EventTypeValue, type InsertCalendarEvent } from "@shared/schema";
@@ -45,11 +46,27 @@ const MAIL_WRITE = ["mail:write"];
 const DATA_READ = ["data:read", "data:write"];
 const DATA_WRITE = ["data:write"];
 
+const MEDIA_READ = ["media:read", "media:write"];
+const MEDIA_WRITE = ["media:write"];
+
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function decodeBase64(input: string): Buffer {
+  const cleaned = input.replace(/\s+/g, "");
+  if (!BASE64_PATTERN.test(cleaned)) throw new ToolError("base64 is not valid base64 data.");
+  const buffer = Buffer.from(cleaned, "base64");
+  if (buffer.length === 0) throw new ToolError("base64 decodes to an empty file.");
+  return buffer;
+}
+
+const withUrl = (meta: MediaMeta) => ({ ...meta, url: `/api/files/${encodeURIComponent(meta.id)}` });
+
 const schemaIdField = z.string().regex(SCHEMA_ID_PATTERN, "Lowercase letters, digits and hyphens; max 64 chars");
 
 export interface McpServices {
   mail?: MailService;
   data?: DatasetService;
+  media?: MediaStore;
 }
 
 export function buildFamilyFrameMcpServer(
@@ -59,6 +76,7 @@ export function buildFamilyFrameMcpServer(
 ): McpServer {
   const mail = services.mail ?? mailService;
   const data = services.data ?? datasetService;
+  const media = services.media ?? mediaStore;
   const mcpServer = new McpServer({ name: "family-frame", version: "1.0.0" });
   // The SDK's registerTool generics blow up tsc with zod 3 shapes; register through a loose signature
   // and type each handler's args explicitly with z.infer.
@@ -80,7 +98,7 @@ export function buildFamilyFrameMcpServer(
     try {
       return ok(await fn());
     } catch (err) {
-      if (err instanceof ToolError || err instanceof CalendarError || err instanceof MailError || err instanceof DatasetError) return fail(err.message);
+      if (err instanceof ToolError || err instanceof CalendarError || err instanceof MailError || err instanceof DatasetError || err instanceof MediaError) return fail(err.message);
       console.error("MCP tool error:", err);
       return fail("Internal error while processing the request.");
     }
@@ -343,6 +361,73 @@ export function buildFamilyFrameMcpServer(
       run(DATA_WRITE, async () => {
         await data.deleteRecord(ctx.userId, schemaId, recordId);
         return { deleted: recordId };
+      })(),
+  );
+
+  server.registerTool(
+    "media_upload",
+    {
+      description: `Upload a private file (JPEG, PNG, GIF, WebP or PDF; max ${MEDIA_LIMITS.fileBytesMax / (1024 * 1024)}MB per file) as base64. The declared mimeType must match the file content. Re-uploading identical bytes under the same id is idempotent (created: false). Returned meta includes a url ('/api/files/<id>') serving the file. For bulk uploads prefer REST POST /api/files with raw bytes, which avoids base64 overhead.`,
+      inputSchema: {
+        id: z.string().min(1).optional(),
+        filename: z.string().min(1).max(MEDIA_LIMITS.filenameMax),
+        mimeType: z.string().min(1),
+        base64: z.string().min(1),
+        tags: z.array(z.string()).max(MEDIA_LIMITS.tagsMax).optional(),
+        emailIds: z.array(z.string()).max(MEDIA_LIMITS.emailIdsMax).optional(),
+      },
+    },
+    async (args: { id?: string; filename: string; mimeType: string; base64: string; tags?: string[]; emailIds?: string[] }) =>
+      run(MEDIA_WRITE, async () => {
+        const { base64, ...rest } = args;
+        const { meta, created } = await media.putMedia(ctx.userId, { ...rest, buffer: decodeBase64(base64) });
+        return { meta: withUrl(meta), created };
+      })(),
+  );
+
+  server.registerTool(
+    "media_list",
+    {
+      description: "List file metadata (never file bytes), newest first. Filter by kind (image|pdf), tag or emailId; page with limit and offset. Includes total and storage usage.",
+      inputSchema: {
+        kind: z.enum(["image", "pdf"]).optional(),
+        tag: z.string().optional(),
+        emailId: z.string().optional(),
+        limit: z.number().int().min(1).max(MEDIA_LIMITS.listLimitMax).optional(),
+        offset: z.number().int().min(0).optional(),
+      },
+    },
+    async (args: { kind?: "image" | "pdf"; tag?: string; emailId?: string; limit?: number; offset?: number }) =>
+      run(MEDIA_READ, async () => {
+        const result = await media.listMedia(ctx.userId, args);
+        return { ...result, items: result.items.map(withUrl) };
+      })(),
+  );
+
+  server.registerTool(
+    "media_get_meta",
+    {
+      description: "Get the metadata (not the bytes) of one file by id, including its url.",
+      inputSchema: { id: z.string().min(1) },
+    },
+    async ({ id }: { id: string }) =>
+      run(MEDIA_READ, async () => {
+        const found = await media.getMedia(ctx.userId, id);
+        if (!found) throw new ToolError(`File "${id}" not found.`);
+        return withUrl(found.meta);
+      })(),
+  );
+
+  server.registerTool(
+    "media_delete",
+    {
+      description: "Delete one file by id.",
+      inputSchema: { id: z.string().min(1) },
+    },
+    async ({ id }: { id: string }) =>
+      run(MEDIA_WRITE, async () => {
+        if (!(await media.deleteMedia(ctx.userId, id))) throw new ToolError(`File "${id}" not found.`);
+        return { deleted: id };
       })(),
   );
 

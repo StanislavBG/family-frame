@@ -5,6 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildFamilyFrameMcpServer } from "./mcp";
 import { CalendarError, type CalendarService } from "./calendar-service";
 import type { MailService } from "./mail-service";
+import type { MediaStore } from "./media-store";
 import { DatasetError, type DatasetService } from "./dataset-service";
 
 function makeFakeService() {
@@ -104,10 +105,51 @@ function makeFakeData() {
   return { data, calls };
 }
 
-async function connect(scopes: string[], service: CalendarService, mail?: MailService, data?: DatasetService) {
+function makeFakeMedia() {
+  const calls: { method: string; args: any[] }[] = [];
+  const meta = {
+    id: "abc",
+    filename: "a b.png",
+    mimeType: "image/png",
+    kind: "image",
+    size: 3,
+    sha256: "x",
+    tags: [],
+    emailIds: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  const media = {
+    async putMedia(...args: any[]) {
+      calls.push({ method: "putMedia", args });
+      return { meta, created: true };
+    },
+    async listMedia(...args: any[]) {
+      calls.push({ method: "listMedia", args });
+      return { items: [meta], total: 1, usage: { bytes: 3, count: 1 } };
+    },
+    async getMedia(...args: any[]) {
+      calls.push({ method: "getMedia", args });
+      return null;
+    },
+    async deleteMedia(...args: any[]) {
+      calls.push({ method: "deleteMedia", args });
+      return true;
+    },
+  } as unknown as MediaStore;
+  return { media, calls };
+}
+
+async function connect(
+  scopes: string[],
+  service: CalendarService,
+  mail?: MailService,
+  data?: DatasetService,
+  media?: MediaStore,
+) {
   const server = buildFamilyFrameMcpServer({ userId: "u1", username: "user", scopes }, service, {
     ...(mail ? { mail } : {}),
     ...(data ? { data } : {}),
+    ...(media ? { media } : {}),
   });
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "1.0.0" });
@@ -118,7 +160,7 @@ async function connect(scopes: string[], service: CalendarService, mail?: MailSe
 const text = (r: any) => (r.content as any[])[0].text as string;
 const RW = ["calendar:read", "calendar:write"];
 
-test("lists the 18 tools", async () => {
+test("lists the 22 tools", async () => {
   const { service } = makeFakeService();
   const client = await connect(RW, service);
   const { tools } = await client.listTools();
@@ -142,6 +184,10 @@ test("lists the 18 tools", async () => {
       "mail_list_emails",
       "mail_mark_read",
       "mail_upsert_emails",
+      "media_delete",
+      "media_get_meta",
+      "media_list",
+      "media_upload",
       "update_event",
     ],
   );
@@ -307,4 +353,54 @@ test("data:write token puts a schema then records", async () => {
   assert.equal(calls[1].method, "putRecords");
   assert.deepEqual(calls[1].args[2], { records: [sampleRecord] });
   assert.equal(JSON.parse(text(r)).created, 1);
+});
+
+const uploadArgs = { filename: "a b.png", mimeType: "image/png", base64: "AAEC" };
+
+test("data-only token is denied media_upload", async () => {
+  const { service } = makeFakeService();
+  const { media, calls } = makeFakeMedia();
+  const client = await connect(["data:write"], service, undefined, undefined, media);
+  const r = await client.callTool({ name: "media_upload", arguments: uploadArgs });
+  assert.equal(r.isError, true);
+  assert.match(text(r), /media:write/);
+  assert.equal(calls.length, 0);
+});
+
+test("media:read token can list and get_meta but not delete", async () => {
+  const { service } = makeFakeService();
+  const { media, calls } = makeFakeMedia();
+  const client = await connect(["media:read"], service, undefined, undefined, media);
+  const list = await client.callTool({ name: "media_list", arguments: { kind: "image" } });
+  assert.ok(!list.isError);
+  const body = JSON.parse(text(list));
+  assert.equal(body.items[0].url, "/api/files/abc");
+  assert.equal(calls[0].method, "listMedia");
+  const meta = await client.callTool({ name: "media_get_meta", arguments: { id: "abc" } });
+  assert.equal(meta.isError, true);
+  assert.match(text(meta), /not found/);
+  const del = await client.callTool({ name: "media_delete", arguments: { id: "abc" } });
+  assert.equal(del.isError, true);
+  assert.match(text(del), /media:write/);
+  assert.equal(calls.length, 2);
+});
+
+test("media:write token uploads decoded bytes and rejects bad base64", async () => {
+  const { service } = makeFakeService();
+  const { media, calls } = makeFakeMedia();
+  const client = await connect(["media:write"], service, undefined, undefined, media);
+  const r = await client.callTool({ name: "media_upload", arguments: { ...uploadArgs, tags: ["t"] } });
+  assert.ok(!r.isError);
+  assert.equal(calls[0].method, "putMedia");
+  assert.deepEqual([...calls[0].args[1].buffer], [0, 1, 2]);
+  assert.equal(calls[0].args[1].base64, undefined);
+  const out = JSON.parse(text(r));
+  assert.equal(out.created, true);
+  assert.equal(out.meta.url, "/api/files/abc");
+  const bad = await client.callTool({ name: "media_upload", arguments: { ...uploadArgs, base64: "not base64!" } });
+  assert.equal(bad.isError, true);
+  assert.equal(calls.length, 1);
+  const del = await client.callTool({ name: "media_delete", arguments: { id: "abc" } });
+  assert.ok(!del.isError);
+  assert.equal(calls[1].method, "deleteMedia");
 });
