@@ -15,6 +15,7 @@ import { registerTvRoutes } from "./apps/tv";
 import { registerMediaProxyRoutes } from "./media-proxy";
 import { registerMailRoutes } from "./mail-routes";
 import { registerDataRoutes } from "./data-routes";
+import { registerHouseholdRoutes } from "./household-routes";
 import { registerMediaRoutes } from "./media-routes";
 import { FETCH_TIMEOUT_MS, PUBLIC_CACHE_TTL_MS, memoTTL, discardBody } from "./route-helpers";
 import { createServer, type Server } from "http";
@@ -120,6 +121,8 @@ export async function registerRoutes(
 
     res.json(updatedSettings);
   }));
+
+  registerHouseholdRoutes(app);
 
   // API token management: browser (Clerk) sessions only, never PAT-authenticated requests
   const createTokenSchema = z.object({
@@ -309,7 +312,9 @@ export async function registerRoutes(
           id: connectedUserId,
           username: connectedUserData.username,
           homeName: connectedUserData.settings?.homeName,
-          location: connectedUserData.settings?.location,
+          location: connectedUserData.settings?.location
+            ? { city: connectedUserData.settings.location.city, country: connectedUserData.settings.location.country }
+            : undefined,
           connectedAt: new Date().toISOString(),
         });
       }
