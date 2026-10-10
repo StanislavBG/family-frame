@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildFamilyFrameMcpServer } from "./mcp";
 import { CalendarError, type CalendarService } from "./calendar-service";
+import type { MailService } from "./mail-service";
 
 function makeFakeService() {
   const calls: { method: string; args: any[] }[] = [];
@@ -37,8 +38,36 @@ function makeFakeService() {
   return { service, calls };
 }
 
-async function connect(scopes: string[], service: CalendarService) {
-  const server = buildFamilyFrameMcpServer({ userId: "u1", username: "user", scopes }, service);
+function makeFakeMail() {
+  const calls: { method: string; args: any[] }[] = [];
+  const mail = {
+    async upsertEmails(...args: any[]) {
+      calls.push({ method: "upsertEmails", args });
+      return { created: 1, updated: 0, ids: ["m1"], pruned: 0 };
+    },
+    async listEmails(...args: any[]) {
+      calls.push({ method: "listEmails", args });
+      return { emails: [], nextBefore: null };
+    },
+    async getEmail() {
+      return null;
+    },
+    async setRead(...args: any[]) {
+      calls.push({ method: "setRead", args });
+      return { updated: 0 };
+    },
+    async deleteEmail() {
+      return false;
+    },
+    async unreadCount() {
+      return 0;
+    },
+  } as unknown as MailService;
+  return { mail, calls };
+}
+
+async function connect(scopes: string[], service: CalendarService, mail?: MailService) {
+  const server = buildFamilyFrameMcpServer({ userId: "u1", username: "user", scopes }, service, mail ? { mail } : {});
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "1.0.0" });
   await Promise.all([server.connect(serverT), client.connect(clientT)]);
@@ -48,13 +77,24 @@ async function connect(scopes: string[], service: CalendarService) {
 const text = (r: any) => (r.content as any[])[0].text as string;
 const RW = ["calendar:read", "calendar:write"];
 
-test("lists the 5 tools", async () => {
+test("lists the 10 tools", async () => {
   const { service } = makeFakeService();
   const client = await connect(RW, service);
   const { tools } = await client.listTools();
   assert.deepEqual(
     tools.map((t) => t.name).sort(),
-    ["create_event", "delete_event", "list_events", "list_people", "update_event"],
+    [
+      "create_event",
+      "delete_event",
+      "list_events",
+      "list_people",
+      "mail_delete_email",
+      "mail_get_email",
+      "mail_list_emails",
+      "mail_mark_read",
+      "mail_upsert_emails",
+      "update_event",
+    ],
   );
 });
 
@@ -126,4 +166,46 @@ test("delete_event calls service.deleteEvent; CalendarError becomes isError", as
   const bad = await client.callTool({ name: "delete_event", arguments: { eventId: "missing" } });
   assert.equal(bad.isError, true);
   assert.match(text(bad), /only delete your own/);
+});
+
+const sampleEmail = {
+  id: "m1",
+  receivedAt: "2026-01-01T00:00:00Z",
+  from: { email: "a@example.com" },
+  subject: "Hi",
+  text: "Hello",
+};
+
+test("calendar-only token is denied mail_upsert_emails", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(RW, service, mail);
+  const r = await client.callTool({ name: "mail_upsert_emails", arguments: { emails: [sampleEmail] } });
+  assert.equal(r.isError, true);
+  assert.match(text(r), /mail:write/);
+  assert.equal(calls.length, 0);
+});
+
+test("mail:read token can list but not mark read", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(["mail:read"], service, mail);
+  const list = await client.callTool({ name: "mail_list_emails", arguments: { limit: 5 } });
+  assert.ok(!list.isError);
+  assert.equal(calls[0].method, "listEmails");
+  const mark = await client.callTool({ name: "mail_mark_read", arguments: { ids: "all" } });
+  assert.equal(mark.isError, true);
+  assert.match(text(mark), /mail:write/);
+  assert.equal(calls.length, 1);
+});
+
+test("mail:write token upserts emails", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(["mail:write"], service, mail);
+  const r = await client.callTool({ name: "mail_upsert_emails", arguments: { emails: [sampleEmail] } });
+  assert.ok(!r.isError);
+  assert.equal(calls[0].method, "upsertEmails");
+  assert.equal(calls[0].args[0], "u1");
+  assert.equal(JSON.parse(text(r)).created, 1);
 });
