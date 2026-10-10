@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { getFirebaseDb } from "./firebase";
+import { calendarService, type CalendarService } from "./calendar-service";
+import type { CalendarEvent } from "@shared/schema";
 import {
   EVENTS_LIMITS,
   eventPreferencesSchema,
+  patchPlanSchema,
   postFeedbackSchema,
+  postResponseSchema,
   putRecommendationsSchema,
   type EventPreferences,
   type FeedbackEntry,
@@ -28,6 +32,14 @@ export interface EventsDeps {
   // Appends under a generated key (RTDB ref.push).
   push(path: string, value: any): Promise<void>;
   now?(): Date;
+  // Defaults to the real calendar service; tests inject a fake.
+  calendar?: Pick<CalendarService, "createEvent" | "setLinkedFields" | "deleteEvent" | "listEvents">;
+}
+
+export interface BusyInterval {
+  start: string;
+  end: string;
+  allDay: boolean;
 }
 
 export interface RecExplanation {
@@ -186,7 +198,63 @@ function eventStartMs(event: FfEvent): number {
   return Date.parse(event.schedule.start);
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}/;
+
+// Local YYYY-MM-DD and HH:MM of an instant in a timezone (falls back to UTC for unknown zones).
+function localParts(iso: string, timeZone: string): { date: string; time: string } {
+  const format = (tz: string) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = format(timeZone);
+  } catch {
+    parts = format("UTC");
+  }
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
+}
+
+type DateFields = { startDate: string; endDate: string; startTime?: string; endTime?: string };
+
+// Calendar date/time fields for the occurrence starting at `occurrenceStart` (default: the main schedule).
+function calendarDates(event: FfEvent, occurrenceStart?: string): DateFields {
+  const { schedule } = event;
+  let start = schedule.start;
+  let end = schedule.end;
+  if (occurrenceStart !== undefined && Date.parse(occurrenceStart) !== Date.parse(schedule.start)) {
+    const occ = schedule.occurrences.find((o) => Date.parse(o.start) === Date.parse(occurrenceStart));
+    if (occ) {
+      start = occ.start;
+      end = occ.end;
+    }
+  }
+  if (schedule.allDay) {
+    const startDate = DATE_ONLY.test(start) ? start.slice(0, 10) : localParts(start, schedule.timezone).date;
+    const endDate = end ? (DATE_ONLY.test(end) ? end.slice(0, 10) : localParts(end, schedule.timezone).date) : startDate;
+    return { startDate, endDate: endDate < startDate ? startDate : endDate };
+  }
+  const s = localParts(start, schedule.timezone);
+  const out: DateFields = { startDate: s.date, endDate: s.date, startTime: s.time };
+  if (end) {
+    const e = localParts(end, schedule.timezone);
+    out.endDate = e.date;
+    out.endTime = e.time;
+  }
+  return out;
+}
+
+const scheduleKey = (e: FfEvent) => JSON.stringify([e.schedule.timezone, e.schedule.start, e.schedule.end, e.schedule.allDay, e.schedule.occurrences]);
+
+const eventLocation = (e: FfEvent) => [e.location.venueName, e.location.city].filter(Boolean).join(", ");
+
+// The calendar entry is gone (household deleted it) when the calendar service says 403/404.
+const isMissingEntry = (err: unknown) => {
+  const status = (err as { status?: number } | null)?.status;
+  return status === 403 || status === 404;
+};
+
 export function createEventsService(deps: EventsDeps) {
+  const calendar = () => deps.calendar ?? calendarService;
   const nowDate = () => (deps.now ? deps.now() : new Date());
   const now = () => nowDate().toISOString();
 
@@ -236,7 +304,34 @@ export function createEventsService(deps: EventsDeps) {
     return eventEndMs(event) < cutoff;
   }
 
-  return {
+  // Moves the linked calendar entry along with a pipeline change; returns null when the entry is gone.
+  async function syncCalendar(
+    userId: string,
+    link: EventCalendarLink,
+    prev: StoredRecommendation,
+    prevEvent: FfEvent,
+    next: FfEvent,
+  ): Promise<EventCalendarLink | null> {
+    const patch: Parameters<ReturnType<typeof calendar>["setLinkedFields"]>[3] = {};
+    if (next.status === "cancelled" && prevEvent.status !== "cancelled") patch.cancelled = true;
+    else if (prevEvent.status === "cancelled" && next.status !== "cancelled") patch.cancelled = false;
+    if (scheduleKey(prevEvent) !== scheduleKey(next) && !prev.plan?.occurrenceStart) {
+      Object.assign(patch, calendarDates(next));
+      // Explicit empty strings clear stale times (all-day or end removed).
+      patch.startTime = patch.startTime ?? "";
+      patch.endTime = patch.endTime ?? "";
+    }
+    if (Object.keys(patch).length === 0) return link;
+    try {
+      await calendar().setLinkedFields(userId, "", link.calendarEventId, patch);
+      return link;
+    } catch (err) {
+      if (isMissingEntry(err)) return null;
+      throw err;
+    }
+  }
+
+  const service = {
     // ---- Pipeline upsert -------------------------------------------------
     async upsertRecommendations(userId: string, input: unknown): Promise<UpsertResult> {
       const parsed = putRecommendationsSchema.safeParse(input);
@@ -296,6 +391,10 @@ export function createEventsService(deps: EventsDeps) {
         const flagged = hasNewChange(prevEvent, p.event);
         if (flagged) result.changed.push(p.id);
         result.updated++;
+        let calendarLink = prev.calendar;
+        if (calendarLink && prevEvent) {
+          calendarLink = (await syncCalendar(userId, calendarLink, prev, prevEvent, p.event)) ?? undefined;
+        }
         // Spread keeps every household-owned field; only pipeline-owned ones are replaced.
         writes[p.id] = {
           ...prev,
@@ -305,6 +404,8 @@ export function createEventsService(deps: EventsDeps) {
           withdrawn: false,
           lastRunId: runId,
         } satisfies StoredRecommendation;
+        if (calendarLink) writes[p.id].calendar = calendarLink;
+        else delete writes[p.id].calendar;
       }
 
       await deps.update(recsPath(userId), writes);
@@ -410,8 +511,131 @@ export function createEventsService(deps: EventsDeps) {
       await deps.remove(runMetaPath(userId));
     },
 
-    // ---- Respond and calendar sync (added by a later PRD) ----
+    // ---- Respond and calendar sync ----
+    async respond(userId: string, username: string, eventId: string, body: unknown): Promise<RecommendationItem> {
+      const parsed = postResponseSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new EventsError(`Invalid response: ${parsed.error.issues[0]?.message ?? "invalid"}`, 400);
+      }
+      const { response, reason, visibility, people } = parsed.data;
+      const raw = await loadOne(userId, eventId);
+      const event = parseJson<FfEvent>(raw.eventJson, "eventJson", eventId);
+      if (!event) throw new EventsError("Event not found", 404);
+
+      await service.appendResponseFeedback(userId, eventId, response, reason);
+
+      const resolvedPeople = people ?? raw.plan?.people;
+      const createLinked = async (): Promise<EventCalendarLink> => {
+        const vis = visibility ?? "Private";
+        const input: Parameters<ReturnType<typeof calendar>["createEvent"]>[2] = {
+          title: event!.title,
+          ...calendarDates(event!, raw.plan?.occurrenceStart),
+          type: vis,
+          people: resolvedPeople ?? [],
+        };
+        const loc = eventLocation(event!);
+        if (loc) input.location = loc;
+        if (raw.plan?.notes) input.notes = raw.plan.notes;
+        const created: CalendarEvent = await calendar().createEvent(userId, username, input, { source: { app: "events", refId: eventId } });
+        if (event!.status === "cancelled") {
+          await calendar().setLinkedFields(userId, username, created.id, { cancelled: true }).catch(() => undefined);
+        }
+        return { calendarEventId: created.id, visibility: vis };
+      };
+
+      let link: EventCalendarLink | null = raw.calendar ?? null;
+      if (response === "not-interested" || response === "dismissed") {
+        if (link) {
+          try {
+            await calendar().deleteEvent(userId, username, link.calendarEventId);
+          } catch (err) {
+            if (!isMissingEntry(err)) throw err;
+          }
+          link = null;
+        }
+      } else {
+        const addToCalendar = parsed.data.addToCalendar ?? response === "going";
+        if (link) {
+          try {
+            const patch: Parameters<ReturnType<typeof calendar>["setLinkedFields"]>[3] = { type: visibility ?? link.visibility };
+            if (resolvedPeople) patch.people = resolvedPeople;
+            await calendar().setLinkedFields(userId, username, link.calendarEventId, patch);
+            link = { calendarEventId: link.calendarEventId, visibility: visibility ?? link.visibility };
+          } catch (err) {
+            if (!isMissingEntry(err)) throw err;
+            // Household deleted the entry: never silently recreate it unless explicitly asked to.
+            link = null;
+            if (parsed.data.addToCalendar === true) link = await createLinked();
+          }
+        } else if (addToCalendar) {
+          link = await createLinked();
+        }
+      }
+
+      await deps.update(recPath(userId, eventId), { response, respondedAt: now(), calendar: link });
+      return service.getRecommendation(userId, eventId);
+    },
+
+    async updatePlan(userId: string, username: string, eventId: string, body: unknown): Promise<RecommendationItem> {
+      const parsed = patchPlanSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new EventsError(`Invalid plan: ${parsed.error.issues[0]?.message ?? "invalid"}`, 400);
+      }
+      const { occurrenceStart, notes, people, visibility } = parsed.data;
+      const raw = await loadOne(userId, eventId);
+      const event = parseJson<FfEvent>(raw.eventJson, "eventJson", eventId);
+      if (!event) throw new EventsError("Event not found", 404);
+
+      if (occurrenceStart !== undefined) {
+        const t = Date.parse(occurrenceStart);
+        const valid = t === Date.parse(event.schedule.start) || event.schedule.occurrences.some((o) => Date.parse(o.start) === t);
+        if (!valid) throw new EventsError("occurrenceStart must match the event start or one of its occurrences", 400);
+      }
+
+      const plan: EventPlan = { ...(raw.plan ?? {}) };
+      if (occurrenceStart !== undefined) plan.occurrenceStart = occurrenceStart;
+      if (notes !== undefined) plan.notes = notes;
+      if (people !== undefined) plan.people = people;
+
+      const writes: Record<string, any> = { plan };
+      const link = raw.calendar;
+      if (link) {
+        const patch: Parameters<ReturnType<typeof calendar>["setLinkedFields"]>[3] = {};
+        if (occurrenceStart !== undefined) Object.assign(patch, calendarDates(event, occurrenceStart));
+        if (notes !== undefined) patch.notes = notes;
+        if (people !== undefined) patch.people = people;
+        if (visibility !== undefined) patch.type = visibility;
+        try {
+          await calendar().setLinkedFields(userId, username, link.calendarEventId, patch);
+          if (visibility !== undefined) writes.calendar = { calendarEventId: link.calendarEventId, visibility };
+        } catch (err) {
+          if (!isMissingEntry(err)) throw err;
+          writes.calendar = null;
+        }
+      }
+      await deps.update(recPath(userId, eventId), writes);
+      return service.getRecommendation(userId, eventId);
+    },
+
+    // The household's own calendar entries as bare intervals (no titles); date range is compared by calendar date.
+    async listBusy(userId: string, username: string, fromIso: string, toIso: string): Promise<BusyInterval[]> {
+      const from = fromIso.slice(0, 10);
+      const to = toIso.slice(0, 10);
+      const all = await calendar().listEvents(userId, username);
+      const out: BusyInterval[] = [];
+      for (const e of all) {
+        if (e.creatorId !== userId || e.cancelled) continue;
+        if (e.endDate < from || e.startDate > to) continue;
+        if (!e.startTime) {
+          out.push({ start: e.startDate, end: e.endDate, allDay: true });
+        } else {
+          out.push({ start: `${e.startDate}T${e.startTime}`, end: `${e.endDate}T${e.endTime ?? e.startTime}`, allDay: false });
+        }
+      }
+      return out.sort((a, b) => a.start.localeCompare(b.start));
+    },
   };
+  return service;
 }
 
 export type EventsService = ReturnType<typeof createEventsService>;
@@ -455,4 +679,7 @@ export const eventsService: EventsService = {
   getPreferences: (...args) => defaultService().getPreferences(...args),
   putPreferences: (...args) => defaultService().putPreferences(...args),
   deleteAllForHousehold: (...args) => defaultService().deleteAllForHousehold(...args),
+  respond: (...args) => defaultService().respond(...args),
+  updatePlan: (...args) => defaultService().updatePlan(...args),
+  listBusy: (...args) => defaultService().listBusy(...args),
 };

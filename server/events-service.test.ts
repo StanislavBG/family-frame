@@ -353,3 +353,203 @@ test("deleteAllForHousehold removes events data but not calendar", async () => {
   assert.ok(root.eventRecs.u2);
   assert.ok(root.calendar.u1.c1);
 });
+
+// ---- Respond and calendar sync ----
+
+const EID = "pumpkin-festival-2026";
+
+class FakeCalendarError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
+function makeCalendar() {
+  const events: any[] = [];
+  let seq = 0;
+  const calls = { create: 0, set: 0, del: 0 };
+  const cal: any = {
+    async createEvent(userId: string, _u: string, input: any, opts?: any) {
+      calls.create++;
+      const e = { id: `c${++seq}`, ...input, creatorId: userId, ...(opts?.source ? { source: opts.source } : {}) };
+      events.push(e);
+      return structuredClone(e);
+    },
+    async setLinkedFields(_userId: string, _u: string, id: string, patch: any) {
+      calls.set++;
+      const e = events.find((x) => x.id === id);
+      if (!e) throw new FakeCalendarError("You can only edit your own events", 403);
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) continue;
+        if (v === "" || v === null) delete e[k];
+        else e[k] = v;
+      }
+      return structuredClone(e);
+    },
+    async deleteEvent(_userId: string, _u: string, id: string) {
+      calls.del++;
+      const i = events.findIndex((x) => x.id === id);
+      if (i < 0) throw new FakeCalendarError("You can only delete your own events", 403);
+      events.splice(i, 1);
+    },
+    async listEvents() {
+      return structuredClone(events);
+    },
+  };
+  return { cal, events, calls };
+}
+
+async function setup() {
+  const { deps, root } = makeDeps();
+  const { cal, events, calls } = makeCalendar();
+  const svc = createEventsService({ ...deps, calendar: cal });
+  await svc.upsertRecommendations("u1", { runId: "r1", recommendations: [SAMPLE_RECOMMENDATION_INPUT] });
+  return { svc, root, events, calls };
+}
+
+test("respond going creates a Private calendar entry in event-local time with a source link", async () => {
+  const { svc, root, events, calls } = await setup();
+  const item = await svc.respond("u1", "name", EID, { response: "going" });
+  assert.equal(calls.create, 1);
+  assert.deepEqual(events[0].source, { app: "events", refId: EID });
+  assert.equal(events[0].title, "Riverside Family Pumpkin Festival");
+  assert.equal(events[0].startDate, "2026-10-24");
+  assert.equal(events[0].startTime, "10:00");
+  assert.equal(events[0].endTime, "16:00");
+  assert.equal(events[0].location, "Riverside Farm, Portland");
+  assert.equal(events[0].type, "Private");
+  assert.deepEqual(item.calendar, { calendarEventId: events[0].id, visibility: "Private" });
+  assert.equal(item.response, "going");
+  assert.equal(root.eventRecs.u1[EID].respondedAt, "2026-10-10T00:00:00.000Z");
+  assert.equal(Object.values(root.eventFeedback.u1).length, 1);
+});
+
+test("respond honours Shared visibility, people, and addToCalendar defaults", async () => {
+  const { svc, events } = await setup();
+  await svc.respond("u1", "n", EID, { response: "interested" });
+  assert.equal(events.length, 0);
+  await svc.respond("u1", "n", EID, { response: "maybe", addToCalendar: true, visibility: "Shared", people: ["p1"] });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "Shared");
+  assert.deepEqual(events[0].people, ["p1"]);
+  await rejects(svc.respond("u1", "n", EID, { response: "bogus" }), 400);
+  await rejects(svc.respond("u1", "n", "missing", { response: "going" }), 404);
+});
+
+test("responding again updates the linked entry instead of creating a second one", async () => {
+  const { svc, events, calls } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  const item = await svc.respond("u1", "n", EID, { response: "going", visibility: "Shared", people: ["p2"] });
+  assert.equal(calls.create, 1);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "Shared");
+  assert.deepEqual(events[0].people, ["p2"]);
+  assert.equal(item.calendar?.visibility, "Shared");
+});
+
+test("not-interested and dismissed delete the linked entry and clear the link", async () => {
+  const { svc, root, events } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  await svc.respond("u1", "n", EID, { response: "not-interested" });
+  assert.equal(events.length, 0);
+  assert.equal(root.eventRecs.u1[EID].calendar, undefined);
+  await svc.respond("u1", "n", EID, { response: "going" });
+  await svc.respond("u1", "n", EID, { response: "dismissed" });
+  assert.equal(events.length, 0);
+});
+
+test("a calendar entry the household deleted is not silently recreated", async () => {
+  const { svc, root, events, calls } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  events.length = 0;
+  const item = await svc.respond("u1", "n", EID, { response: "going" });
+  assert.equal(calls.create, 1);
+  assert.equal(item.calendar, undefined);
+  assert.equal(root.eventRecs.u1[EID].calendar, undefined);
+});
+
+test("updatePlan validates occurrenceStart and updates the linked entry", async () => {
+  const { svc, events, root } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  await rejects(svc.updatePlan("u1", "n", EID, { occurrenceStart: "2026-11-01T10:00:00-07:00" }), 400);
+  await rejects(svc.updatePlan("u1", "n", EID, {}), 400);
+  const item = await svc.updatePlan("u1", "n", EID, {
+    occurrenceStart: "2026-10-25T10:00:00-07:00",
+    notes: "bring boots",
+    people: ["p1"],
+    visibility: "Shared",
+  });
+  assert.equal(events[0].startDate, "2026-10-25");
+  assert.equal(events[0].startTime, "10:00");
+  assert.equal(events[0].notes, "bring boots");
+  assert.deepEqual(events[0].people, ["p1"]);
+  assert.equal(events[0].type, "Shared");
+  assert.deepEqual(item.plan, { occurrenceStart: "2026-10-25T10:00:00-07:00", notes: "bring boots", people: ["p1"] });
+  assert.equal(root.eventRecs.u1[EID].calendar.visibility, "Shared");
+});
+
+test("pipeline cancellation and reschedule flow into the linked entry", async () => {
+  const { svc, events } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  const moved = withEvent(EID, (e) => {
+    e.schedule.start = "2026-10-31T11:00:00-07:00";
+    e.schedule.end = "2026-10-31T15:00:00-07:00";
+    e.schedule.occurrences = [];
+    e.status = "postponed";
+  });
+  await svc.upsertRecommendations("u1", { runId: "r2", recommendations: [moved] });
+  assert.equal(events[0].startDate, "2026-10-31");
+  assert.equal(events[0].startTime, "11:00");
+  assert.equal(events[0].endTime, "15:00");
+  const cancelled = withEvent(EID, (e) => {
+    e.schedule.start = "2026-10-31T11:00:00-07:00";
+    e.schedule.end = "2026-10-31T15:00:00-07:00";
+    e.schedule.occurrences = [];
+    e.status = "cancelled";
+  });
+  await svc.upsertRecommendations("u1", { runId: "r3", recommendations: [cancelled] });
+  assert.equal(events[0].cancelled, true);
+});
+
+test("a plan occurrence override stops schedule moves; a vanished entry clears the link without recreating", async () => {
+  const { svc, root, events, calls } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  await svc.updatePlan("u1", "n", EID, { occurrenceStart: "2026-10-25T10:00:00-07:00" });
+  const moved = withEvent(EID, (e) => {
+    e.schedule.start = "2026-11-07T10:00:00-08:00";
+    e.schedule.end = "2026-11-07T16:00:00-08:00";
+    e.schedule.occurrences = [];
+  });
+  await svc.upsertRecommendations("u1", { runId: "r2", recommendations: [moved] });
+  assert.equal(events[0].startDate, "2026-10-25");
+
+  events.length = 0;
+  const again = withEvent(EID, (e) => {
+    e.schedule.start = "2026-11-14T10:00:00-08:00";
+    e.schedule.end = "2026-11-14T16:00:00-08:00";
+    e.schedule.occurrences = [];
+    e.status = "cancelled";
+  });
+  await svc.upsertRecommendations("u1", { runId: "r3", recommendations: [again] });
+  assert.equal(root.eventRecs.u1[EID].calendar, undefined);
+  assert.equal(calls.create, 1);
+  assert.equal(root.eventRecs.u1[EID].response, "going");
+});
+
+test("listBusy returns only own, non-cancelled intervals in range without titles", async () => {
+  const { deps } = makeDeps();
+  const { cal, events } = makeCalendar();
+  events.push(
+    { id: "a", title: "Secret", creatorId: "u1", startDate: "2026-10-12", endDate: "2026-10-12", startTime: "09:00", endTime: "10:30" },
+    { id: "b", title: "Trip", creatorId: "u1", startDate: "2026-10-13", endDate: "2026-10-15" },
+    { id: "c", title: "Far", creatorId: "u1", startDate: "2026-12-01", endDate: "2026-12-01" },
+    { id: "d", title: "Theirs", creatorId: "u2", startDate: "2026-10-12", endDate: "2026-10-12" },
+    { id: "e", title: "Off", creatorId: "u1", startDate: "2026-10-12", endDate: "2026-10-12", cancelled: true },
+  );
+  const svc = createEventsService({ ...deps, calendar: cal });
+  const busy = await svc.listBusy("u1", "n", "2026-10-10T00:00:00Z", "2026-10-31T00:00:00Z");
+  assert.deepEqual(busy, [
+    { start: "2026-10-12T09:00", end: "2026-10-12T10:30", allDay: false },
+    { start: "2026-10-13", end: "2026-10-15", allDay: true },
+  ]);
+});
