@@ -473,12 +473,14 @@ export default function PhotosPage() {
   });
 
   const hasPhotosSelected = pickerStatus?.hasSession;
+  const isAgentMedia = photoSource === PhotoSource.AGENT_MEDIA;
 
   const { data: photosData, isLoading: photosLoading, error: photosError } = useQuery<PhotosResponse>({
     queryKey: ["/api/photos"],
-    enabled: photoSource === PhotoSource.GOOGLE_PHOTOS &&
-             settings?.googlePhotosConnected === true &&
-             hasPhotosSelected === true,
+    enabled: isAgentMedia ||
+             (photoSource === PhotoSource.GOOGLE_PHOTOS &&
+              settings?.googlePhotosConnected === true &&
+              hasPhotosSelected === true),
     staleTime: 0,
     retry: 2, // Retry failed requests
   });
@@ -495,6 +497,24 @@ export default function PhotosPage() {
 
   if (photoSource === PhotoSource.PIXABAY) {
     return <PixabayPhotoDisplay interval={photoInterval} />;
+  }
+
+  if (isAgentMedia) {
+    if (photosLoading) {
+      return <PhotosSkeleton />;
+    }
+    if (photos.length === 0) {
+      return (
+        <EmptyState
+          icon={Image}
+          title="No agent photos yet"
+          description="Photos your agent uploads to Family Frame will appear here."
+          actionLabel="Go to Settings"
+          onAction={() => setAppSettingsOpen(true)}
+        />
+      );
+    }
+    return <GooglePhotoDisplay photos={photos} interval={photoInterval} />;
   }
 
   if (!settings?.googlePhotosConnected) {
