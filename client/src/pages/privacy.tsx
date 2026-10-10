@@ -96,6 +96,38 @@ export default function PrivacyPage() {
             </section>
 
             <section className="mb-8">
+              <h2 className="text-xl font-semibold mb-4">Household address and event recommendations</h2>
+              <p>
+                Your household's street address is optional. It is private. We never show it to
+                connected homes.
+              </p>
+              <p className="mt-2">
+                We share it only after you turn on "Share address for event recommendations".
+                Until then, nothing leaves Family Frame.
+              </p>
+              <p className="mt-2">When you turn it on, we send this to the events service:</p>
+              <ul className="list-disc pl-6 mt-2 space-y-2">
+                <li>Your household's exact address</li>
+                <li>The ages of household members (not their names or birthdays)</li>
+                <li>Your event preferences and your feedback on events</li>
+              </ul>
+              <p className="mt-2">
+                The events service runs on the app operator's own computer. It uses AI web searches
+                (Anthropic Claude) to find events near you. The AI sees only your city and area,
+                never your street address.
+              </p>
+              <p className="mt-2">
+                To place your home on a map, the service converts your address into map coordinates
+                using OpenStreetMap Nominatim.
+              </p>
+              <p className="mt-2">
+                You can turn sharing off at any time. New recommendations stop right away. The
+                service deletes your household from its records the next time it runs. You can also
+                delete your event history from the Events settings.
+              </p>
+            </section>
+
+            <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">Your Rights</h2>
               <p>You have the right to:</p>
               <ul className="list-disc pl-6 mt-2 space-y-2">
