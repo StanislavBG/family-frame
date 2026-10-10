@@ -36,6 +36,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { getAppBaseUrl } from "./config";
 import { photoCache } from "./photo-cache";
+import { removePersonRefs } from "./people-refs";
 import type {
   CalendarEvent,
   Person,
@@ -277,14 +278,9 @@ export async function registerRoutes(
     }
 
     const userData = await getOrCreateUser(userId, username);
-    const updatedPeople = (userData.people || []).filter((p) => p.id !== personId);
+    const { people, events, settings } = removePersonRefs(userData, personId);
 
-    const updatedEvents = (userData.events || []).map((event) => ({
-      ...event,
-      people: event.people.filter((id) => id !== personId),
-    }));
-
-    await updateUserData(userId, { people: updatedPeople, events: updatedEvents });
+    await updateUserData(userId, { people, events, settings });
 
     res.json({ success: true });
   }));

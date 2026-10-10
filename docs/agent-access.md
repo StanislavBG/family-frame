@@ -220,9 +220,16 @@ School emails often reference images only by an expiring CDN link. Rehosting cop
 
 `POST /api/mail/messages/rehost` needs `mail:write` **and** `media:write`. Body `{ "emailIds"?: [...up to 50], "limit"?: 1-50 }` (default limit 20). It rehosts the `imageUrls` of emails that still have unprocessed URLs, tags the files `email`, sets `emailIds` (and the email's `personIds`, if any) on them and adds the ids to each email's `mediaIds`. Response: `{ processed, imported, failed: [{ emailId, url, error }], remaining }`. A call handles one bounded batch of emails, so **call it repeatedly until `remaining` is 0**. A URL that has failed 3 times is skipped from then on (failure records live at RTDB `mailbox/<userId>/rehostFailures` and keep only the host, not the full URL). The MCP tool `mail_rehost_images` does the same.
 
-## 11. Photo frame source
+## 11. Hosted images (photo frame source)
 
-In **Settings → Photos**, choose **Agent uploads** as the photo source. The frame then shows every image in your media store, newest first, so an agent can put new photos on the frame by uploading them, with no hand-picking in Google Photos. PDFs are ignored. Rehosted email images are tagged `email` and appear there too; tag a file `hidden` (at upload, or by re-uploading under a new id) to keep it off the frame.
+In **Settings → Photos**, choose **Hosted images** (formerly "Agent uploads") as the photo source. The frame then shows the images in your media store, newest first, so an agent can put new photos on the frame by uploading them, with no hand-picking in Google Photos. PDFs are ignored. Rehosted email images are tagged `email` and appear there too; tag a file `hidden` (at upload, or by re-uploading under a new id) to keep it off the frame.
+
+Choose which images play:
+
+- **Whole household**: every hosted image.
+- **Chosen people**: only files whose `personIds` include one of the selected people. A file matches a person by their People-registry id or by their exact name in `personIds`. If you choose people and none match (or the selection becomes empty), the frame shows nothing rather than falling back to the whole household.
+
+Deleting a person removes them from the selection, but never rewrites `personIds` on stored files. The stream holds at most the 2000 newest matching images. It is private to your account and is never exposed through household connections.
 
 ## 12. Revocation
 
