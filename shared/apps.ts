@@ -8,6 +8,7 @@ export const APP_IDS = [
   "weather",
   "photos",
   "calendar",
+  "people",
   "chores",
   "recipes",
   "notepad",
@@ -90,6 +91,15 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     summary: "Shared family calendar with birthday tracking.",
     description: "One calendar for the whole household, so everyone knows what is coming up. Birthdays are never forgotten.",
     features: ["Events everyone in the home can see", "Birthdays of household members appear automatically", "Upcoming events on the Home screen"],
+  },
+  {
+    id: "people",
+    title: "People",
+    url: "/people",
+    defaultEnabled: false,
+    summary: "A private view for each member of this household.",
+    description: "Pick a person in your household and see their own calendar, inbox, photos and daily sheets in one place. Only members of this household can see it.",
+    features: ["Per-person calendar and inbox", "Photos and daily sheets for each person", "Private to members of this household"],
   },
   {
     id: "chores",
@@ -198,7 +208,7 @@ export const DEFAULT_VISIBLE_APP_IDS: AppId[] = APP_MANIFESTS.filter((a) => a.de
 
 // Seeds NEW users only: default-ON apps first, then the rest. Not the manifest order.
 export const DEFAULT_APP_ORDER: AppId[] = [
-  "calendar", "weather", "clock", "messages", "photos",
+  "calendar", "weather", "clock", "messages", "photos", "people",
   "radio", "baby-songs", "tv", "stocks", "chores", "recipes", "notepad", "shopping", "screensaver",
 ];
 

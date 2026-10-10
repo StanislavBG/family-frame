@@ -18,6 +18,7 @@ import {
   ShoppingCart,
   StickyNote,
   Tv,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -37,6 +38,7 @@ export const APP_ICONS: Record<AppId, LucideIcon> = {
   home: LayoutDashboard,
   settings: Settings,
   calendar: Calendar,
+  people: UserRound,
   weather: Cloud,
   clock: Clock,
   messages: MessageSquare,

@@ -20,7 +20,7 @@ describe("app manifest", () => {
     const ids = APP_MANIFESTS.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...APP_IDS]);
-    expect(ids).toHaveLength(16);
+    expect(ids).toHaveLength(17);
     const urls = APP_MANIFESTS.map((a) => a.url);
     expect(new Set(urls).size).toBe(urls.length);
   });
@@ -38,9 +38,16 @@ describe("app manifest", () => {
     expect(on).toEqual(["calendar", "clock", "home", "messages", "photos", "settings", "weather"]);
     expect([...DEFAULT_VISIBLE_APP_IDS].sort()).toEqual(on);
     expect(DEFAULT_APP_ORDER).toEqual([
-      "calendar", "weather", "clock", "messages", "photos", "radio", "baby-songs", "tv",
+      "calendar", "weather", "clock", "messages", "photos", "people", "radio", "baby-songs", "tv",
       "stocks", "chores", "recipes", "notepad", "shopping", "screensaver",
     ]);
+  });
+
+  it("registers people as an optional, movable app", () => {
+    const people = getAppManifest("people");
+    expect(people.url).toBe("/people");
+    expect(people.defaultEnabled).toBe(false);
+    expect(people.fixed).toBeFalsy();
   });
 
   it("derives defaultAppList from the manifest", () => {
@@ -53,8 +60,8 @@ describe("app manifest", () => {
   it("legacy undefined settings enable every app", () => {
     for (const s of [undefined, null, {}]) {
       const layout = resolveAppLayout(s);
-      expect(layout.enabledIds).toHaveLength(16);
-      expect(layout.menu).toHaveLength(16);
+      expect(layout.enabledIds).toHaveLength(17);
+      expect(layout.menu).toHaveLength(17);
       expect(isAppEnabled(s, "tv")).toBe(true);
     }
   });
@@ -96,7 +103,7 @@ describe("app manifest", () => {
   it("setAppEnabled", () => {
     expect(setAppEnabled(["clock", "dashboard", "clock"], "tv", true)).toEqual(["home", "settings", "clock", "tv"]);
     expect(setAppEnabled(undefined, "tv", false)).not.toContain("tv");
-    expect(setAppEnabled(undefined, "tv", false)).toHaveLength(15);
+    expect(setAppEnabled(undefined, "tv", false)).toHaveLength(16);
     expect(setAppEnabled(["clock"], "clock", false)).toEqual(["home", "settings"]);
     expect(setAppEnabled(["clock"], "home", false)).toEqual(["home", "settings", "clock"]);
     expect(setAppEnabled([], "dashboard" as never, true)).toEqual(["home", "settings"]);

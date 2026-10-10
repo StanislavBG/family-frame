@@ -27,6 +27,7 @@ import TermsPage from "@/pages/terms";
 import ChoresPage from "@/pages/chores";
 import RecipesPage from "@/pages/recipes";
 import ScreensaverPage from "@/pages/screensaver";
+import PeoplePage from "@/pages/people";
 import LandingPage from "@/pages/landing";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -193,6 +194,7 @@ const GuardedClock = guarded(ClockPage);
 const GuardedWeather = guarded(WeatherPage);
 const GuardedPhotos = guarded(PhotosPage);
 const GuardedCalendar = guarded(CalendarPage);
+const GuardedPeople = guarded(PeoplePage);
 const GuardedChores = guarded(ChoresPage);
 const GuardedRecipes = guarded(RecipesPage);
 const GuardedNotepad = guarded(NotepadPage);
@@ -212,6 +214,7 @@ const APP_PAGES: Record<AppId, React.ComponentType> = {
   weather: GuardedWeather,
   photos: GuardedPhotos,
   calendar: GuardedCalendar,
+  people: GuardedPeople,
   chores: GuardedChores,
   recipes: GuardedRecipes,
   notepad: GuardedNotepad,
@@ -228,7 +231,7 @@ const APP_PAGES: Record<AppId, React.ComponentType> = {
 const APP_ROUTES = APP_MANIFESTS.map((app) => {
   const Page = app.fixed ? APP_PAGES[app.id] : withAppGate(app.id, APP_PAGES[app.id]);
   return (
-    <Route key={app.id} path={app.url}>
+    <Route key={app.id} path={app.url} nest={app.id === "people"}>
       <Page />
     </Route>
   );
