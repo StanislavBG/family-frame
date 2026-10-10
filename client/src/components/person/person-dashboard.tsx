@@ -140,7 +140,13 @@ export default function PersonDashboard({ person }: { person: Person }) {
                     {latestDay.date === todayIso ? "Today's sheet" : "Latest sheet"}
                   </Link>
                   <DaySheetCard day={latestDay} personName={person.name} compact />
-                  <DayTimeline timeline={latestDay.timeline} personName={person.name} compact />
+                  <DayTimeline
+                    timeline={latestDay.timeline}
+                    personName={person.name}
+                    date={latestDay.date}
+                    source={latestDay.source}
+                    compact
+                  />
                 </section>
               )}
             </div>

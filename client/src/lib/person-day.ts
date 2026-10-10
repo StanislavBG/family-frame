@@ -142,3 +142,73 @@ export function pickCurrentWeek<T extends { weekStart: string }>(weeks: T[], tod
 export function isCurrentWeek(weekStart: string, todayIso: string): boolean {
   return weekStart <= todayIso && todayIso < addDaysIso(weekStart, 7);
 }
+
+/** "13:07" -> "1:07" (12-hour, no meridiem), as the daily sheet shows times. */
+export function formatClock12(time: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!m) return time;
+  const h = Number(m[1]) % 12;
+  return `${h === 0 ? 12 : h}:${m[2]}`;
+}
+
+/** Hour label for the timeline axis: meridiem on the first and last hour and at noon. */
+export function axisHourLabel(minute: number, isEdge: boolean): string {
+  const hour = Math.floor(minute / 60) % 24;
+  const display = hour % 12 === 0 ? 12 : hour % 12;
+  const suffix = hour < 12 ? "AM" : "PM";
+  return isEdge || hour === 12 ? `${display} ${suffix}` : String(display);
+}
+
+/** Half-hour grid lines strictly inside the window; whole hours are solid, half hours dashed. */
+export function halfHourTicks(windowStart: number, windowEnd: number): { left: number; dashed: boolean }[] {
+  const range = windowEnd - windowStart;
+  const ticks: { left: number; dashed: boolean }[] = [];
+  if (range <= 0) return ticks;
+  for (let m = windowStart + 30; m < windowEnd; m += 30) {
+    ticks.push({ left: ((m - windowStart) / range) * 100, dashed: m % 60 !== 0 });
+  }
+  return ticks;
+}
+
+/**
+ * Assigns each event (sorted by left %) a lane so labels closer than `minGap` %
+ * don't overlap, and events inside a `blocked` range (a span box drawn in lane 0)
+ * start at lane 1. Returns one lane index per event.
+ */
+export function eventLanes(
+  lefts: number[],
+  minGap: number,
+  blocked: { left: number; width: number }[] = [],
+): number[] {
+  const laneEnds: number[] = [];
+  return lefts.map((left) => {
+    const inSpan = blocked.some((b) => left > b.left - minGap / 2 && left < b.left + b.width + minGap / 2);
+    let lane = laneEnds.findIndex((end, i) => i >= (inSpan ? 1 : 0) && left - end >= minGap);
+    if (lane === -1) {
+      lane = Math.max(laneEnds.length, inSpan ? 1 : 0);
+      while (laneEnds.length < lane) laneEnds.push(-Infinity);
+      laneEnds[lane] = left;
+    } else {
+      laneEnds[lane] = left;
+    }
+    return lane;
+  });
+}
+
+export type EventTone = "dry" | "wet" | "bm" | "other";
+
+/** Diaper kinds get the daily sheet's fixed colours; anything else is "other". */
+export function eventTone(kind: string): EventTone {
+  const k = kind.trim().toLowerCase();
+  if (k === "dry" || k === "wet" || k === "bm") return k;
+  return "other";
+}
+
+/** Short type label for an event pill: "BM", "Dry", "Wet", else the event label. */
+export function eventTypeLabel(kind: string, label: string): string {
+  const tone = eventTone(kind);
+  if (tone === "bm") return "BM";
+  if (tone === "dry") return "Dry";
+  if (tone === "wet") return "Wet";
+  return label;
+}

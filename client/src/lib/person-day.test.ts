@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDayTimeline, formatDurationMinutes, spanMinutes, pickCurrentDay, pickCurrentWeek, isCurrentWeek } from "./person-day";
+import { layoutDayTimeline, formatDurationMinutes, spanMinutes, pickCurrentDay, pickCurrentWeek, isCurrentWeek, formatClock12, axisHourLabel, halfHourTicks, eventLanes, eventTone, eventTypeLabel } from "./person-day";
 
 const toddler = {
   start: "09:37",
@@ -109,5 +109,41 @@ describe("pickCurrentWeek", () => {
   it("isCurrentWeek covers seven days across a month boundary", () => {
     expect(isCurrentWeek("2026-09-28", "2026-10-04")).toBe(true);
     expect(isCurrentWeek("2026-09-28", "2026-10-05")).toBe(false);
+  });
+});
+
+describe("timeline display helpers", () => {
+  it("formats 12-hour clock times without meridiem", () => {
+    expect(formatClock12("09:37")).toBe("9:37");
+    expect(formatClock12("16:21")).toBe("4:21");
+    expect(formatClock12("12:05")).toBe("12:05");
+    expect(formatClock12("00:15")).toBe("12:15");
+    expect(formatClock12("bad")).toBe("bad");
+  });
+  it("labels axis hours with meridiem at the edges and noon", () => {
+    expect(axisHourLabel(9 * 60, true)).toBe("9 AM");
+    expect(axisHourLabel(10 * 60, false)).toBe("10");
+    expect(axisHourLabel(12 * 60, false)).toBe("12 PM");
+    expect(axisHourLabel(17 * 60, true)).toBe("5 PM");
+  });
+  it("puts half-hour ticks inside the window, dashing half hours", () => {
+    const ticks = halfHourTicks(9 * 60, 17 * 60);
+    expect(ticks).toHaveLength(15);
+    expect(ticks[0]).toEqual({ left: 6.25, dashed: true });
+    expect(ticks[1]).toEqual({ left: 12.5, dashed: false });
+  });
+  it("moves crowded events to a second lane", () => {
+    expect(eventLanes([10, 12, 30, 31, 32], 8)).toEqual([0, 1, 0, 1, 2]);
+    expect(eventLanes([10, 30, 50], 8)).toEqual([0, 0, 0]);
+  });
+  it("drops events inside a span box below it", () => {
+    expect(eventLanes([10, 45, 70], 8, [{ left: 40, width: 15 }])).toEqual([0, 1, 0]);
+    expect(eventLanes([45, 47], 8, [{ left: 40, width: 15 }])).toEqual([1, 2]);
+  });
+  it("maps diaper kinds to tones and pill labels", () => {
+    expect(eventTone(" BM ")).toBe("bm");
+    expect(eventTone("meal")).toBe("other");
+    expect(eventTypeLabel("bm", "BM/Wet diaper")).toBe("BM");
+    expect(eventTypeLabel("meal", "Lunch")).toBe("Lunch");
   });
 });

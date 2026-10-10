@@ -121,10 +121,8 @@ export default function PersonSheets({ person }: { person: Person }) {
         })}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
-        <DaySheetCard day={day} personName={person.name} />
-        <DayTimeline timeline={day.timeline} personName={person.name} />
-      </div>
+      <DayTimeline timeline={day.timeline} personName={person.name} date={day.date} source={day.source} />
+      <DaySheetCard day={day} personName={person.name} />
     </div>
   );
 }
