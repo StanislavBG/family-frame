@@ -7,6 +7,7 @@ import { registerChoresRoutes } from "./apps/chores";
 import { registerRecipesRoutes } from "./apps/recipes";
 import { registerWeatherRoutes } from "./apps/weather";
 import { registerCalendarRoutes } from "./apps/calendar";
+import { registerEventsRoutes } from "./apps/events";
 import { registerStocksRoutes } from "./apps/stocks";
 import { registerBabySongsRoutes } from "./apps/baby-songs";
 import { registerPhotosRoutes } from "./apps/photos";
@@ -288,6 +289,7 @@ export async function registerRoutes(
   }));
 
   registerCalendarRoutes(app);
+  registerEventsRoutes(app);
 
   // Get accepted connections only
   app.get("/api/connections", asyncHandler(async (req: Request, res: Response) => {

@@ -460,6 +460,11 @@ export function createEventsService(deps: EventsDeps) {
       return meta;
     },
 
+    async getRunMeta(userId: string): Promise<RunMeta | null> {
+      const raw = await deps.get(runMetaPath(userId));
+      return raw && typeof raw === "object" ? (raw as RunMeta) : null;
+    },
+
     // ---- Feedback and preferences ----
     async appendFeedback(userId: string, eventId: string, body: unknown): Promise<FeedbackEntry["signal"]> {
       const parsed = postFeedbackSchema.safeParse(body);
@@ -673,6 +678,7 @@ export const eventsService: EventsService = {
   withdraw: (...args) => defaultService().withdraw(...args),
   markSeen: (...args) => defaultService().markSeen(...args),
   recordRun: (...args) => defaultService().recordRun(...args),
+  getRunMeta: (...args) => defaultService().getRunMeta(...args),
   appendFeedback: (...args) => defaultService().appendFeedback(...args),
   appendResponseFeedback: (...args) => defaultService().appendResponseFeedback(...args),
   listFeedback: (...args) => defaultService().listFeedback(...args),
