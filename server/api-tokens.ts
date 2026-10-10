@@ -9,6 +9,8 @@ export const API_TOKEN_SCOPES = [
   "mail:write",
   "data:read",
   "data:write",
+  "media:read",
+  "media:write",
 ] as const;
 export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
 

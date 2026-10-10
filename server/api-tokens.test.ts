@@ -57,7 +57,7 @@ test("only the hash is stored", async () => {
 });
 
 test("scope list includes mail and data scopes and new scopes verify", async () => {
-  assert.deepEqual([...API_TOKEN_SCOPES], ["calendar:read", "calendar:write", "mail:read", "mail:write", "data:read", "data:write"]);
+  assert.deepEqual([...API_TOKEN_SCOPES], ["calendar:read", "calendar:write", "mail:read", "mail:write", "data:read", "data:write", "media:read", "media:write"]);
   const store = memoryStore();
   const { token } = await createApiToken(store, "u1", "Agent", ["mail:write", "data:read"]);
   const v = await verifyApiToken(store, token);

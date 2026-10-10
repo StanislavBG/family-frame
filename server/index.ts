@@ -45,10 +45,11 @@ const jsonVerify = (req: import("http").IncomingMessage, _res: unknown, buf: Buf
   req.rawBody = buf;
 };
 
-// Larger body limit for agent uploads (mailbox batches, datasets, MCP); mounted
-// before the global parser, which skips bodies that are already parsed.
+// Larger body limits for agent uploads; mounted before the global parser,
+// which skips bodies that are already parsed. /mcp carries base64 files up to 7MB.
+app.use("/mcp", express.json({ limit: "10mb", verify: jsonVerify }));
 app.use(
-  ["/api/mail", "/api/data", "/mcp"],
+  ["/api/mail", "/api/data"],
   express.json({ limit: "2mb", verify: jsonVerify }),
 );
 

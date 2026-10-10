@@ -29,6 +29,8 @@ function isPatPathAllowed(path: string): boolean {
     path.startsWith("/api/calendar/") ||
     path.startsWith("/api/mail/") ||
     path.startsWith("/api/data/") ||
+    path === "/api/files" ||
+    path.startsWith("/api/files/") ||
     path === "/api/people/list" ||
     path === "/mcp" ||
     path.startsWith("/mcp/")
@@ -43,6 +45,7 @@ const PAT_SCOPED_AREAS: ReadonlyArray<{
   { prefix: "/api/calendar/", readScope: null, writeScope: "calendar:write" },
   { prefix: "/api/mail/", readScope: "mail:read", writeScope: "mail:write" },
   { prefix: "/api/data/", readScope: "data:read", writeScope: "data:write" },
+  { prefix: "/api/files/", readScope: "media:read", writeScope: "media:write" },
 ];
 
 /**
@@ -51,7 +54,8 @@ const PAT_SCOPED_AREAS: ReadonlyArray<{
  * scope (null read scope = implicit); every other method needs the write scope.
  */
 export function patScopeAllows(path: string, method: string, scopes: string[]): boolean {
-  const area = PAT_SCOPED_AREAS.find((a) => path.startsWith(a.prefix));
+  const area = PAT_SCOPED_AREAS.find((a) => path === a.prefix.slice(0, -1) || path.startsWith(a.prefix),
+  );
   if (!area) return true;
   if (method === "GET" || method === "HEAD") {
     return (

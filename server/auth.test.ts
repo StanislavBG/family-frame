@@ -196,6 +196,26 @@ test("data:write token passes GET /api/data/schemas; data:read cannot POST", asy
   assert.equal(await patStatus("/api/data/schemas", "POST", ["data:read"]), 403);
 });
 
+test("files area: data-only token is forbidden, media scopes gate read and write", async () => {
+  assert.equal(await patStatus("/api/files", "GET", ["data:read", "data:write"]), 403);
+  assert.equal(await patStatus("/api/files/abc", "GET", ["media:read"]), "next");
+  assert.equal(await patStatus("/api/files", "POST", ["media:read"]), 403);
+  assert.equal(await patStatus("/api/files", "GET", ["media:write"]), "next");
+  assert.equal(await patStatus("/api/files", "POST", ["media:write"]), "next");
+  assert.equal(await patStatus("/api/files/abc", "DELETE", ["media:write"]), "next");
+});
+
+test("media:write token still cannot reach /api/media/proxy", async () => {
+  assert.equal(await patStatus("/api/media/proxy", "GET", ["media:write", "media:read"]), 403);
+});
+
+test("patScopeAllows treats exact area paths like the prefixed path", () => {
+  assert.equal(patScopeAllows("/api/files", "GET", []), false);
+  assert.equal(patScopeAllows("/api/files", "POST", ["media:read"]), false);
+  assert.equal(patScopeAllows("/api/mail", "GET", []), false);
+  assert.equal(patScopeAllows("/api/data", "GET", ["data:read"]), true);
+});
+
 test("/api/tokens stays off the PAT allowlist", async () => {
   const all = ["calendar:write", "mail:write", "data:write"];
   assert.equal(await patStatus("/api/tokens/list", "GET", all), 403);
