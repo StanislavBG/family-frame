@@ -58,6 +58,7 @@ export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 export const PhotoSource = {
   GOOGLE_PHOTOS: "google_photos",
   PIXABAY: "pixabay",
+  AGENT_MEDIA: "agent_media",
 } as const;
 
 export type PhotoSourceValue = (typeof PhotoSource)[keyof typeof PhotoSource];
@@ -222,7 +223,7 @@ export const userSettingsSchema = z.object({
   selectedAlbums: z.array(z.string()).default([]), // Legacy - kept for compatibility
   pickerSessionId: z.string().optional(), // Current picker session ID
   selectedPhotos: z.array(storedPhotoSchema).default([]), // Persistent photo collection
-  photoSource: z.enum([PhotoSource.GOOGLE_PHOTOS, PhotoSource.PIXABAY]).default(PhotoSource.PIXABAY),
+  photoSource: z.enum([PhotoSource.GOOGLE_PHOTOS, PhotoSource.PIXABAY, PhotoSource.AGENT_MEDIA]).default(PhotoSource.PIXABAY),
   photoInterval: z.number().min(5).max(60).default(10),
   radioEnabled: z.boolean().default(false),
   radioVolume: z.number().min(0).max(100).default(50),

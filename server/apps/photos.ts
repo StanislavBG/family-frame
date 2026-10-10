@@ -12,6 +12,23 @@ import { photoCache } from "../photo-cache";
 import { FETCH_TIMEOUT_MS } from "../route-helpers";
 import type { GooglePhotoItem, StoredPhoto } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
+import { mediaStore, type MediaMeta } from "../media-store";
+
+export function mediaToPhotoItems(items: MediaMeta[]): GooglePhotoItem[] {
+  const fetchedAt = Date.now();
+  return items
+    .filter((m) => m.kind === "image" && !m.tags.includes("hidden"))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
+    .map((m) => ({
+      id: m.id,
+      baseUrl: `/api/files/${encodeURIComponent(m.id)}`,
+      filename: m.filename,
+      mimeType: m.mimeType,
+      creationTime: m.createdAt,
+      fetchedAt,
+      cached: true,
+    }));
+}
 
 const OAUTH_NONCE_COOKIE = "ff_oauth_nonce";
 const OAUTH_NONCE_MAX_AGE_MS = 10 * 60 * 1000;
@@ -505,6 +522,14 @@ export function registerPhotosRoutes(app: Express): void {
       }
 
       const userData = await getOrCreateUser(userId, username);
+
+      if (userData.settings?.photoSource === PhotoSource.AGENT_MEDIA) {
+        const { items } = await mediaStore.listMedia(userId, { kind: "image", limit: 500 });
+        const photos = mediaToPhotoItems(items);
+        res.json({ photos, storedCount: photos.length, uncachedCount: 0, sessionActive: true, needsSessionRefresh: false });
+        return;
+      }
+
       const selectedPhotos = userData.settings?.selectedPhotos || [];
 
       if (selectedPhotos.length === 0) {

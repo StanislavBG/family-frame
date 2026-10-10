@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { UserSettings } from "@shared/schema";
+import type { UserSettings, PhotoSourceValue } from "@shared/schema";
 import {
   PhotoSource,
   availableStocks,
@@ -275,6 +275,7 @@ function PictureFramePanel({
   return (
     <>
       {/* Google Photos connection */}
+      {settings?.photoSource !== PhotoSource.AGENT_MEDIA && (
       <SettingsSection title="Google Photos">
         {settings?.googlePhotosConnected ? (
           <div className="space-y-4">
@@ -357,6 +358,7 @@ function PictureFramePanel({
           </Button>
         )}
       </SettingsSection>
+      )}
 
       {/* Display settings */}
       <SettingsSection title="Display">
@@ -364,7 +366,7 @@ function PictureFramePanel({
           <Select
             value={settings?.photoSource || PhotoSource.PIXABAY}
             onValueChange={(value) =>
-              update({ photoSource: value as typeof PhotoSource.GOOGLE_PHOTOS | typeof PhotoSource.PIXABAY })
+              update({ photoSource: value as PhotoSourceValue })
             }
           >
             <SelectTrigger className="w-[160px]" data-testid="select-photo-source-trigger">
@@ -373,9 +375,13 @@ function PictureFramePanel({
             <SelectContent>
               <SelectItem value={PhotoSource.GOOGLE_PHOTOS}>Google Photos</SelectItem>
               <SelectItem value={PhotoSource.PIXABAY}>Pixabay Ambient</SelectItem>
+              <SelectItem value={PhotoSource.AGENT_MEDIA}>Agent uploads</SelectItem>
             </SelectContent>
           </Select>
         </SettingsRow>
+        {settings?.photoSource === PhotoSource.AGENT_MEDIA && (
+          <p className="text-xs text-muted-foreground">Shows photos your agent uploads to Family Frame.</p>
+        )}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
