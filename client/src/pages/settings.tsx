@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -44,6 +45,8 @@ import { AgentAccessSettings } from "@/components/agent-access-settings";
 import { parseLocalDate } from "@/lib/format";
 import type { UserSettings, ConnectedUser, Person, ConnectionRequest } from "@shared/schema";
 import { AppPicker } from "@/components/app-picker";
+import { useHouseholdProfile, useSaveAddress, useSetEventsSharing, buildAddressPayload, browserTimeZone } from "@/lib/household";
+import { isAddressComplete, EVENTS_SHARING_CONSENT_TEXT } from "@shared/household";
 
 function SettingsSkeleton() {
   return (
@@ -231,6 +234,10 @@ export default function SettingsPage() {
   const [homeName, setHomeName] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
+  const [line1, setLine1] = useState<string | null>(null);
+  const [line2, setLine2] = useState<string | null>(null);
+  const [postalCode, setPostalCode] = useState<string | null>(null);
+  const [region, setRegion] = useState<string | null>(null);
   const [connectUsername, setConnectUsername] = useState("");
   const [deletePersonId, setDeletePersonId] = useState<string | null>(null);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
@@ -267,6 +274,10 @@ export default function SettingsPage() {
   const { data: people } = useQuery<Person[]>({
     queryKey: ["/api/people/list"],
   });
+
+  const { data: profile } = useHouseholdProfile();
+  const saveAddressMutation = useSaveAddress();
+  const eventsSharingMutation = useSetEventsSharing();
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: Partial<UserSettings>) => {
@@ -380,6 +391,29 @@ export default function SettingsPage() {
     },
   });
 
+  const handleSaveLocation = () => {
+    const nextCity = city || profile?.address?.city || settings?.location?.city || "";
+    const nextCountry = country || profile?.address?.country || settings?.location?.country || "";
+    const nextLine1 = (line1 ?? profile?.address?.line1 ?? "").trim();
+    if (nextLine1) {
+      saveAddressMutation.mutate(
+        buildAddressPayload(
+          {
+            line1: nextLine1,
+            line2: line2 ?? profile?.address?.line2 ?? "",
+            city: nextCity,
+            region: region ?? profile?.address?.region ?? "",
+            postalCode: postalCode ?? profile?.address?.postalCode ?? "",
+            country: nextCountry,
+          },
+          browserTimeZone(),
+        ),
+      );
+      return;
+    }
+    updateSettingsMutation.mutate({ location: { city: nextCity, country: nextCountry } });
+  };
+
   const handleEditPerson = (person: Person) => {
     setEditPerson(person);
     setEditPersonName(person.name);
@@ -481,17 +515,17 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-semibold mb-1">Location</h2>
-              <p className="text-muted-foreground">Your home's location for weather and timezone</p>
+              <p className="text-muted-foreground">Your home's city and country for weather, plus a private street address for event recommendations</p>
             </div>
             <Card>
-              <CardContent className="pt-6 space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+              <CardContent key={profile ? "profile-loaded" : "profile-loading"} className="pt-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="city">City</Label>
                     <Input
                       id="city"
                       placeholder="e.g., San Francisco"
-                      defaultValue={settings?.location?.city || ""}
+                      defaultValue={profile?.address?.city || settings?.location?.city || ""}
                       onChange={(e) => setCity(e.target.value)}
                       data-testid="input-city"
                     />
@@ -501,28 +535,100 @@ export default function SettingsPage() {
                     <Input
                       id="country"
                       placeholder="e.g., USA"
-                      defaultValue={settings?.location?.country || ""}
+                      defaultValue={profile?.address?.country || settings?.location?.country || ""}
                       onChange={(e) => setCountry(e.target.value)}
                       data-testid="input-country"
                     />
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Weather uses your device's GPS when available. This saved location is used as a backup when GPS is unavailable.
+                  Weather uses your device's GPS when available. This saved city and country is used as a backup when GPS is unavailable.
                 </p>
 
-                <Button 
-                  onClick={() => updateSettingsMutation.mutate({ 
-                    location: {
-                      city: city || settings?.location?.city || "",
-                      country: country || settings?.location?.country || "",
-                    }
-                  })} 
-                  disabled={updateSettingsMutation.isPending} 
+                <div className="space-y-4 border-t pt-6">
+                  <p className="text-sm font-medium" data-testid="text-address-private">
+                    Private: only shared with the events service if you turn it on below
+                  </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="address-line1">Street address</Label>
+                    <Input
+                      id="address-line1"
+                      placeholder="e.g., 123 Main Street"
+                      defaultValue={profile?.address?.line1 || ""}
+                      onChange={(e) => setLine1(e.target.value)}
+                      data-testid="input-address-line1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="address-line2">Address line 2 (optional)</Label>
+                    <Input
+                      id="address-line2"
+                      placeholder="e.g., Apt 4B"
+                      defaultValue={profile?.address?.line2 || ""}
+                      onChange={(e) => setLine2(e.target.value)}
+                      data-testid="input-address-line2"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="address-postal-code">Postal code</Label>
+                      <Input
+                        id="address-postal-code"
+                        defaultValue={profile?.address?.postalCode || ""}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        data-testid="input-address-postal-code"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="address-region">Region/State (optional)</Label>
+                      <Input
+                        id="address-region"
+                        defaultValue={profile?.address?.region || ""}
+                        onChange={(e) => setRegion(e.target.value)}
+                        data-testid="input-address-region"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleSaveLocation}
+                  disabled={updateSettingsMutation.isPending || saveAddressMutation.isPending}
                   data-testid="button-save-location"
                 >
-                  {updateSettingsMutation.isPending ? "Saving..." : "Save Changes"}
+                  {updateSettingsMutation.isPending || saveAddressMutation.isPending ? "Saving..." : "Save Changes"}
                 </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <h3 className="text-base font-semibold">Event recommendations</h3>
+                <p className="text-sm text-muted-foreground" data-testid="text-events-consent">
+                  {EVENTS_SHARING_CONSENT_TEXT}
+                </p>
+                <div className="flex items-center justify-between gap-4">
+                  <Label htmlFor="events-sharing-switch" className="text-sm font-medium">
+                    Share address for event recommendations
+                  </Label>
+                  <Switch
+                    id="events-sharing-switch"
+                    checked={!!profile?.eventsSharing?.enabled}
+                    disabled={!isAddressComplete(profile?.address) || eventsSharingMutation.isPending}
+                    onCheckedChange={(checked) => eventsSharingMutation.mutate(checked)}
+                    data-testid="switch-events-sharing"
+                  />
+                </div>
+                {!isAddressComplete(profile?.address) && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-events-sharing-hint">
+                    Add your street address, city and country first
+                  </p>
+                )}
+                {profile?.eventsSharing?.enabled && profile.eventsSharing.consentedAt && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-events-sharing-since">
+                    Sharing since {new Date(profile.eventsSharing.consentedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>
