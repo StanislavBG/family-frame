@@ -162,9 +162,10 @@ export default function ScreensaverPage() {
   const { data: photosData } = useQuery<GooglePhotoItem[] | PhotosResponse>({
     queryKey: ["/api/photos"],
     enabled: wantsPhotos &&
-             settings?.photoSource === PhotoSource.GOOGLE_PHOTOS &&
-             settings?.googlePhotosConnected === true &&
-             hasPhotosSelected,
+             (settings?.photoSource === PhotoSource.AGENT_MEDIA ||
+              (settings?.photoSource === PhotoSource.GOOGLE_PHOTOS &&
+               settings?.googlePhotosConnected === true &&
+               hasPhotosSelected)),
     staleTime: 0,
   });
 
