@@ -20,7 +20,7 @@ describe("app manifest", () => {
     const ids = APP_MANIFESTS.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...APP_IDS]);
-    expect(ids).toHaveLength(17);
+    expect(ids).toHaveLength(18);
     const urls = APP_MANIFESTS.map((a) => a.url);
     expect(new Set(urls).size).toBe(urls.length);
   });
@@ -50,6 +50,18 @@ describe("app manifest", () => {
     expect(people.fixed).toBeFalsy();
   });
 
+  it("registers events as an optional, movable, nested app after calendar", () => {
+    const events = getAppManifest("events");
+    expect(events.title).toBe("Events");
+    expect(events.url).toBe("/events");
+    expect(events.defaultEnabled).toBe(false);
+    expect(events.fixed).toBeFalsy();
+    expect(events.nested).toBe(true);
+    expect(getAppManifest("people").nested).toBe(true);
+    expect(getAppManifest("calendar").nested).toBeFalsy();
+    expect(APP_IDS.indexOf("events")).toBe(APP_IDS.indexOf("calendar") + 1);
+  });
+
   it("derives defaultAppList from the manifest", () => {
     expect(defaultAppList.map((a) => a.id)).toEqual([...APP_IDS]);
     expect(defaultAppList[0]).toEqual({ id: "home", title: "Home", url: "/", fixed: true });
@@ -60,8 +72,8 @@ describe("app manifest", () => {
   it("legacy undefined settings enable every app", () => {
     for (const s of [undefined, null, {}]) {
       const layout = resolveAppLayout(s);
-      expect(layout.enabledIds).toHaveLength(17);
-      expect(layout.menu).toHaveLength(17);
+      expect(layout.enabledIds).toHaveLength(18);
+      expect(layout.menu).toHaveLength(18);
       expect(isAppEnabled(s, "tv")).toBe(true);
     }
   });
@@ -103,7 +115,7 @@ describe("app manifest", () => {
   it("setAppEnabled", () => {
     expect(setAppEnabled(["clock", "dashboard", "clock"], "tv", true)).toEqual(["home", "settings", "clock", "tv"]);
     expect(setAppEnabled(undefined, "tv", false)).not.toContain("tv");
-    expect(setAppEnabled(undefined, "tv", false)).toHaveLength(16);
+    expect(setAppEnabled(undefined, "tv", false)).toHaveLength(17);
     expect(setAppEnabled(["clock"], "clock", false)).toEqual(["home", "settings"]);
     expect(setAppEnabled(["clock"], "home", false)).toEqual(["home", "settings", "clock"]);
     expect(setAppEnabled([], "dashboard" as never, true)).toEqual(["home", "settings"]);

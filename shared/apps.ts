@@ -8,6 +8,7 @@ export const APP_IDS = [
   "weather",
   "photos",
   "calendar",
+  "events",
   "people",
   "chores",
   "recipes",
@@ -28,6 +29,7 @@ export interface AppManifest {
   title: string;
   url: string;
   fixed?: boolean;
+  nested?: boolean;
   defaultEnabled: boolean;
   summary: string;
   description: string;
@@ -93,9 +95,20 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     features: ["Events everyone in the home can see", "Birthdays of household members appear automatically", "Upcoming events on the Home screen"],
   },
   {
+    id: "events",
+    title: "Events",
+    url: "/events",
+    nested: true,
+    defaultEnabled: false,
+    summary: "Local events picked for your household.",
+    description: "Find things to do near home that suit your family. Add the ones you like to your calendar, and tell it what you enjoy so the suggestions get better over time.",
+    features: ["Local events picked for your household", "Add the ones you like to your calendar", "Tell it what you like so suggestions improve"],
+  },
+  {
     id: "people",
     title: "People",
     url: "/people",
+    nested: true,
     defaultEnabled: false,
     summary: "A private view for each member of this household.",
     description: "Pick a person in your household and see their own calendar, inbox, photos and daily sheets in one place. Only members of this household can see it.",
