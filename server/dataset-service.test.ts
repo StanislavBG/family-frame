@@ -1,0 +1,187 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createDatasetService, DatasetError } from "./dataset-service";
+import { DATA_LIMITS } from "@shared/agent-data";
+
+// Map-backed fake: nested object tree addressed by slash paths, like RTDB.
+function makeDeps() {
+  const root: any = {};
+  const walk = (path: string, create: boolean) => {
+    const parts = path.split("/").filter(Boolean);
+    let node = root;
+    for (const p of parts.slice(0, -1)) {
+      if (node[p] === undefined) {
+        if (!create) return [undefined, ""] as const;
+        node[p] = {};
+      }
+      node = node[p];
+    }
+    return [node, parts[parts.length - 1]] as const;
+  };
+  let tick = 0;
+  const deps = {
+    async get(path: string) {
+      const [n, k] = walk(path, false);
+      return n && n[k] !== undefined ? structuredClone(n[k]) : null;
+    },
+    async set(path: string, value: any) {
+      const [n, k] = walk(path, true);
+      n[k] = structuredClone(value);
+    },
+    async update(path: string, values: Record<string, any>) {
+      for (const [k, v] of Object.entries(values)) await deps.set(`${path}/${k}`, v);
+    },
+    async remove(path: string) {
+      const [n, k] = walk(path, false);
+      if (n) delete n[k];
+    },
+    now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, tick++)),
+  };
+  return { deps, root };
+}
+
+const jsonSchema = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  properties: { name: { type: "string" }, tags: { type: "array" }, "a.b": {}, $x: {} },
+  required: ["name"],
+  additionalProperties: false,
+};
+const sch = { title: "People", jsonSchema };
+
+async function rejects(p: Promise<unknown>, status: number, re?: RegExp) {
+  await assert.rejects(p, (e: any) => e instanceof DatasetError && e.status === status && (!re || re.test(e.message)));
+}
+
+test("putSchema creates v1, increments, stores jsonSchemaJson string", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createDatasetService(deps);
+  const a = await svc.putSchema("u1", "people", sch);
+  assert.equal(a.version, 1);
+  const b = await svc.putSchema("u1", "people", { ...sch, description: "d" });
+  assert.equal(b.version, 2);
+  assert.equal(b.createdAt, a.createdAt);
+  assert.equal(typeof root.appData.u1.schemas.people.jsonSchemaJson, "string");
+  assert.equal(root.appData.u1.schemas.people.jsonSchema, undefined);
+  assert.deepEqual((await svc.getSchema("u1", "people")).jsonSchema, jsonSchema);
+  assert.equal((await svc.listSchemas("u1")).length, 1);
+});
+
+test("putSchema rejects bad id, bad input, oversize, uncompilable, remote ref", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await rejects(svc.putSchema("u1", "Bad.Id", sch), 400);
+  await rejects(svc.putSchema("u1", "ok", { title: "" , jsonSchema }), 400);
+  await rejects(svc.putSchema("u1", "ok", { title: "t", jsonSchema: { type: "object", description: "x".repeat(DATA_LIMITS.schemaBytesMax) } }), 400, /bytes/);
+  await rejects(svc.putSchema("u1", "ok", { title: "t", jsonSchema: { type: "nonsense" } }), 400);
+  await rejects(svc.putSchema("u1", "ok", { title: "t", jsonSchema: { $ref: "https://example.com/s.json" } }), 400);
+  await rejects(svc.putSchema("u1", "ok", { title: "t", jsonSchema: { $ref: "#/$defs/missing" } }), 400);
+});
+
+test("schema cap of 20 per user", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  for (let i = 0; i < DATA_LIMITS.schemasPerUserMax; i++) await svc.putSchema("u1", `s${i}`, sch);
+  await rejects(svc.putSchema("u1", "extra", sch), 409);
+  await svc.putSchema("u1", "s0", sch); // update still allowed
+  await svc.putSchema("u2", "extra", sch); // other user unaffected
+});
+
+test("putRecords validates, round-trips, preserves createdAt", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createDatasetService(deps);
+  await svc.putSchema("u1", "people", sch);
+  const data = { name: "A", tags: [], "a.b": null, $x: { "k.l": [] } };
+  const r1 = await svc.putRecords("u1", "people", { records: [{ id: "r1", data, emailIds: ["e1"] }, { id: "r2", data: { name: "B" } }] });
+  assert.deepEqual(r1, { created: 2, updated: 0, ids: ["r1", "r2"] });
+  assert.equal(typeof root.appData.u1.records.people.r1.dataJson, "string");
+  const got = await svc.getRecord("u1", "people", "r1");
+  assert.deepEqual(got.data, data);
+  assert.equal(got.schemaVersion, 1);
+  const r2 = await svc.putRecords("u1", "people", { records: [{ id: "r1", data: { name: "A2" } }] });
+  assert.deepEqual(r2, { created: 0, updated: 1, ids: ["r1"] });
+  const upd = await svc.getRecord("u1", "people", "r1");
+  assert.equal(upd.createdAt, got.createdAt);
+  assert.notEqual(upd.updatedAt, got.updatedAt);
+  assert.deepEqual(upd.emailIds, []);
+});
+
+test("putRecords: unknown schema 404, all-or-nothing 400 naming index and id", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await rejects(svc.putRecords("u1", "nope", { records: [{ id: "a", data: {} }] }), 404);
+  await svc.putSchema("u1", "people", sch);
+  await rejects(
+    svc.putRecords("u1", "people", { records: [{ id: "good", data: { name: "x" } }, { id: "bad", data: { name: 5 } }] }),
+    400,
+    /Record 1 \(bad\).*\/name/,
+  );
+  assert.equal((await svc.listRecords("u1", "people")).total, 0);
+});
+
+test("putRecords rejects oversize record and enforces dataset cap", async () => {
+  const { deps } = makeDeps();
+  const svc = createDatasetService(deps);
+  await svc.putSchema("u1", "people", { title: "t", jsonSchema: { type: "object" } });
+  await rejects(svc.putRecords("u1", "people", { records: [{ id: "big", data: { s: "x".repeat(DATA_LIMITS.recordBytesMax) } }] }), 400, /bytes/);
+  const filler: Record<string, any> = {};
+  for (let i = 0; i < DATA_LIMITS.recordsPerDatasetMax; i++) filler[`k${i}`] = { id: `k${i}`, dataJson: "{}", emailIds: [], createdAt: "t", updatedAt: "t" };
+  await deps.set("appData/u1/records/people", filler);
+  await rejects(svc.putRecords("u1", "people", { records: [{ id: "new", data: {} }] }), 409);
+  await svc.putRecords("u1", "people", { records: [{ id: "k1", data: {} }] }); // update ok
+});
+
+test("schema version bump recompiles; old records keep stamp", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: { type: "string" } });
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: "x" }] });
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: { type: "number" } });
+  await rejects(svc.putRecords("u1", "s", { records: [{ id: "b", data: "x" }] }), 400);
+  await svc.putRecords("u1", "s", { records: [{ id: "b", data: 1 }] });
+  assert.equal((await svc.getRecord("u1", "s", "a")).schemaVersion, 1);
+  assert.equal((await svc.getRecord("u1", "s", "b")).schemaVersion, 2);
+});
+
+test("listRecords sorts desc, filters by emailId, paginates", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: {} });
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: 1, emailIds: ["e1"] }] });
+  await svc.putRecords("u1", "s", { records: [{ id: "b", data: 2 }] });
+  await svc.putRecords("u1", "s", { records: [{ id: "c", data: 3, emailIds: ["e1"] }] });
+  const all = await svc.listRecords("u1", "s");
+  assert.deepEqual(all.records.map((r) => r.id), ["c", "b", "a"]);
+  assert.deepEqual(all.records[1].emailIds, []);
+  const f = await svc.listRecords("u1", "s", { emailId: "e1" });
+  assert.deepEqual(f.records.map((r) => r.id), ["c", "a"]);
+  const p = await svc.listRecords("u1", "s", { limit: 1, offset: 1 });
+  assert.equal(p.total, 3);
+  assert.deepEqual(p.records.map((r) => r.id), ["b"]);
+});
+
+test("deleteRecord and deleteSchema", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createDatasetService(deps);
+  await rejects(svc.deleteSchema("u1", "s"), 404);
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: {} });
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: 1 }, { id: "b", data: 2 }] });
+  await svc.deleteRecord("u1", "s", "a");
+  await rejects(svc.getRecord("u1", "s", "a"), 404);
+  await rejects(svc.deleteRecord("u1", "s", "a"), 404);
+  await svc.deleteSchema("u1", "s");
+  assert.equal(root.appData.u1.records.s, undefined);
+  await rejects(svc.getSchema("u1", "s"), 404);
+  // recreating starts at version 1 with a fresh validator
+  const again = await svc.putSchema("u1", "s", { title: "t", jsonSchema: { type: "string" } });
+  assert.equal(again.version, 1);
+  await rejects(svc.putRecords("u1", "s", { records: [{ id: "z", data: 5 }] }), 400);
+});
+
+test("users are isolated", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createDatasetService(deps);
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: {} });
+  await svc.putRecords("u1", "s", { records: [{ id: "a", data: 1 }] });
+  await rejects(svc.getSchema("u2", "s"), 404);
+  await rejects(svc.listRecords("u2", "s"), 404);
+  await rejects(svc.getRecord("u2", "s", "a"), 404);
+  await rejects(svc.putRecords("u2", "s", { records: [{ id: "a", data: 1 }] }), 404);
+  assert.deepEqual(await svc.listSchemas("u2"), []);
+  assert.equal(root.users, undefined);
+});
