@@ -68,6 +68,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       │   └── use-fullscreen.ts # Fullscreen hook with auto-enter support
 │       └── lib/
 │           ├── api.ts          # Query keys, mutation helpers
+│           ├── agent-data.ts   # Typed hooks and URL builders for mail and data routes
 │           ├── app-registry.ts # APP_ICONS + app layout hook
 │           ├── format.ts       # Formatting utilities (dates, temps)
 │           ├── queryClient.ts  # React Query setup + apiRequest helper
@@ -87,6 +88,10 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── api-tokens.ts           # Personal access tokens
 │   ├── mcp.ts                  # MCP server at /mcp
 │   ├── calendar-service.ts     # Shared calendar logic (REST + MCP)
+│   ├── mail-service.ts         # Per-user mailbox logic (REST + MCP)
+│   ├── mail-routes.ts          # /api/mail/* routes
+│   ├── dataset-service.ts      # Agent-registered JSON Schemas + records (REST + MCP)
+│   ├── data-routes.ts          # /api/data/* routes
 │   ├── firebase.ts             # Firebase initialization & helpers
 │   ├── weather.ts              # Open-Meteo integration
 │   ├── google-photos.ts        # Google Photos OAuth & picker
@@ -95,6 +100,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   └── static-pages/           # Pre-rendered SEO pages
 ├── shared/                      # Shared schemas & types
 │   ├── apps.ts                 # App registry: APP_IDS, APP_MANIFESTS
+│   ├── agent-data.ts           # Zod schemas, types and limits for mailbox + datasets
 │   └── schema.ts               # Zod schemas for validation
 └── script/
     └── build.ts                # Build script (esbuild + Vite)
@@ -192,6 +198,15 @@ Operator guide: `docs/agent-access.md`. Agents authenticate with personal access
 - `server/calendar-service.ts` - shared calendar logic used by both REST routes and MCP tools
 - Rule: any new PAT-reachable path must be added to the allowlist in `server/auth.ts` with a scope; new MCP tools check scope in `server/mcp.ts` and reuse a service, never duplicate route logic.
 - Tokens cannot manage tokens (`/api/tokens/*` stays off the allowlist).
+
+### Agent data (mailbox + datasets)
+Framework for agents (e.g. the "Self" project) to publish private data that future apps read. Details and limits: `docs/agent-access.md`.
+- `shared/agent-data.ts` - Zod schemas, types and `MAIL_LIMITS` / `DATA_LIMITS`
+- `server/mail-service.ts` + `server/mail-routes.ts` - mailbox (`/api/mail/*`), RTDB `mailbox/<userId>`
+- `server/dataset-service.ts` + `server/data-routes.ts` - agent-registered JSON Schemas (draft 2020-12, Ajv) and records (`/api/data/*`), RTDB `appData/<userId>`
+- `client/src/lib/agent-data.ts` - typed hooks and URL builders for both route sets
+- Scopes `mail:read|write`, `data:read|write` (write implies read); MCP tools `mail_*` and `data_*` in `server/mcp.ts` reuse the services.
+- Rule: this data is private per account and never exposed through household connections.
 
 ### App Registry (framework vs apps)
 - `shared/apps.ts` is the single list of apps: `APP_IDS`, `APP_MANIFESTS`, `defaultEnabled`.
