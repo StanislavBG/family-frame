@@ -100,11 +100,14 @@ test("email: normalized message and summary shapes", () => {
     labels: [],
     imageUrls: [],
     attachments: [],
+    mediaIds: [],
     ingestedAt: "2026-01-02T03:04:06Z",
     updatedAt: "2026-01-02T03:04:06Z",
     readAt: null,
   };
   assert.equal(emailMessageSchema.safeParse(msg).success, true);
+  const { mediaIds: _m, ...noMedia } = msg;
+  assert.equal(emailMessageSchema.safeParse(noMedia).success, false);
   const { text: _text, ...noText } = msg;
   assert.equal(emailSummarySchema.safeParse(noText).success, true);
   assert.equal("text" in emailSummarySchema.shape, false);
@@ -152,4 +155,27 @@ test("data record: batch and stored shape", () => {
     }).success,
     true,
   );
+});
+
+test("email: mediaIds and attachment mediaId validation", () => {
+  assert.equal(MAIL_LIMITS.mediaIdsMax, 50);
+  assert.equal(insertEmailSchema.safeParse({ ...validEmail, mediaIds: ["m1", "m_2-x"] }).success, true);
+  assert.equal(
+    insertEmailSchema.safeParse({
+      ...validEmail,
+      attachments: [{ filename: "a.pdf", mimeType: "application/pdf", mediaId: "m1" }],
+    }).success,
+    true,
+  );
+  assert.equal(insertEmailSchema.safeParse({ ...validEmail, mediaIds: ["a.b"] }).success, false);
+  assert.equal(
+    insertEmailSchema.safeParse({
+      ...validEmail,
+      attachments: [{ filename: "a.pdf", mimeType: "application/pdf", mediaId: "a.b" }],
+    }).success,
+    false,
+  );
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `m${i}`);
+  assert.equal(insertEmailSchema.safeParse({ ...validEmail, mediaIds: ids(50) }).success, true);
+  assert.equal(insertEmailSchema.safeParse({ ...validEmail, mediaIds: ids(51) }).success, false);
 });

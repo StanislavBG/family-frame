@@ -51,6 +51,8 @@ function normalizeSummary(raw: any): EmailSummary {
     labels: Array.isArray(raw.labels) ? raw.labels : [],
     imageUrls: Array.isArray(raw.imageUrls) ? raw.imageUrls : [],
     attachments: Array.isArray(raw.attachments) ? raw.attachments : [],
+    // Media ids are stored as given and never checked against the media store.
+    mediaIds: Array.isArray(raw.mediaIds) ? raw.mediaIds : [],
     readAt: raw.readAt ?? null,
   };
 }
