@@ -2,6 +2,7 @@ import { ReactNode, ComponentType, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -20,10 +21,13 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryKeys } from "@/lib/api";
+import { togglePersonId } from "@/lib/photo-stream";
 import { useToast } from "@/hooks/use-toast";
-import type { UserSettings, PhotoSourceValue } from "@shared/schema";
+import type { UserSettings, PhotoSourceValue, Person } from "@shared/schema";
 import {
   PhotoSource,
+  PhotoMediaScope,
   availableStocks,
   BABY_AGE_RANGES,
   TV_CHANNELS,
@@ -187,6 +191,15 @@ function PictureFramePanel({
   useEffect(() => {
     if (settings?.photoInterval) setLocalInterval(settings.photoInterval);
   }, [settings?.photoInterval]);
+
+  const isHosted = settings?.photoSource === PhotoSource.AGENT_MEDIA;
+  const hostedScope = settings?.photoMediaScope ?? PhotoMediaScope.HOUSEHOLD;
+  const hostedPersonIds = settings?.photoMediaPersonIds ?? [];
+  const { data: peopleData } = useQuery<Person[]>({
+    queryKey: queryKeys.people(),
+    enabled: isHosted && hostedScope === PhotoMediaScope.PEOPLE,
+  });
+  const people = peopleData ?? [];
 
   // Google Photos picker state
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -376,12 +389,56 @@ function PictureFramePanel({
             <SelectContent>
               <SelectItem value={PhotoSource.GOOGLE_PHOTOS}>Google Photos</SelectItem>
               <SelectItem value={PhotoSource.PIXABAY}>Pixabay Ambient</SelectItem>
-              <SelectItem value={PhotoSource.AGENT_MEDIA}>Agent uploads</SelectItem>
+              <SelectItem value={PhotoSource.AGENT_MEDIA}>Hosted images</SelectItem>
             </SelectContent>
           </Select>
         </SettingsRow>
-        {settings?.photoSource === PhotoSource.AGENT_MEDIA && (
-          <p className="text-xs text-muted-foreground">Shows photos your agent uploads to Family Frame.</p>
+        {isHosted && (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Plays images hosted in Family Frame: everything, or only images of the people you choose.
+            </p>
+            <SettingsRow label="Show">
+              <Select
+                value={hostedScope}
+                onValueChange={(value) =>
+                  update({ photoMediaScope: value as "household" | "people" })
+                }
+              >
+                <SelectTrigger className="w-[160px]" data-testid="photo-hosted-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PhotoMediaScope.HOUSEHOLD}>Whole household</SelectItem>
+                  <SelectItem value={PhotoMediaScope.PEOPLE}>Chosen people</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingsRow>
+            {hostedScope === PhotoMediaScope.PEOPLE &&
+              (people.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No people yet. Add people in the People app, then choose them here.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {people.map((person) => (
+                    <div key={person.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`photo-hosted-person-${person.id}`}
+                        data-testid={`photo-hosted-person-${person.id}`}
+                        checked={hostedPersonIds.includes(person.id)}
+                        onCheckedChange={() =>
+                          update({ photoMediaPersonIds: togglePersonId(hostedPersonIds, person.id) })
+                        }
+                      />
+                      <Label htmlFor={`photo-hosted-person-${person.id}`} className="text-sm">
+                        {person.name}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              ))}
+          </>
         )}
 
         <div className="space-y-3">

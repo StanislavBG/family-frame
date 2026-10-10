@@ -13,6 +13,9 @@ import { EmptyState } from "@/components/empty-state";
 import type { GooglePhotoItem, UserSettings, PixabayPhoto } from "@shared/schema";
 import { PhotoSource } from "@shared/schema";
 import { getPhotoSrc } from "@/lib/photo-src";
+import { queryKeys } from "@/lib/api";
+import { hostedStreamLabel } from "@/lib/photo-stream";
+import type { Person } from "@shared/schema";
 
 const URL_EXPIRY_MS = 50 * 60 * 1000;
 
@@ -475,6 +478,12 @@ export default function PhotosPage() {
   const hasPhotosSelected = pickerStatus?.hasSession;
   const isAgentMedia = photoSource === PhotoSource.AGENT_MEDIA;
 
+  const hostedScope = settings?.photoMediaScope ?? "household";
+  const { data: peopleData } = useQuery<Person[]>({
+    queryKey: queryKeys.people(),
+    enabled: isAgentMedia && hostedScope === "people",
+  });
+
   const { data: photosData, isLoading: photosLoading, error: photosError } = useQuery<PhotosResponse>({
     queryKey: ["/api/photos"],
     enabled: isAgentMedia ||
@@ -507,8 +516,16 @@ export default function PhotosPage() {
       return (
         <EmptyState
           icon={Image}
-          title="No agent photos yet"
-          description="Photos your agent uploads to Family Frame will appear here."
+          title={
+            hostedScope === "people"
+              ? `No hosted photos for ${hostedStreamLabel(hostedScope, settings?.photoMediaPersonIds, peopleData ?? [])}`
+              : "No hosted photos yet"
+          }
+          description={
+            hostedScope === "people" && (settings?.photoMediaPersonIds ?? []).length === 0
+              ? "Choose people in Photos settings."
+              : "Images hosted in Family Frame will appear here."
+          }
           actionLabel="Go to Settings"
           onAction={() => setAppSettingsOpen(true)}
         />

@@ -44,8 +44,11 @@ export function AppSettingsSheet({ open, onOpenChange }: AppSettingsSheetProps) 
   const updateSettings = useMutation({
     mutationFn: (data: Partial<UserSettings>) =>
       apiRequest("PATCH", "/api/settings", data),
-    onSuccess: () => {
+    onSuccess: (_data, patch) => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      if ("photoSource" in patch || "photoMediaScope" in patch || "photoMediaPersonIds" in patch) {
+        queryClient.invalidateQueries({ queryKey: ["/api/photos"] });
+      }
     },
     onError: (error: Error) => {
       toast({ title: "Failed to save", description: error.message, variant: "destructive" });
