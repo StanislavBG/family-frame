@@ -16,6 +16,8 @@ import {
 import { addDaysIso, isCurrentWeek, mondayOfIso, pickCurrentDay, pickCurrentWeek, WEEKDAY_SHORT as WEEKDAY } from "@/lib/person-day";
 import { parseLocalDate } from "@/lib/format";
 import { useToday } from "@/hooks/use-today";
+import { useFitScale } from "@/hooks/use-fit-scale";
+import { FIT_SCALE_MIN } from "@/lib/fit-scale";
 import { cn } from "@/lib/utils";
 import { DateBadge, DOW_TONES, LINE, MUTED, SATCHEL_TONES, SERIF, SURFACE, SectionLabel, ToneChip } from "./satchel";
 import { LessonGroups, MetricTiles, MiniTimeline, Moments } from "./satchel-day";
@@ -217,6 +219,8 @@ function NextWeek({ week }: { week: PersonWeek }) {
 export default function PersonDashboard({ person }: { person: Person }) {
   const base = `/${encodeURIComponent(person.id)}`;
   const todayIso = useToday();
+  // Wall displays: scale the whole Satchel layout to fit one screen instead of scrolling.
+  const fit = useFitScale<HTMLDivElement, HTMLDivElement>();
 
   // The server lists these reserved schemas by their own date, newest first.
   const days = usePersonDays(person.id, { limit: 30 });
@@ -270,86 +274,98 @@ export default function PersonDashboard({ person }: { person: Person }) {
   const hasAnything = !!day || !!currentWeek || upcoming.length > 0 || unreadCount > 0 || photoItems.length > 0;
 
   return (
-    <div className="flex flex-col gap-4 px-8 pb-8 pt-6" data-testid="person-dashboard-content">
-      <header>
-        <div className="text-sm font-semibold text-[#a83818] dark:text-[#e07a52]" data-testid="text-dashboard-date">
-          {longDate(parseLocalDate(todayIso))}
-        </div>
-        <h1 className={cn(SERIF, "mt-1 text-4xl font-bold leading-tight")} data-testid="text-dashboard-title">
-          {person.name}'s week
-        </h1>
-      </header>
+    <div
+      ref={fit.containerRef}
+      // At the minimum scale the layout may still be too tall; then scroll rather than clip.
+      className={cn("h-full", fit.enabled && (fit.scale > FIT_SCALE_MIN ? "overflow-hidden" : "overflow-auto"))}
+    >
+      <div
+        ref={fit.contentRef}
+        style={fit.contentStyle}
+        className="flex flex-col gap-4 px-8 pb-8 pt-6"
+        data-testid="person-dashboard-content"
+        data-fit-scale={fit.scale}
+      >
+        <header>
+          <div className="text-sm font-semibold text-[#a83818] dark:text-[#e07a52]" data-testid="text-dashboard-date">
+            {longDate(parseLocalDate(todayIso))}
+          </div>
+          <h1 className={cn(SERIF, "mt-1 text-4xl font-bold leading-tight")} data-testid="text-dashboard-title">
+            {person.name}'s week
+          </h1>
+        </header>
 
-      {loading && !hasAnything && <Skeleton className="h-48" data-testid="dashboard-loading" />}
+        {loading && !hasAnything && <Skeleton className="h-48" data-testid="dashboard-loading" />}
 
-      {!loading && !hasAnything && (
-        <EmptyState
-          icon={UserRound}
-          title={`Nothing here yet for ${person.name}`}
-          description="An agent can publish day sheets, emails, photos and events to this person. See docs/person-publishing.md for how."
-        />
-      )}
+        {!loading && !hasAnything && (
+          <EmptyState
+            icon={UserRound}
+            title={`Nothing here yet for ${person.name}`}
+            description="An agent can publish day sheets, emails, photos and events to this person. See docs/person-publishing.md for how."
+          />
+        )}
 
-      {day && <TodaySheet day={day} days={weekDays} onPick={setPicked} base={base} todayIso={todayIso} />}
+        {day && <TodaySheet day={day} days={weekDays} onPick={setPicked} base={base} todayIso={todayIso} />}
 
-      {(currentWeek || upcoming.length > 0) && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3.5">
-          {currentWeek && <WeekInShort
-              week={currentWeek}
-              dayCount={currentWeekDays}
-              current={isCurrentWeek(currentWeek.weekStart, todayIso)}
-            />}
-          {upcoming.length > 0 && <ComingUp events={upcoming} base={base} />}
-        </div>
-      )}
+        {(currentWeek || upcoming.length > 0) && (
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3.5">
+            {currentWeek && <WeekInShort
+                week={currentWeek}
+                dayCount={currentWeekDays}
+                current={isCurrentWeek(currentWeek.weekStart, todayIso)}
+              />}
+            {upcoming.length > 0 && <ComingUp events={upcoming} base={base} />}
+          </div>
+        )}
 
-      {nextWeek && <NextWeek week={nextWeek} />}
+        {nextWeek && <NextWeek week={nextWeek} />}
 
-      {(photoItems.length > 0 || unreadCount > 0 || latestSubject) && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-3.5">
-          {photoItems.length > 0 && (
-            <Link
-              href={`${base}/photos`}
-              className={cn("flex min-w-0 items-center gap-3 rounded-[18px] border px-4 py-3", SURFACE, LINE)}
-              data-testid="card-dashboard-photos"
-            >
-              <span className={cn(SERIF, "text-lg font-bold")}>Photos</span>
-              <span className={cn("text-sm", MUTED)}>{photos.data?.total ?? photoItems.length}</span>
-              <div className="flex min-w-0 flex-1 gap-1.5 overflow-hidden">
-                {photoItems.map((m) => (
-                  <img
-                    key={m.id}
-                    src={mediaUrl(m.id)}
-                    alt={`Photo of ${person.name}`}
-                    loading="lazy"
-                    className="h-10 w-10 flex-none rounded-lg bg-muted object-cover"
-                  />
-                ))}
-              </div>
-              <span className="whitespace-nowrap text-sm font-semibold text-[#a83818] dark:text-[#e07a52]">All →</span>
-            </Link>
-          )}
-          {(unreadCount > 0 || latestSubject) && (
-            <Link
-              href={`${base}/inbox`}
-              className={cn("flex min-w-0 items-center gap-3 rounded-[18px] border px-4 py-3", SURFACE, LINE)}
-              data-testid="card-dashboard-inbox"
-            >
-              <span className={cn(SERIF, "text-lg font-bold")}>Emails</span>
-              {unreadCount > 0 && (
-                <ToneChip tone="clay" className="text-xs" data-testid="text-dashboard-unread">
-                  {unreadCount}
-                  {unread.data?.nextBefore ? "+" : ""} to check
-                </ToneChip>
-              )}
-              {latestSubject && <span className="min-w-0 flex-1 truncate text-sm">Latest: {latestSubject}</span>}
-              <span className="ml-auto whitespace-nowrap text-sm font-semibold text-[#a83818] dark:text-[#e07a52]">
-                Inbox →
-              </span>
-            </Link>
-          )}
-        </div>
-      )}
+        {(photoItems.length > 0 || unreadCount > 0 || latestSubject) && (
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-3.5">
+            {photoItems.length > 0 && (
+              <Link
+                href={`${base}/photos`}
+                className={cn("flex min-w-0 items-center gap-3 rounded-[18px] border px-4 py-3", SURFACE, LINE)}
+                data-testid="card-dashboard-photos"
+              >
+                <span className={cn(SERIF, "text-lg font-bold")}>Photos</span>
+                <span className={cn("text-sm", MUTED)}>{photos.data?.total ?? photoItems.length}</span>
+                <div className="flex min-w-0 flex-1 gap-1.5 overflow-hidden">
+                  {photoItems.map((m) => (
+                    <img
+                      key={m.id}
+                      src={mediaUrl(m.id)}
+                      alt={`Photo of ${person.name}`}
+                      loading="lazy"
+                      className="h-10 w-10 flex-none rounded-lg bg-muted object-cover"
+                    />
+                  ))}
+                </div>
+                <span className="whitespace-nowrap text-sm font-semibold text-[#a83818] dark:text-[#e07a52]">All →</span>
+              </Link>
+            )}
+            {(unreadCount > 0 || latestSubject) && (
+              <Link
+                href={`${base}/inbox`}
+                className={cn("flex min-w-0 items-center gap-3 rounded-[18px] border px-4 py-3", SURFACE, LINE)}
+                data-testid="card-dashboard-inbox"
+              >
+                <span className={cn(SERIF, "text-lg font-bold")}>Emails</span>
+                {unreadCount > 0 && (
+                  <ToneChip tone="clay" className="text-xs" data-testid="text-dashboard-unread">
+                    {unreadCount}
+                    {unread.data?.nextBefore ? "+" : ""} to check
+                  </ToneChip>
+                )}
+                {latestSubject && <span className="min-w-0 flex-1 truncate text-sm">Latest: {latestSubject}</span>}
+                <span className="ml-auto whitespace-nowrap text-sm font-semibold text-[#a83818] dark:text-[#e07a52]">
+                  Inbox →
+                </span>
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

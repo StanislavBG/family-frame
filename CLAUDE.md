@@ -67,6 +67,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       │   └── [widgets].tsx   # Clock, Weather, Stock widgets
 │       ├── hooks/
 │       │   ├── use-fullscreen.ts # Fullscreen hook with auto-enter support
+│       │   ├── use-fit-scale.ts # Scale content to fit its container height (wall displays)
 │       │   └── use-today.ts    # Local YYYY-MM-DD that rolls over at midnight
 │       └── lib/
 │           ├── api.ts          # Query keys, mutation helpers
@@ -226,6 +227,7 @@ The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day
 - `client/src/components/person/person-{dashboard,inbox,calendar,photos,sheets,more}.tsx` - one file per section
 - `client/src/lib/person-day.ts` - pure, unit-tested logic (timeline layout, current day/week pick, month grid, lanes, `addDaysIso`/`mondayOfIso`/`WEEKDAY_SHORT`); keep logic and date math here, not in components
 - `PersonView` renders each section with `key={person.id}`, so sections need no "reset on person change" effects; sections without data redirect to Dashboard once visibility queries settle
+- Dashboard fits one wall screen by uniform scaling, not by dropping sections: `useFitScale()` (`client/src/hooks/use-fit-scale.ts`, math in `client/src/lib/fit-scale.ts`) lays the page out at width/scale and scales it down to fit the height (>= 1024px wide only, floor 0.6, below that it scrolls)
 - "Today" comes from `useToday()` (`client/src/hooks/use-today.ts`), never `new Date()` at render, so wall displays roll over at midnight
 - Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
 - Not built (no data source yet): the design's Ask bar, "Needs you" card, email category filters and photo favourite/hide/review states.
