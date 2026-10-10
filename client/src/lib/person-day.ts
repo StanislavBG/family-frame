@@ -1,0 +1,116 @@
+import type { PersonTimeline } from "@shared/person-views";
+
+export interface DayTimelineLayout {
+  windowStart: number;
+  windowEnd: number;
+  ticks: { minute: number; label: string }[];
+  band: { left: number; width: number } | null;
+  spans: { left: number; width: number; label: string; start: string; end: string }[];
+  events: { left: number; time: string; kind: string; label: string }[];
+}
+
+const MIN_WINDOW = 240;
+const DAY = 1440;
+
+function toMinutes(time: string | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time ?? "");
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+export function spanMinutes(start: string, end: string): number {
+  const s = toMinutes(start);
+  const e = toMinutes(end);
+  if (s === null || e === null) return 0;
+  return Math.max(0, e - s);
+}
+
+export function formatDurationMinutes(min: number): string {
+  const total = Math.max(0, Math.round(min));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+function tickLabel(minute: number, isFirst: boolean): string {
+  const hour = Math.floor(minute / 60) % 24;
+  const display = hour % 12 === 0 ? 12 : hour % 12;
+  const suffix = hour < 12 ? "AM" : "PM";
+  // Meridiem only at the first tick and where it changes (noon, midnight).
+  return isFirst || hour === 0 || hour === 12 ? `${display} ${suffix}` : String(display);
+}
+
+export function layoutDayTimeline(timeline: PersonTimeline | undefined): DayTimelineLayout | null {
+  if (!timeline) return null;
+
+  const start = toMinutes(timeline.start);
+  const end = toMinutes(timeline.end);
+  const spans = (timeline.spans ?? []).flatMap((s) => {
+    const a = toMinutes(s.start);
+    const b = toMinutes(s.end);
+    return a === null || b === null ? [] : [{ ...s, a, b: Math.max(a, b) }];
+  });
+  const events = (timeline.events ?? []).flatMap((e) => {
+    const t = toMinutes(e.time);
+    return t === null ? [] : [{ ...e, t }];
+  });
+
+  const all: number[] = [];
+  if (start !== null) all.push(start);
+  if (end !== null) all.push(end);
+  for (const s of spans) all.push(s.a, s.b);
+  for (const e of events) all.push(e.t);
+  if (all.length === 0) return null;
+
+  let windowStart = Math.floor(Math.min(...all) / 60) * 60;
+  let windowEnd = Math.ceil(Math.max(...all) / 60) * 60;
+  if (windowEnd - windowStart < MIN_WINDOW) {
+    const deficitHours = (MIN_WINDOW - (windowEnd - windowStart)) / 60;
+    windowStart -= Math.floor(deficitHours / 2) * 60;
+    windowEnd += Math.ceil(deficitHours / 2) * 60;
+    // Shift back inside the day, keeping the width.
+    if (windowStart < 0) {
+      windowEnd -= windowStart;
+      windowStart = 0;
+    }
+    if (windowEnd > DAY) {
+      windowStart -= windowEnd - DAY;
+      windowEnd = DAY;
+    }
+    windowStart = Math.max(0, windowStart);
+  }
+
+  const range = windowEnd - windowStart;
+  const pct = (minute: number) =>
+    Math.min(100, Math.max(0, ((minute - windowStart) / range) * 100));
+  const seg = (a: number, b: number) => {
+    const left = pct(a);
+    return { left, width: Math.max(0, pct(b) - left) };
+  };
+
+  const ticks: DayTimelineLayout["ticks"] = [];
+  for (let m = windowStart; m <= windowEnd; m += 60) {
+    ticks.push({ minute: m, label: tickLabel(m, m === windowStart) });
+  }
+
+  const band =
+    start === null && end === null
+      ? null
+      : seg(start ?? windowStart, Math.max(start ?? windowStart, end ?? windowEnd));
+
+  return {
+    windowStart,
+    windowEnd,
+    ticks,
+    band,
+    spans: spans.map((s) => ({ ...seg(s.a, s.b), label: s.label, start: s.start, end: s.end })),
+    events: events
+      .sort((x, y) => x.t - y.t)
+      .map((e) => ({ left: pct(e.t), time: e.time, kind: e.kind, label: e.label })),
+  };
+}
