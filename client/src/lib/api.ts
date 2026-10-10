@@ -45,6 +45,12 @@ export const queryKeys = {
       ["/api/data/records", schemaId, recordId] as const,
   },
 
+  // Agent-uploaded and rehosted media (params are the last key element)
+  media: {
+    list: (params: object = {}) => ["/api/files", params] as const,
+    meta: (id: string) => ["/api/files", id, "meta"] as const,
+  },
+
   // Notes
   notes: () => ["/api/notes"] as const,
 

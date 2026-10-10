@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDataRecordsUrl, buildMailListUrl } from "@/lib/agent-data";
+import { buildDataRecordsUrl, buildMailListUrl, buildMediaListUrl, mediaUrl } from "@/lib/agent-data";
 
 describe("buildMailListUrl", () => {
   it("returns the bare path when no params are set", () => {
@@ -30,5 +30,26 @@ describe("buildDataRecordsUrl", () => {
     expect(buildDataRecordsUrl("school", { emailId: "e 1", offset: 0 })).toBe(
       "/api/data/records/school?emailId=e+1&offset=0",
     );
+  });
+});
+
+describe("mediaUrl", () => {
+  it("encodes the id path segment", () => {
+    expect(mediaUrl("abc123")).toBe("/api/files/abc123");
+    expect(mediaUrl("a b/c?d")).toBe("/api/files/a%20b%2Fc%3Fd");
+  });
+});
+
+describe("buildMediaListUrl", () => {
+  it("returns the bare path when no params are set", () => {
+    expect(buildMediaListUrl()).toBe("/api/files");
+    expect(buildMediaListUrl({})).toBe("/api/files");
+  });
+
+  it("includes only provided params", () => {
+    expect(buildMediaListUrl({ kind: "pdf", emailId: "e 1", offset: 0, tag: undefined })).toBe(
+      "/api/files?kind=pdf&emailId=e+1&offset=0",
+    );
+    expect(buildMediaListUrl({ tag: "x/y", limit: 5 })).toBe("/api/files?tag=x%2Fy&limit=5");
   });
 });

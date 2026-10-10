@@ -18,6 +18,34 @@ export interface DataRecordsParams {
   offset?: number;
 }
 
+export type MediaKind = "image" | "pdf";
+
+export interface MediaMeta {
+  id: string;
+  filename: string;
+  mimeType: "image/jpeg" | "image/png" | "image/gif" | "image/webp" | "application/pdf";
+  kind: MediaKind;
+  size: number;
+  sha256: string;
+  tags: string[];
+  emailIds: string[];
+  createdAt: string;
+}
+
+export interface MediaListParams {
+  kind?: MediaKind;
+  tag?: string;
+  emailId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface MediaListResponse {
+  items: MediaMeta[];
+  total: number;
+  usage: { bytes: number; count: number };
+}
+
 export interface MailListResponse {
   emails: EmailSummary[];
   nextBefore: string | null;
@@ -55,6 +83,20 @@ export function buildMailListUrl(params: MailListParams = {}): string {
 
 export function buildDataRecordsUrl(schemaId: string, params: DataRecordsParams = {}): string {
   return withQuery(`/api/data/records/${encodeURIComponent(schemaId)}`, [
+    ["emailId", params.emailId],
+    ["limit", params.limit],
+    ["offset", params.offset],
+  ]);
+}
+
+export function mediaUrl(id: string): string {
+  return `/api/files/${encodeURIComponent(id)}`;
+}
+
+export function buildMediaListUrl(params: MediaListParams = {}): string {
+  return withQuery("/api/files", [
+    ["kind", params.kind],
+    ["tag", params.tag],
     ["emailId", params.emailId],
     ["limit", params.limit],
     ["offset", params.offset],
@@ -122,5 +164,20 @@ export function useDataRecord<T = unknown>(schemaId: string, recordId: string) {
         `/api/data/records/${encodeURIComponent(schemaId)}/${encodeURIComponent(recordId)}`,
       ),
     enabled: schemaId !== "" && recordId !== "",
+  });
+}
+
+export function useMediaList(params: MediaListParams = {}) {
+  return useQuery({
+    queryKey: queryKeys.media.list(params),
+    queryFn: () => get<MediaListResponse>(buildMediaListUrl(params)),
+  });
+}
+
+export function useMediaMeta(id: string) {
+  return useQuery({
+    queryKey: queryKeys.media.meta(id),
+    queryFn: () => get<MediaMeta>(`${mediaUrl(id)}/meta`),
+    enabled: id !== "",
   });
 }
