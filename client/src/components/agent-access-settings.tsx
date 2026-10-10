@@ -39,7 +39,9 @@ type TokenScope =
   | "mail:read"
   | "mail:write"
   | "data:read"
-  | "data:write";
+  | "data:write"
+  | "media:read"
+  | "media:write";
 
 type AccessLevel = "none" | "read" | "write";
 
@@ -63,6 +65,8 @@ const SCOPE_LABELS: Record<TokenScope, string> = {
   "mail:write": "Publish/edit mailbox",
   "data:read": "Read app data",
   "data:write": "Publish app data & schemas",
+  "media:read": "Read media",
+  "media:write": "Upload/delete photos & files",
 };
 
 const ACCESS_OPTIONS: { value: AccessLevel; label: string }[] = [
@@ -91,6 +95,7 @@ export function AgentAccessSettings() {
   const [writeScope, setWriteScope] = useState(true);
   const [mailAccess, setMailAccess] = useState<AccessLevel>("none");
   const [dataAccess, setDataAccess] = useState<AccessLevel>("none");
+  const [mediaAccess, setMediaAccess] = useState<AccessLevel>("none");
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState<"token" | "command" | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenRecord | null>(null);
@@ -110,6 +115,7 @@ export function AgentAccessSettings() {
       setWriteScope(true);
       setMailAccess("none");
       setDataAccess("none");
+      setMediaAccess("none");
     },
     onError: (err) => {
       toast({ title: "Could not create token", description: serverErrorMessage(err), variant: "destructive" });
@@ -137,6 +143,8 @@ export function AgentAccessSettings() {
     if (mailAccess === "write") scopes.push("mail:write");
     if (dataAccess !== "none") scopes.push("data:read");
     if (dataAccess === "write") scopes.push("data:write");
+    if (mediaAccess !== "none") scopes.push("media:read");
+    if (mediaAccess === "write") scopes.push("media:write");
     createMutation.mutate({ name: trimmed, scopes });
   };
 
@@ -275,6 +283,22 @@ export function AgentAccessSettings() {
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">Lets an agent upload custom JSON schemas and records</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scope-media">Media access</Label>
+              <Select value={mediaAccess} onValueChange={(v) => setMediaAccess(v as AccessLevel)}>
+                <SelectTrigger id="scope-media" aria-label="Media access" data-testid="select-scope-media">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACCESS_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value} data-testid={`option-scope-media-${o.value}`}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">Lets an agent upload photos and PDFs</p>
             </div>
           </div>
           <DialogFooter>
