@@ -10,6 +10,7 @@ import { createClerkClient, verifyToken } from "@clerk/express";
 import { createSessionHeaderMiddleware } from "./auth";
 import { verifyApiToken, firebaseTokenStore } from "./api-tokens";
 import { getUserData } from "./firebase";
+import { verifyServiceToken } from "./service-token";
 
 // Use __dirname for CJS compatibility in production build
 const currentDir = typeof __dirname !== 'undefined' 
@@ -49,7 +50,7 @@ const jsonVerify = (req: import("http").IncomingMessage, _res: unknown, buf: Buf
 // which skips bodies that are already parsed. /mcp carries base64 files up to 7MB.
 app.use("/mcp", express.json({ limit: "10mb", verify: jsonVerify }));
 app.use(
-  ["/api/mail", "/api/data"],
+  ["/api/mail", "/api/data", "/api/service"],
   express.json({ limit: "2mb", verify: jsonVerify }),
 );
 
@@ -64,6 +65,7 @@ app.use(
       const u = await clerkClient.users.getUser(id);
       return u.username || u.emailAddresses[0]?.emailAddress?.split("@")[0] || "user";
     },
+    verifyServiceToken: (t) => verifyServiceToken(t, process.env.EVENTS_SERVICE_TOKEN_SHA256),
     verifyApiToken: async (t) => {
       const v = await verifyApiToken(firebaseTokenStore, t);
       if (!v) return null;

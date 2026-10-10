@@ -300,6 +300,77 @@ test("getUsername is called once for repeat requests within the TTL, again after
   assert.equal(lookups, 2);
 });
 
+const SVC = "Bearer ff_svc_" + "b".repeat(43);
+const svcDeps = (ok: boolean) => ({ ...okDeps, verifyServiceToken: () => ok });
+
+test("valid service token on /api/service/events/ sets only x-ff-auth=service", async () => {
+  const req: FakeReq = {
+    headers: { authorization: SVC, ...SPOOFED },
+    path: "/api/service/events/households",
+    method: "GET",
+  };
+  const r = await runWithRes(req, svcDeps(true));
+  assert.equal(r.next, 1);
+  assert.equal(req.headers["x-ff-auth"], "service");
+  assert.equal(req.headers["x-clerk-user-id"], undefined);
+  assert.equal(req.headers["x-clerk-username"], undefined);
+  assert.equal(req.headers["x-ff-scopes"], undefined);
+});
+
+test("invalid service token responds 401", async () => {
+  const req: FakeReq = { headers: { authorization: SVC }, path: "/api/service/events/households" };
+  const r = await runWithRes(req, svcDeps(false));
+  assert.equal(r.status, 401);
+  assert.deepEqual(r.body, { error: "Invalid service token" });
+  assert.equal(r.next, 0);
+});
+
+test("service token with unset env hash is rejected", async () => {
+  const { verifyServiceToken } = await import("./service-token");
+  const req: FakeReq = { headers: { authorization: SVC }, path: "/api/service/events/households" };
+  const r = await runWithRes(req, { ...okDeps, verifyServiceToken: (t: string) => verifyServiceToken(t, undefined) });
+  assert.equal(r.status, 401);
+  assert.equal(r.next, 0);
+});
+
+test("valid service token outside /api/service/events/ is forbidden", async () => {
+  for (const path of ["/api/messages", "/api/service/other", "/api/service/eventsx", "/api/calendar/events", "/mcp"]) {
+    const req: FakeReq = { headers: { authorization: SVC }, path, method: "GET" };
+    const r = await runWithRes(req, svcDeps(true));
+    assert.equal(r.status, 403, path);
+    assert.equal(r.next, 0, path);
+    assert.equal(req.headers["x-ff-auth"], undefined, path);
+  }
+});
+
+test("PAT on /api/service/events/households is forbidden", async () => {
+  const req: FakeReq = { headers: { authorization: PAT }, path: "/api/service/events/households", method: "GET" };
+  const r = await runWithRes(req, patDeps(["calendar:write", "mail:write", "data:write", "media:write"]));
+  assert.equal(r.status, 403);
+  assert.equal(r.next, 0);
+});
+
+test("session cookie on /api/service/events/households is forbidden", async () => {
+  const req: FakeReq = {
+    headers: { ...SPOOFED },
+    cookies: { __session: "good" },
+    path: "/api/service/events/households",
+    method: "GET",
+  };
+  const r = await runWithRes(req, okDeps);
+  assert.equal(r.status, 403);
+  assert.equal(r.next, 0);
+});
+
+test("spoofed identity and no auth on /api/service paths is forbidden (any case)", async () => {
+  for (const path of ["/api/service/events/x", "/api/service", "/API/Service/events/x"]) {
+    const req: FakeReq = { headers: { ...SPOOFED, "x-ff-auth": "service" }, path, method: "POST" };
+    const r = await runWithRes(req, okDeps);
+    assert.equal(r.status, 403, path);
+    assert.equal(r.next, 0, path);
+  }
+});
+
 async function runMw(req: FakeReq, mw: ReturnType<typeof createSessionHeaderMiddleware>) {
   let n = 0;
   await mw(req as any, {} as any, () => {

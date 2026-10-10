@@ -18,11 +18,24 @@ export interface SessionHeaderDeps {
   verifyApiToken: (
     token: string,
   ) => Promise<{ userId: string; username: string; scopes: string[] } | null>;
+  /** Verifies an `ff_svc_` service token; defaults to rejecting everything. */
+  verifyServiceToken?: (token: string) => boolean;
 }
 
 const USERNAME_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const PAT_BEARER_PREFIX = "Bearer ff_pat_";
+const SERVICE_BEARER_PREFIX = "Bearer ff_svc_";
+
+// Express routing is case-insensitive, so compare lowercased paths.
+function isServicePath(path: string): boolean {
+  const p = path.toLowerCase();
+  return p === "/api/service" || p.startsWith("/api/service/");
+}
+
+function isServiceTokenPathAllowed(path: string): boolean {
+  return path.toLowerCase().startsWith("/api/service/events/");
+}
 
 function isPatPathAllowed(path: string): boolean {
   return (
@@ -72,6 +85,9 @@ export function patScopeAllows(path: string, method: string, scopes: string[]): 
  * only from a verified Clerk session cookie or a verified personal access
  * token. Routes trust these headers, so they must never pass through from the
  * client. PAT requests are confined to the calendar/people APIs and /mcp.
+ * A verified service token (ff_svc_, no user identity) sets only
+ * x-ff-auth=service and is confined to /api/service/events/; every other kind
+ * of request gets 403 on any /api/service path.
  */
 export function createSessionHeaderMiddleware(
   deps: SessionHeaderDeps,
@@ -95,6 +111,27 @@ export function createSessionHeaderMiddleware(
     delete req.headers["x-ff-scopes"];
 
     const authorization = req.headers.authorization;
+    if (typeof authorization === "string" && authorization.startsWith(SERVICE_BEARER_PREFIX)) {
+      const token = authorization.slice("Bearer ".length).trim();
+      let valid = false;
+      try {
+        valid = deps.verifyServiceToken?.(token) === true;
+      } catch {
+        valid = false;
+      }
+      if (!valid) {
+        res.status(401).json({ error: "Invalid service token" });
+        return;
+      }
+      if (!isServiceTokenPathAllowed(req.path)) {
+        res.status(403).json({ error: "Service tokens cannot access this endpoint" });
+        return;
+      }
+      req.headers["x-ff-auth"] = "service";
+      next();
+      return;
+    }
+
     if (typeof authorization === "string" && authorization.startsWith(PAT_BEARER_PREFIX)) {
       const token = authorization.slice("Bearer ".length).trim();
       let verified: Awaited<ReturnType<SessionHeaderDeps["verifyApiToken"]>> = null;
@@ -120,6 +157,12 @@ export function createSessionHeaderMiddleware(
       req.headers["x-ff-auth"] = "pat";
       req.headers["x-ff-scopes"] = verified.scopes.join(",");
       next();
+      return;
+    }
+
+    // Only a verified service token (handled above) may reach service routes.
+    if (isServicePath(req.path)) {
+      res.status(403).json({ error: "Service endpoint" });
       return;
     }
 
