@@ -253,3 +253,51 @@ test("media is isolated per user and never touches users/<id>", async () => {
   assert.ok(await store.getMedia("u1", "shared-id"));
   assert.deepEqual(Object.keys(dump()), ["media"]);
 });
+
+test("personIds round-trip, dedupe, validate and replace on re-put", async () => {
+  const { deps } = makeDeps();
+  const store = createMediaStore(deps);
+  const base = { filename: "a.jpg", mimeType: "image/jpeg", buffer: jpeg("p") };
+  const first = await store.putMedia("u1", { ...base, id: "pp", personIds: ["p1", "p2", "p1"] });
+  assert.deepEqual(first.meta.personIds, ["p1", "p2"]);
+  assert.deepEqual((await store.getMedia("u1", "pp"))!.meta.personIds, ["p1", "p2"]);
+  const noChange = await store.putMedia("u1", { ...base, id: "pp" });
+  assert.deepEqual(noChange.meta.personIds, ["p1", "p2"]);
+  const replaced = await store.putMedia("u1", { ...base, id: "pp", personIds: ["p3"] });
+  assert.equal(replaced.created, false);
+  assert.deepEqual((await store.getMedia("u1", "pp"))!.meta.personIds, ["p3"]);
+  const none = await store.putMedia("u1", { filename: "b.jpg", mimeType: "image/jpeg", buffer: jpeg("q") });
+  assert.deepEqual(none.meta.personIds, []);
+  const b2 = { filename: "c.jpg", mimeType: "image/jpeg", buffer: jpeg("r") };
+  await rejects(store.putMedia("u1", { ...b2, personIds: [""] }), 400);
+  await rejects(store.putMedia("u1", { ...b2, personIds: ["x".repeat(129)] }), 400);
+  await rejects(store.putMedia("u1", { ...b2, personIds: Array.from({ length: 21 }, (_, i) => `p${i}`) }), 400);
+});
+
+test("legacy meta without personIds defaults to []", async () => {
+  const { deps, dump } = makeDeps();
+  const store = createMediaStore(deps);
+  dump().media = { u1: {
+    meta: { old: { id: "old", filename: "x", mimeType: "image/jpeg", kind: "image", size: 1, sha256: "s", createdAt: "2026-01-01T00:00:00.000Z" } },
+    blobs: { old: { data: "AA==" } },
+  } };
+  assert.deepEqual((await store.listMedia("u1")).items[0].personIds, []);
+  assert.deepEqual((await store.getMedia("u1", "old"))!.meta.personIds, []);
+});
+
+test("listMedia personId filter ANDs with other filters; two-person file lists for each", async () => {
+  const { deps } = makeDeps();
+  const store = createMediaStore(deps);
+  const put = (n: string, extra: object) =>
+    store.putMedia("u1", { filename: `${n}.jpg`, mimeType: "image/jpeg", buffer: jpeg(n), ...extra });
+  const a = await put("a", { personIds: ["p1"], tags: ["school"] });
+  const b = await put("b", { personIds: ["p1", "p2"] });
+  const c = await put("c", {});
+  const ids = async (o: object) => (await store.listMedia("u1", o)).items.map((m) => m.id);
+  assert.deepEqual(await ids({ personId: "p1" }), [b.meta.id, a.meta.id]);
+  assert.deepEqual(await ids({ personId: "p2" }), [b.meta.id]);
+  assert.deepEqual(await ids({ personId: "p1", tag: "school" }), [a.meta.id]);
+  assert.deepEqual(await ids({ personId: "nobody" }), []);
+  assert.equal((await ids({})).length, 3);
+  assert.ok(c);
+});

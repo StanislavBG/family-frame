@@ -28,6 +28,7 @@ export interface ImportFromUrlInput {
   filename?: string;
   tags?: string[];
   emailIds?: string[];
+  personIds?: string[];
 }
 
 export interface ImportFromUrlResult {
@@ -239,6 +240,7 @@ export function createMediaImporter(deps: MediaImportDeps) {
       buffer,
       tags: input.tags,
       emailIds: input.emailIds,
+      personIds: input.personIds,
     });
     return { meta, created, fetched: true };
   }

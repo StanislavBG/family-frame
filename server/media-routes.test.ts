@@ -9,7 +9,7 @@ import { MediaError, type MediaStore } from "./media-store";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const META = {
   id: "abc", filename: "café \"x\"\r\n.png", mimeType: "image/png", kind: "image", size: PNG.length,
-  sha256: "h", tags: [], emailIds: [], createdAt: "2026-01-01T00:00:00.000Z",
+  sha256: "h", tags: [], emailIds: [], personIds: [], createdAt: "2026-01-01T00:00:00.000Z",
 };
 
 const calls: any[] = [];
@@ -90,7 +90,7 @@ test("list, meta, delete and 404s", async () => {
   const list = await fetch(`${base}/api/files?kind=image&tag=t&limit=5&offset=2`, { headers: auth });
   assert.equal(list.status, 200);
   assert.equal(((await list.json()) as any).total, 1);
-  assert.deepEqual(calls.find((c) => c[0] === "listMedia")!.slice(1), ["u1", { kind: "image", tag: "t", emailId: undefined, limit: 5, offset: 2 }]);
+  assert.deepEqual(calls.find((c) => c[0] === "listMedia")!.slice(1), ["u1", { kind: "image", tag: "t", emailId: undefined, personId: undefined, limit: 5, offset: 2 }]);
   assert.equal(((await (await fetch(`${base}/api/files/abc/meta`, { headers: auth })).json()) as any).id, "abc");
   assert.equal((await fetch(`${base}/api/files/nope/meta`, { headers: auth })).status, 404);
   assert.equal((await fetch(`${base}/api/files/nope`, { headers: auth })).status, 404);
@@ -139,4 +139,26 @@ test("import rejects invalid bodies (400), maps MediaError and requires auth", a
   const down = await postImport({ url: "https://down.example.com/x.png" });
   assert.equal(down.status, 502);
   assert.equal((await postImport({ url: "https://cdn.example.com/a.png" }, {})).status, 401);
+});
+
+test("upload passes comma-separated personIds from the query", async () => {
+  const r = await fetch(`${base}/api/files?filename=a.png&personIds=p1,%20p2,`, { method: "POST", headers: { ...auth, "content-type": "image/png" }, body: PNG });
+  assert.equal(r.status, 201);
+  assert.deepEqual(calls.filter((c) => c[0] === "putMedia").at(-1)[2].personIds, ["p1", "p2"]);
+});
+
+test("import accepts personIds and rejects invalid ones", async () => {
+  const body = { url: "https://cdn.example.com/a.png", personIds: ["p1", "p2"] };
+  assert.equal((await postImport(body)).status, 201);
+  assert.deepEqual(importCalls.at(-1), ["u1", body]);
+  const n = importCalls.length;
+  assert.equal((await postImport({ url: "https://cdn.example.com/a.png", personIds: [""] })).status, 400);
+  assert.equal((await postImport({ url: "https://cdn.example.com/a.png", personIds: Array.from({ length: 21 }, (_, i) => `p${i}`) })).status, 400);
+  assert.equal(importCalls.length, n);
+});
+
+test("list passes the personId query", async () => {
+  const res = await fetch(`${base}/api/files?personId=p1`, { headers: auth });
+  assert.equal(res.status, 200);
+  assert.equal(calls.filter((c) => c[0] === "listMedia").at(-1)[2].personId, "p1");
 });

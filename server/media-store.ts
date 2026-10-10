@@ -49,6 +49,7 @@ export interface MediaMeta {
   sha256: string;
   tags: string[];
   emailIds: string[];
+  personIds: string[];
   createdAt: string;
 }
 
@@ -59,12 +60,14 @@ export interface PutMediaInput {
   buffer: Buffer;
   tags?: string[];
   emailIds?: string[];
+  personIds?: string[];
 }
 
 export interface ListMediaOptions {
   kind?: MediaKind;
   tag?: string;
   emailId?: string;
+  personId?: string;
   limit?: number;
   offset?: number;
 }
@@ -97,6 +100,7 @@ function normalizeMeta(raw: any): MediaMeta {
     sha256: raw.sha256,
     tags: Array.isArray(raw.tags) ? raw.tags : [],
     emailIds: Array.isArray(raw.emailIds) ? raw.emailIds : [],
+    personIds: Array.isArray(raw.personIds) ? raw.personIds : [],
     createdAt: raw.createdAt,
   };
 }
@@ -136,6 +140,24 @@ function cleanEmailIds(value: unknown): string[] {
   });
 }
 
+const PERSON_IDS_MAX = 20;
+const PERSON_ID_MAX = 128;
+
+function cleanPersonIds(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > PERSON_IDS_MAX) {
+    throw new MediaError(`personIds must be an array of at most ${PERSON_IDS_MAX}`, 400);
+  }
+  const out: string[] = [];
+  for (const p of value) {
+    if (typeof p !== "string" || p.length < 1 || p.length > PERSON_ID_MAX) {
+      throw new MediaError(`personIds must be 1-${PERSON_ID_MAX} characters each`, 400);
+    }
+    if (!out.includes(p)) out.push(p);
+  }
+  return out;
+}
+
 export function createMediaStore(deps: MediaDeps) {
   const base = (userId: string) => `media/${userId}`;
 
@@ -153,6 +175,7 @@ export function createMediaStore(deps: MediaDeps) {
     const filename = cleanFilename(input.filename);
     const tags = cleanTags(input.tags);
     const emailIds = cleanEmailIds(input.emailIds);
+    const personIds = cleanPersonIds(input.personIds);
 
     const buffer = input.buffer;
     if (buffer.length > MEDIA_LIMITS.fileBytesMax) {
@@ -167,7 +190,13 @@ export function createMediaStore(deps: MediaDeps) {
 
     const existing = await deps.get(`${base(userId)}/meta/${id}`);
     if (existing) {
-      if (existing.sha256 === sha256) return { meta: normalizeMeta(existing), created: false };
+      if (existing.sha256 === sha256) {
+        const current = normalizeMeta(existing);
+        if (input.personIds === undefined) return { meta: current, created: false };
+        const updated = { ...current, personIds };
+        await deps.update(base(userId), { [`meta/${id}`]: updated });
+        return { meta: updated, created: false };
+      }
       throw new MediaError("A different file already exists with this id", 409);
     }
 
@@ -186,6 +215,7 @@ export function createMediaStore(deps: MediaDeps) {
       sha256,
       tags,
       emailIds,
+      personIds,
       createdAt: (deps.now?.() ?? new Date()).toISOString(),
     };
     await deps.update(base(userId), {
@@ -216,6 +246,7 @@ export function createMediaStore(deps: MediaDeps) {
       .filter((m) => (opts.kind ? m.kind === opts.kind : true))
       .filter((m) => (tag ? m.tags.includes(tag) : true))
       .filter((m) => (opts.emailId ? m.emailIds.includes(opts.emailId) : true))
+      .filter((m) => (opts.personId ? m.personIds.includes(opts.personId) : true))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1));
     const limit = Math.min(
       Math.max(1, Math.floor(opts.limit ?? MEDIA_LIMITS.listLimitDefault)),

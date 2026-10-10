@@ -51,6 +51,7 @@ const importBodySchema = z.object({
   filename: z.string().min(1).max(255).optional(),
   tags: z.array(z.string().max(64)).max(50).optional(),
   emailIds: z.array(z.string().max(128)).max(50).optional(),
+  personIds: z.array(z.string().min(1).max(128)).max(20).optional(),
 }).strict();
 
 export function registerMediaRoutes(
@@ -88,6 +89,7 @@ export function registerMediaRoutes(
         buffer: req.body,
         tags: queryList(req.query.tags),
         emailIds: queryList(req.query.emailIds),
+        personIds: queryList(req.query.personIds),
       });
       res.status(created ? 201 : 200).json(meta);
     }),
@@ -98,6 +100,7 @@ export function registerMediaRoutes(
       kind: queryString(req.query.kind) as MediaKind | undefined,
       tag: queryString(req.query.tag),
       emailId: queryString(req.query.emailId),
+      personId: queryString(req.query.personId),
       limit: queryNumber(req.query.limit),
       offset: queryNumber(req.query.offset),
     }));
