@@ -9,6 +9,17 @@ import {
   type DataRecord,
   type DataSchema,
 } from "@shared/agent-data";
+import {
+  PERSON_DAY_DESCRIPTION,
+  PERSON_DAY_JSON_SCHEMA,
+  PERSON_DAY_SCHEMA_ID,
+  PERSON_DAY_TITLE,
+  PERSON_WEEK_DESCRIPTION,
+  PERSON_WEEK_JSON_SCHEMA,
+  PERSON_WEEK_SCHEMA_ID,
+  PERSON_WEEK_TITLE,
+  RESERVED_SCHEMA_PREFIX,
+} from "@shared/person-views";
 
 export class DatasetError extends Error {
   constructor(message: string, public status: number) {
@@ -62,6 +73,18 @@ function toRecord(raw: any): DataRecord {
   return { ...rest, data: JSON.parse(dataJson), emailIds: rest.emailIds ?? [], personIds: rest.personIds ?? [] } as DataRecord;
 }
 
+const BUILTIN_TS = "2026-10-09T00:00:00.000Z";
+
+function builtin(id: string, title: string, description: string, jsonSchema: unknown) {
+  return { id, title, description, version: 1, jsonSchemaJson: JSON.stringify(jsonSchema), createdAt: BUILTIN_TS, updatedAt: BUILTIN_TS };
+}
+
+// Virtual: never written to RTDB, present for every user.
+const BUILTIN_SCHEMAS: Record<string, any> = {
+  [PERSON_DAY_SCHEMA_ID]: builtin(PERSON_DAY_SCHEMA_ID, PERSON_DAY_TITLE, PERSON_DAY_DESCRIPTION, PERSON_DAY_JSON_SCHEMA),
+  [PERSON_WEEK_SCHEMA_ID]: builtin(PERSON_WEEK_SCHEMA_ID, PERSON_WEEK_TITLE, PERSON_WEEK_DESCRIPTION, PERSON_WEEK_JSON_SCHEMA),
+};
+
 export function createDatasetService(deps: DatasetDeps) {
   const now = () => (deps.now ? deps.now() : new Date()).toISOString();
   const validators = new Map<string, ReturnType<typeof compileSchema>>();
@@ -75,6 +98,12 @@ export function createDatasetService(deps: DatasetDeps) {
     }
   }
 
+  function checkNotReserved(schemaId: string) {
+    if (schemaId.startsWith(RESERVED_SCHEMA_PREFIX)) {
+      throw new DatasetError(`Schema ids starting with "${RESERVED_SCHEMA_PREFIX}" are reserved by Family Frame`, 403);
+    }
+  }
+
   function dropValidators(userId: string, schemaId: string) {
     const prefix = `${userId}:${schemaId}:`;
     Array.from(validators.keys()).forEach((k) => {
@@ -84,6 +113,7 @@ export function createDatasetService(deps: DatasetDeps) {
 
   async function loadSchema(userId: string, schemaId: string): Promise<any> {
     checkSchemaId(schemaId);
+    if (BUILTIN_SCHEMAS[schemaId]) return BUILTIN_SCHEMAS[schemaId];
     const raw = await deps.get(`${schemasPath(userId)}/${schemaId}`);
     if (!raw) throw new DatasetError("Schema not found", 404);
     return raw;
@@ -92,6 +122,7 @@ export function createDatasetService(deps: DatasetDeps) {
   return {
     async putSchema(userId: string, schemaId: string, input: unknown): Promise<DataSchema> {
       checkSchemaId(schemaId);
+      checkNotReserved(schemaId);
       const parsed = putDataSchemaSchema.safeParse(input);
       if (!parsed.success) throw new DatasetError(parsed.error.issues.map((i) => i.message).join("; "), 400);
       const { title, description, jsonSchema } = parsed.data;
@@ -128,9 +159,10 @@ export function createDatasetService(deps: DatasetDeps) {
 
     async listSchemas(userId: string): Promise<DataSchema[]> {
       const all = (await deps.get(schemasPath(userId))) ?? {};
-      return Object.values<any>(all)
+      const own = Object.values<any>(all)
         .map(toSchema)
         .sort((a, b) => a.id.localeCompare(b.id));
+      return [...Object.values(BUILTIN_SCHEMAS).map(toSchema), ...own];
     },
 
     async getSchema(userId: string, schemaId: string): Promise<DataSchema> {
@@ -138,6 +170,8 @@ export function createDatasetService(deps: DatasetDeps) {
     },
 
     async deleteSchema(userId: string, schemaId: string): Promise<void> {
+      checkSchemaId(schemaId);
+      checkNotReserved(schemaId);
       await loadSchema(userId, schemaId);
       await deps.remove(recordsPath(userId, schemaId));
       await deps.remove(`${schemasPath(userId)}/${schemaId}`);

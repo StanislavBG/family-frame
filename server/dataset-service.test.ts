@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDatasetService, DatasetError } from "./dataset-service";
 import { DATA_LIMITS } from "@shared/agent-data";
+import { PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID } from "@shared/person-views";
 
 // Map-backed fake: nested object tree addressed by slash paths, like RTDB.
 function makeDeps() {
@@ -64,7 +65,7 @@ test("putSchema creates v1, increments, stores jsonSchemaJson string", async () 
   assert.equal(typeof root.appData.u1.schemas.people.jsonSchemaJson, "string");
   assert.equal(root.appData.u1.schemas.people.jsonSchema, undefined);
   assert.deepEqual((await svc.getSchema("u1", "people")).jsonSchema, jsonSchema);
-  assert.equal((await svc.listSchemas("u1")).length, 1);
+  assert.equal((await svc.listSchemas("u1")).length, 3); // 2 built-ins + people
 });
 
 test("putSchema rejects bad id, bad input, oversize, uncompilable, remote ref", async () => {
@@ -182,7 +183,7 @@ test("users are isolated", async () => {
   await rejects(svc.listRecords("u2", "s"), 404);
   await rejects(svc.getRecord("u2", "s", "a"), 404);
   await rejects(svc.putRecords("u2", "s", { records: [{ id: "a", data: 1 }] }), 404);
-  assert.deepEqual(await svc.listSchemas("u2"), []);
+  assert.deepEqual((await svc.listSchemas("u2")).map((x) => x.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID]);
   assert.equal(root.users, undefined);
 });
 
@@ -219,4 +220,80 @@ test("listRecords filters by personId with correct total, paging and emailId AND
   const both = await svc.listRecords("u1", "s", { personId: "p1", emailId: "e1" });
   assert.deepEqual(both.records.map((r) => r.id), ["c", "a"]);
   assert.equal((await svc.listRecords("u1", "s", { personId: "nobody" })).total, 0);
+});
+
+const toddlerDay = {
+  date: "2026-10-09",
+  title: "Families theme; napped 1:07-2:20pm",
+  source: "6 Owls (Bridge)",
+  metrics: [{ label: "In", value: "9:37" }, { label: "Out", value: "4:21" }, { label: "Nap", value: "1h 13m" }, { label: "Diapers", value: "3" }],
+  tags: [{ label: "Math Concepts", group: "Lessons" }],
+  highlights: [{ title: "Centers", text: "Colored water on paper towels." }],
+  timeline: {
+    start: "09:37",
+    end: "16:21",
+    spans: [{ start: "13:07", end: "14:20", label: "Nap" }],
+    events: [{ time: "10:46", kind: "dry", label: "Dry" }, { time: "15:00", kind: "bm", label: "BM" }],
+  },
+};
+const olderDay = {
+  date: "2026-10-09",
+  title: "Science test went well",
+  source: "Lincoln Middle School",
+  metrics: [{ label: "Homework due", value: "2", tone: "warn" }, { label: "Math", value: "A-", tone: "good" }],
+  tags: [{ label: "Fractions", group: "Math" }],
+  highlights: [{ text: "Field trip form due Friday." }],
+};
+
+test("built-in person schemas are listed first for a fresh user without RTDB writes", async () => {
+  const { deps, root } = makeDeps();
+  const svc = createDatasetService(deps);
+  await svc.putSchema("u1", "aaa", sch);
+  const list = await svc.listSchemas("u1");
+  assert.deepEqual(list.map((s) => s.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID, "aaa"]);
+  assert.equal(list[0].version, 1);
+  assert.equal((await svc.getSchema("u2", PERSON_WEEK_SCHEMA_ID)).version, 1);
+  assert.deepEqual((await svc.listSchemas("u2")).map((s) => s.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID]);
+  assert.equal(root.appData.u1.schemas[PERSON_DAY_SCHEMA_ID], undefined);
+});
+
+test("ff-person-day accepts toddler and older-child records; personId filter works", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await svc.putRecords("u1", PERSON_DAY_SCHEMA_ID, {
+    records: [
+      { id: "p1-2026-10-09", data: toddlerDay, personIds: ["p1"] },
+      { id: "p2-2026-10-09", data: olderDay, personIds: ["p2"] },
+    ],
+  });
+  const got = await svc.getRecord("u1", PERSON_DAY_SCHEMA_ID, "p1-2026-10-09");
+  assert.equal(got.schemaVersion, 1);
+  assert.deepEqual(got.data, toddlerDay);
+  const p2 = await svc.listRecords("u1", PERSON_DAY_SCHEMA_ID, { personId: "p2" });
+  assert.deepEqual(p2.records.map((r) => r.id), ["p2-2026-10-09"]);
+  await svc.deleteRecord("u1", PERSON_DAY_SCHEMA_ID, "p2-2026-10-09");
+  assert.equal((await svc.listRecords("u1", PERSON_DAY_SCHEMA_ID)).total, 1);
+  await svc.putRecords("u1", PERSON_WEEK_SCHEMA_ID, {
+    records: [{ id: "p1-2026-10-05", data: { weekStart: "2026-10-05", title: "Good week", highlights: [{ date: "2026-10-06", text: "Walked" }] } }],
+  });
+});
+
+test("ff-person-day rejects missing date, bad time, unknown property", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  const put = (data: any) => svc.putRecords("u1", PERSON_DAY_SCHEMA_ID, { records: [{ id: "x", data }] });
+  const { date: _d, ...noDate } = olderDay;
+  await rejects(put(noDate), 400, /date/);
+  await rejects(put({ ...olderDay, timeline: { start: "9:37" } }), 400);
+  await rejects(put({ ...olderDay, timeline: { start: "24:00" } }), 400);
+  await rejects(put({ ...olderDay, extra: 1 }), 400);
+  await rejects(put({ ...olderDay, metrics: [{ label: "a", value: "b", tone: "loud" }] }), 400);
+});
+
+test("reserved ff- prefix: put/delete rejected with 403, built-ins not counted in cap", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await rejects(svc.putSchema("u1", PERSON_DAY_SCHEMA_ID, sch), 403, /ff-/);
+  await rejects(svc.putSchema("u1", "ff-custom", sch), 403, /ff-/);
+  await rejects(svc.deleteSchema("u1", PERSON_DAY_SCHEMA_ID), 403, /ff-/);
+  await rejects(svc.deleteSchema("u1", "ff-custom"), 403, /ff-/);
+  for (let i = 0; i < DATA_LIMITS.schemasPerUserMax; i++) await svc.putSchema("u1", `s${i}`, sch);
+  await rejects(svc.putSchema("u1", "extra", sch), 409);
 });
