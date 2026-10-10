@@ -28,6 +28,23 @@ export const queryKeys = {
     unreadCount: () => ["/api/messages/unread-count"] as const,
   },
 
+  // Agent-published mailbox (params are the last key element)
+  mail: {
+    list: (params: object = {}) => ["/api/mail/messages", params] as const,
+    detail: (id: string) => ["/api/mail/messages", id] as const,
+    unreadCount: () => ["/api/mail/unread-count"] as const,
+  },
+
+  // Agent-registered data schemas and records
+  data: {
+    schemas: () => ["/api/data/schemas"] as const,
+    schema: (schemaId: string) => ["/api/data/schemas", schemaId] as const,
+    records: (schemaId: string, params: object = {}) =>
+      ["/api/data/records", schemaId, params] as const,
+    record: (schemaId: string, recordId: string) =>
+      ["/api/data/records", schemaId, recordId] as const,
+  },
+
   // Notes
   notes: () => ["/api/notes"] as const,
 
