@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +33,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type TokenScope = "calendar:read" | "calendar:write";
+type TokenScope =
+  | "calendar:read"
+  | "calendar:write"
+  | "mail:read"
+  | "mail:write"
+  | "data:read"
+  | "data:write";
+
+type AccessLevel = "none" | "read" | "write";
 
 interface ApiTokenRecord {
   id: string;
@@ -50,7 +59,17 @@ interface CreatedToken {
 const SCOPE_LABELS: Record<TokenScope, string> = {
   "calendar:read": "Read calendar",
   "calendar:write": "Create/edit/delete events",
+  "mail:read": "Read mailbox",
+  "mail:write": "Publish/edit mailbox",
+  "data:read": "Read app data",
+  "data:write": "Publish app data & schemas",
 };
+
+const ACCESS_OPTIONS: { value: AccessLevel; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "read", label: "Read" },
+  { value: "write", label: "Read & write" },
+];
 
 /** apiRequest throws `${status}: ${body}`; pull the server's `error` field out of it. */
 function serverErrorMessage(err: unknown): string {
@@ -70,6 +89,8 @@ export function AgentAccessSettings() {
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [writeScope, setWriteScope] = useState(true);
+  const [mailAccess, setMailAccess] = useState<AccessLevel>("none");
+  const [dataAccess, setDataAccess] = useState<AccessLevel>("none");
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState<"token" | "command" | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenRecord | null>(null);
@@ -87,6 +108,8 @@ export function AgentAccessSettings() {
       setFormOpen(false);
       setName("");
       setWriteScope(true);
+      setMailAccess("none");
+      setDataAccess("none");
     },
     onError: (err) => {
       toast({ title: "Could not create token", description: serverErrorMessage(err), variant: "destructive" });
@@ -108,7 +131,12 @@ export function AgentAccessSettings() {
   const handleCreate = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const scopes: TokenScope[] = writeScope ? ["calendar:read", "calendar:write"] : ["calendar:read"];
+    const scopes: TokenScope[] = ["calendar:read"];
+    if (writeScope) scopes.push("calendar:write");
+    if (mailAccess !== "none") scopes.push("mail:read");
+    if (mailAccess === "write") scopes.push("mail:write");
+    if (dataAccess !== "none") scopes.push("data:read");
+    if (dataAccess === "write") scopes.push("data:write");
     createMutation.mutate({ name: trimmed, scopes });
   };
 
@@ -151,7 +179,7 @@ export function AgentAccessSettings() {
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {t.scopes.map((s) => (
-                      <Badge key={s} variant="secondary">{SCOPE_LABELS[s] ?? s}</Badge>
+                      <Badge key={s} variant="secondary">{SCOPE_LABELS[s as TokenScope] ?? s}</Badge>
                     ))}
                   </div>
                   <p className="text-sm text-muted-foreground">
@@ -215,6 +243,38 @@ export function AgentAccessSettings() {
                 data-testid="checkbox-scope-write"
               />
               <Label htmlFor="scope-write">Create/edit/delete events</Label>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scope-mail">Mailbox access</Label>
+              <Select value={mailAccess} onValueChange={(v) => setMailAccess(v as AccessLevel)}>
+                <SelectTrigger id="scope-mail" aria-label="Mailbox access" data-testid="select-scope-mail">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACCESS_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value} data-testid={`option-scope-mail-${o.value}`}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">Lets an agent publish processed emails</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scope-data">App data access</Label>
+              <Select value={dataAccess} onValueChange={(v) => setDataAccess(v as AccessLevel)}>
+                <SelectTrigger id="scope-data" aria-label="App data access" data-testid="select-scope-data">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACCESS_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value} data-testid={`option-scope-data-${o.value}`}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">Lets an agent upload custom JSON schemas and records</p>
             </div>
           </div>
           <DialogFooter>
