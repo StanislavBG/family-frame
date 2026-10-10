@@ -43,6 +43,10 @@ export const queryKeys = {
       ["/api/data/records", schemaId, params] as const,
     record: (schemaId: string, recordId: string) =>
       ["/api/data/records", schemaId, recordId] as const,
+    personDays: (personId: string, limit?: number) =>
+      ["/api/data/records", "person-day", personId, limit ?? null] as const,
+    personWeeks: (personId: string, limit?: number) =>
+      ["/api/data/records", "person-week", personId, limit ?? null] as const,
   },
 
   // Agent-uploaded and rehosted media (params are the last key element)

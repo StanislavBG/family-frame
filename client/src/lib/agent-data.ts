@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { DataRecord, DataSchema, EmailMessage, EmailSummary } from "@shared/agent-data";
+import type { PersonDay, PersonWeek } from "@shared/person-views";
+import { PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID } from "@shared/person-views";
 import { apiRequest, queryClient } from "./queryClient";
 import { queryKeys } from "./api";
 
@@ -10,10 +12,12 @@ export interface MailListParams {
   kind?: string;
   unreadOnly?: boolean;
   q?: string;
+  personId?: string;
 }
 
 export interface DataRecordsParams {
   emailId?: string;
+  personId?: string;
   limit?: number;
   offset?: number;
 }
@@ -36,6 +40,7 @@ export interface MediaListParams {
   kind?: MediaKind;
   tag?: string;
   emailId?: string;
+  personId?: string;
   limit?: number;
   offset?: number;
 }
@@ -78,12 +83,14 @@ export function buildMailListUrl(params: MailListParams = {}): string {
     ["kind", params.kind],
     ["unread", params.unreadOnly ? "1" : undefined],
     ["q", params.q],
+    ["personId", params.personId || undefined],
   ]);
 }
 
 export function buildDataRecordsUrl(schemaId: string, params: DataRecordsParams = {}): string {
   return withQuery(`/api/data/records/${encodeURIComponent(schemaId)}`, [
     ["emailId", params.emailId],
+    ["personId", params.personId || undefined],
     ["limit", params.limit],
     ["offset", params.offset],
   ]);
@@ -98,6 +105,7 @@ export function buildMediaListUrl(params: MediaListParams = {}): string {
     ["kind", params.kind],
     ["tag", params.tag],
     ["emailId", params.emailId],
+    ["personId", params.personId || undefined],
     ["limit", params.limit],
     ["offset", params.offset],
   ]);
@@ -140,6 +148,13 @@ export function useMarkMailRead() {
   });
 }
 
+export function useDataSchemas() {
+  return useQuery({
+    queryKey: queryKeys.data.schemas(),
+    queryFn: () => get<DataSchema[]>("/api/data/schemas"),
+  });
+}
+
 export function useDataSchema(schemaId: string) {
   return useQuery({
     queryKey: queryKeys.data.schema(schemaId),
@@ -179,5 +194,27 @@ export function useMediaMeta(id: string) {
     queryKey: queryKeys.media.meta(id),
     queryFn: () => get<MediaMeta>(`${mediaUrl(id)}/meta`),
     enabled: id !== "",
+  });
+}
+
+export function usePersonDays(personId: string, { limit }: { limit?: number } = {}) {
+  return useQuery({
+    queryKey: queryKeys.data.personDays(personId, limit),
+    queryFn: () =>
+      get<DataRecordsResponse<PersonDay>>(
+        buildDataRecordsUrl(PERSON_DAY_SCHEMA_ID, { personId, limit }),
+      ),
+    enabled: personId !== "",
+  });
+}
+
+export function usePersonWeeks(personId: string, { limit }: { limit?: number } = {}) {
+  return useQuery({
+    queryKey: queryKeys.data.personWeeks(personId, limit),
+    queryFn: () =>
+      get<DataRecordsResponse<PersonWeek>>(
+        buildDataRecordsUrl(PERSON_WEEK_SCHEMA_ID, { personId, limit }),
+      ),
+    enabled: personId !== "",
   });
 }

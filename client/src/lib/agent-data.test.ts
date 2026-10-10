@@ -53,3 +53,22 @@ describe("buildMediaListUrl", () => {
     expect(buildMediaListUrl({ tag: "x/y", limit: 5 })).toBe("/api/files?tag=x%2Fy&limit=5");
   });
 });
+
+describe("personId param", () => {
+  it("is appended and encoded on mail, media and data record URLs", () => {
+    expect(buildMailListUrl({ personId: "kid 1/a" })).toBe("/api/mail/messages?personId=kid+1%2Fa");
+    expect(buildMediaListUrl({ personId: "kid 1/a" })).toBe("/api/files?personId=kid+1%2Fa");
+    expect(buildDataRecordsUrl("ff-person-day", { personId: "kid 1/a", limit: 7 })).toBe(
+      "/api/data/records/ff-person-day?personId=kid+1%2Fa&limit=7",
+    );
+  });
+
+  it("is omitted when undefined or empty", () => {
+    expect(buildMailListUrl({ personId: undefined })).toBe("/api/mail/messages");
+    expect(buildMailListUrl({ personId: "" })).toBe("/api/mail/messages");
+    expect(buildMediaListUrl({ personId: "" })).toBe("/api/files");
+    expect(buildMediaListUrl({ personId: undefined })).toBe("/api/files");
+    expect(buildDataRecordsUrl("s", { personId: "" })).toBe("/api/data/records/s");
+    expect(buildDataRecordsUrl("s", { personId: undefined })).toBe("/api/data/records/s");
+  });
+});
