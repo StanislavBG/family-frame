@@ -46,7 +46,7 @@ test("schema creation is idempotent and sets user_version", () => {
   for (const t of ["events", "households", "recommendations", "search_log", "geocode_cache", "runs"]) {
     assert.ok(before.includes(t), t);
   }
-  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 1);
+  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 2);
   db.close();
 });
 

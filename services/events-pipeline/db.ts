@@ -1,10 +1,10 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { ffEventSchema, type FfEvent, type HouseholdResponse } from "../../shared/events";
+import { ffEventSchema, type FfEvent, type HouseholdResponse, type RecommendationInput } from "../../shared/events";
 
 export type EventsDb = DatabaseSync;
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS events (
@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
   published_at TEXT,
   published_hash TEXT,
   response TEXT,
+  published_json TEXT,
   PRIMARY KEY (household_id, event_id)
 );
 CREATE TABLE IF NOT EXISTS search_log (
@@ -73,6 +74,11 @@ CREATE TABLE IF NOT EXISTS runs (
 export function openEventsDb(path: string): EventsDb {
   const db = new DatabaseSync(path);
   db.exec(SCHEMA_SQL);
+  // v2: last published RecommendationInput, so the dispatcher can re-push text.
+  const cols = db.prepare("PRAGMA table_info(recommendations)").all();
+  if (!cols.some((c) => c.name === "published_json")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN published_json TEXT");
+  }
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   return db;
 }
@@ -235,16 +241,37 @@ export interface RecommendationRecord {
 /** Record a publication; a missing response keeps the previously stored one. */
 export function recordRecommendation(
   db: EventsDb,
-  r: Omit<RecommendationRecord, "response"> & { response?: HouseholdResponse | null },
+  r: Omit<RecommendationRecord, "response"> & {
+    response?: HouseholdResponse | null;
+    /** The RecommendationInput as published; a missing value keeps the stored one. */
+    published?: RecommendationInput | null;
+  },
 ): void {
   db.prepare(
-    `INSERT INTO recommendations (household_id, event_id, published_at, published_hash, response)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO recommendations (household_id, event_id, published_at, published_hash, response, published_json)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(household_id, event_id) DO UPDATE SET
        published_at = excluded.published_at,
        published_hash = excluded.published_hash,
-       response = COALESCE(excluded.response, recommendations.response)`,
-  ).run(r.householdId, r.eventId, r.publishedAt, r.publishedHash, r.response ?? null);
+       response = COALESCE(excluded.response, recommendations.response),
+       published_json = COALESCE(excluded.published_json, recommendations.published_json)`,
+  ).run(
+    r.householdId,
+    r.eventId,
+    r.publishedAt,
+    r.publishedHash,
+    r.response ?? null,
+    r.published ? JSON.stringify(r.published) : null,
+  );
+}
+
+/** The last RecommendationInput published for a household/event, or null if none was stored. */
+export function getPublishedRecommendation(db: EventsDb, householdId: string, eventId: string): RecommendationInput | null {
+  const row = db
+    .prepare("SELECT published_json FROM recommendations WHERE household_id = ? AND event_id = ?")
+    .get(householdId, eventId);
+  const json = strOrNull(row?.published_json);
+  return json ? (JSON.parse(json) as RecommendationInput) : null;
 }
 
 export function listRecommendationsForHousehold(db: EventsDb, householdId: string): RecommendationRecord[] {
