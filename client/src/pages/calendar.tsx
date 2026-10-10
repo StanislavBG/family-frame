@@ -39,7 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Trash2 } from "lucide-react";
+import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Trash2, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toISODateString } from "@/lib/format";
 import { useForm } from "react-hook-form";
@@ -65,9 +65,20 @@ const eventFormSchema = z.object({
   endDate: z.string().min(1, "End date is required"),
   type: z.enum([EventType.SHARED, EventType.PRIVATE]),
   people: z.array(z.string()).default([]),
+  startTime: z.string().regex(/^(([01]\d|2[0-3]):[0-5]\d)?$/, "Use HH:MM").optional(),
+  endTime: z.string().regex(/^(([01]\d|2[0-3]):[0-5]\d)?$/, "Use HH:MM").optional(),
+  location: z.string().max(300).optional(),
 });
 
 type EventFormValues = z.infer<typeof eventFormSchema>;
+
+// Format a stored HH:MM (24h) time for display using the user's 12h/24h setting
+function formatEventTime(time: string, timeFormat: "12h" | "24h"): string {
+  if (timeFormat === "24h") return time;
+  const [h, m] = time.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${suffix}`;
+}
 
 function CalendarSkeleton() {
   return (
@@ -202,7 +213,7 @@ export function CalendarGrid({ currentDate, events, onDateClick, selectedDate, p
           const birthdays = getBirthdaysForDate(date);
           const hasBirthday = birthdays.length > 0;
 
-          const allEntries: { label: string; color: string }[] = [];
+          const allEntries: { label: string; color: string; cancelled?: boolean }[] = [];
           if (hasBirthday) {
             birthdays.forEach((p) => allEntries.push({ label: p.name, color: "text-fuchsia-500" }));
           }
@@ -210,6 +221,7 @@ export function CalendarGrid({ currentDate, events, onDateClick, selectedDate, p
             allEntries.push({
               label: e.title,
               color: e.type === EventType.SHARED ? "text-cyan-500" : "text-violet-500",
+              cancelled: e.cancelled,
             })
           );
 
@@ -238,7 +250,8 @@ export function CalendarGrid({ currentDate, events, onDateClick, selectedDate, p
                         isSelected(date) ? "text-primary-foreground/80" : entry.color
                       )}
                     >
-                      {entry.label}
+                      <span className={cn(entry.cancelled && "line-through")}>{entry.label}</span>
+                      {entry.cancelled && <span className="ml-0.5 font-medium">(Cancelled)</span>}
                     </span>
                   ))}
                   {allEntries.length > 3 && (
@@ -292,12 +305,17 @@ export default function CalendarPage() {
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const isEditingOwner = !!editingEvent && (!editingEvent.creatorId || editingEvent.creatorId === user?.id);
+  const eventsRefId =
+    editingEvent?.source?.app === "events" && !!user?.id && editingEvent.creatorId === user.id
+      ? editingEvent.source.refId
+      : null;
 
   const { data: settings } = useQuery<UserSettings>({
     queryKey: ["/api/settings"],
   });
 
   const weekStartsMonday = settings?.weekStartsMonday ?? true;
+  const timeFormat = settings?.timeFormat || "24h";
 
   const { data: events, isLoading: eventsLoading } = useQuery<CalendarEvent[]>({
     queryKey: ["/api/calendar/events"],
@@ -315,6 +333,9 @@ export default function CalendarPage() {
       endDate: "",
       type: EventType.SHARED,
       people: [],
+      startTime: "",
+      endTime: "",
+      location: "",
     },
   });
 
@@ -326,6 +347,9 @@ export default function CalendarPage() {
       endDate: "",
       type: EventType.SHARED,
       people: [],
+      startTime: "",
+      endTime: "",
+      location: "",
     },
   });
 
@@ -386,6 +410,9 @@ export default function CalendarPage() {
       endDate: data.endDate,
       type: data.type as EventTypeValue,
       people: data.people,
+      startTime: data.startTime || undefined,
+      endTime: data.endTime || undefined,
+      location: data.location || undefined,
     });
   };
 
@@ -399,6 +426,10 @@ export default function CalendarPage() {
         endDate: data.endDate,
         type: data.type as EventTypeValue,
         people: data.people,
+        // Empty string clears the value on the server
+        startTime: data.startTime ?? "",
+        endTime: data.endTime ?? "",
+        location: data.location ?? "",
       },
     });
   };
@@ -415,6 +446,9 @@ export default function CalendarPage() {
       endDate: event.endDate,
       type: event.type as EventTypeValue,
       people: event.people || [],
+      startTime: event.startTime ?? "",
+      endTime: event.endTime ?? "",
+      location: event.location ?? "",
     });
     setEditEventOpen(true);
   };
@@ -541,6 +575,47 @@ export default function CalendarPage() {
                           )}
                         />
                       </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="startTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Start Time (optional)</FormLabel>
+                            <FormControl>
+                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-event-start-time" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="endTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>End Time (optional)</FormLabel>
+                            <FormControl>
+                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-event-end-time" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <FormField
+                      control={form.control}
+                      name="location"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Location (optional)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Where is it?" {...field} value={field.value ?? ""} data-testid="input-event-location" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                       <FormField
                         control={form.control}
                         name="type"
@@ -662,6 +737,47 @@ export default function CalendarPage() {
                         )}
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={editForm.control}
+                        name="startTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Start Time (optional)</FormLabel>
+                            <FormControl>
+                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-edit-event-start-time" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={editForm.control}
+                        name="endTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>End Time (optional)</FormLabel>
+                            <FormControl>
+                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-edit-event-end-time" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <FormField
+                      control={editForm.control}
+                      name="location"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Location (optional)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Where is it?" {...field} value={field.value ?? ""} data-testid="input-edit-event-location" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormField
                       control={editForm.control}
                       name="type"
@@ -716,6 +832,15 @@ export default function CalendarPage() {
                       }}
                     />
                     </fieldset>
+                    {eventsRefId && (
+                      <Link
+                        href={`/events/${encodeURIComponent(eventsRefId)}`}
+                        className="text-sm font-medium text-primary underline underline-offset-2"
+                        data-testid="link-open-in-events"
+                      >
+                        Open in Events
+                      </Link>
+                    )}
                     {!isEditingOwner && editingEvent && (
                       <p className="text-sm text-muted-foreground" data-testid="text-event-readonly">
                         Created by {editingEvent.creatorName || "another household"} — only they can change it.
@@ -813,13 +938,22 @@ export default function CalendarPage() {
                       data-testid={`upcoming-event-${event.id}`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium truncate">{event.title}</span>
+                        <span className={cn("text-sm font-medium truncate", event.cancelled && "line-through")}>{event.title}</span>
                         <Badge
                           variant="secondary"
                           className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
                         >
                           {event.type}
                         </Badge>
+                        {event.cancelled && (
+                          <Badge
+                            variant="destructive"
+                            className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
+                            data-testid={`badge-cancelled-${event.id}`}
+                          >
+                            Cancelled
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
@@ -828,6 +962,21 @@ export default function CalendarPage() {
                           <span>- {endDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
                         )}
                       </div>
+                      {event.startTime && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-event-time-${event.id}`}>
+                          <Clock className="h-3 w-3" />
+                          <span>
+                            {formatEventTime(event.startTime, timeFormat)}
+                            {event.endTime && ` - ${formatEventTime(event.endTime, timeFormat)}`}
+                          </span>
+                        </div>
+                      )}
+                      {event.location && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="h-3 w-3 flex-shrink-0" />
+                          <span className="truncate">{event.location}</span>
+                        </div>
+                      )}
                       {eventPeople.length > 0 && (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Users className="h-3 w-3" />
