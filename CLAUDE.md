@@ -212,6 +212,7 @@ Framework for agents (e.g. the "Self" project) to publish private data that futu
 - Media storage is RTDB base64 behind `MediaDeps` (project sash-d5c2d has no Storage bucket); swap the deps to move to a bucket later. `/api/media/proxy` (in `server/media-proxy.ts`) is the unrelated radio/TV stream proxy.
 - `client/src/lib/agent-data.ts` - typed hooks and URL builders for both route sets
 - Scopes `mail:read|write`, `data:read|write`, `media:read|write` (write implies read); MCP tools `mail_*`, `data_*` and `media_*` in `server/mcp.ts` reuse the services.
+- Per-person publishing (`personIds`/`personId`, reserved `ff-person-day` / `ff-person-week` schemas): see `docs/person-publishing.md` and `shared/person-views.ts`.
 - Rule: this data is private per account and never exposed through household connections.
 
 ### App Registry (framework vs apps)
