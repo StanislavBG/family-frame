@@ -1,0 +1,11 @@
+# Family Frame events pipeline. Install by hand: crontab -e, paste, edit REPO.
+# Create the log dir first: mkdir -p ~/.local/state/family-frame-events
+# Put FF_BASE_URL / FF_SERVICE_TOKEN in a git-excluded env file and point EVENTS_ENV_FILE at it.
+TZ=America/Los_Angeles
+EVENTS_ENV_FILE=/home/YOU/.config/family-frame-events/env
+REPO=/absolute/path/to/family-frame
+
+# Discover new events twice a day.
+30 5,17 * * * cd $REPO && npm run events:run -- discover >> $HOME/.local/state/family-frame-events/discover.log 2>&1
+# Re-check known events every 6 hours.
+0 */6 * * * cd $REPO && npm run events:run -- refresh >> $HOME/.local/state/family-frame-events/refresh.log 2>&1
