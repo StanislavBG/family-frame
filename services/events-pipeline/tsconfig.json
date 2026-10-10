@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["./**/*", "../../shared/**/*"],
+  "exclude": ["node_modules"],
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["node"],
+    "baseUrl": "../.."
+  }
+}

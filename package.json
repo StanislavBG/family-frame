@@ -9,7 +9,10 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "validate:baby-songs": "tsx script/validate-baby-songs.ts",
-    "test": "vitest run && tsx --test server/*.test.ts"
+    "test": "vitest run && tsx --test server/*.test.ts",
+    "events:check": "tsc -p services/events-pipeline/tsconfig.json",
+    "events:test": "tsx --test services/events-pipeline/*.test.ts",
+    "events:run": "tsx services/events-pipeline/cli.ts"
   },
   "dependencies": {
     "@clerk/express": "^2.1.77",
