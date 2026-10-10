@@ -9,7 +9,7 @@ import { mediaStore, MediaError, MEDIA_LIMITS, type MediaStore, type MediaMeta }
 import { mediaImporter, type MediaImporter } from "./media-import";
 import { mailRehoster, type MailRehoster } from "./mail-rehost";
 import { API_TOKEN_SCOPES } from "./api-tokens";
-import { insertDataRecordSchema, insertEmailSchema, DATA_LIMITS, MAIL_LIMITS, SCHEMA_ID_PATTERN } from "@shared/agent-data";
+import { insertDataRecordSchema, insertEmailSchema, DATA_LIMITS, MAIL_LIMITS, SCHEMA_ID_PATTERN, PERSON_IDS_MAX } from "@shared/agent-data";
 import { EventType, type EventTypeValue, type InsertCalendarEvent } from "@shared/schema";
 
 export interface McpContext {
@@ -124,9 +124,25 @@ export function buildFamilyFrameMcpServer(
     });
   }
 
+  // personIds/personId resolution: id or case-insensitive name; uuid-shaped strings that match
+  // nothing pass through so agents can publish before the person exists.
+  async function resolvePersonRefs(refs: string[]): Promise<string[]> {
+    const people = await service.listPeople(ctx.userId, ctx.username);
+    return refs.map((ref) => {
+      const needle = ref.trim().toLowerCase();
+      const match = people.find((p) => p.id === ref) ?? people.find((p) => p.name.toLowerCase() === needle);
+      if (match) return match.id;
+      if (/^[0-9a-f-]{36}$/i.test(ref.trim())) return ref.trim();
+      const known = people.map((p) => p.name).join(", ") || "none";
+      throw new ToolError(`Unknown person "${ref}". Known people: ${known}`);
+    });
+  }
+  const resolveOptionalPerson = async (ref?: string): Promise<string | undefined> =>
+    ref === undefined ? undefined : (await resolvePersonRefs([ref]))[0];
+
   server.registerTool(
     "list_people",
-    { description: "List the household members (id and name) that can be attached to calendar events." },
+    { description: "List the household members (id and name) that can be attached to calendar events, and used as personIds/personId when publishing or filtering mail, media and dataset records." },
     run(null, () => service.listPeople(ctx.userId, ctx.username)),
   );
 
@@ -216,18 +232,23 @@ export function buildFamilyFrameMcpServer(
   server.registerTool(
     "mail_upsert_emails",
     {
-      description: `Publish processed emails to the user's Family Frame mailbox (insert or update by id). Max batch of ${MAIL_LIMITS.batchMax} emails per call. Attachments are metadata only (filename, mimeType, size, optional https url); no binary content is stored.`,
+      description: `Publish processed emails to the user's Family Frame mailbox (insert or update by id). Max batch of ${MAIL_LIMITS.batchMax} emails per call. Attachments are metadata only (filename, mimeType, size, optional https url); no binary content is stored. Each email may carry personIds (person ids or names, case-insensitive; see list_people).`,
       inputSchema: { emails: z.array(insertEmailSchema).min(1).max(MAIL_LIMITS.batchMax) },
     },
     async ({ emails }: { emails: z.infer<typeof insertEmailSchema>[] }) =>
-      run(MAIL_WRITE, () => mail.upsertEmails(ctx.userId, { emails }))(),
+      run(MAIL_WRITE, async () => {
+        const resolved = await Promise.all(
+          emails.map(async (e) => (e.personIds ? { ...e, personIds: await resolvePersonRefs(e.personIds) } : e)),
+        );
+        return mail.upsertEmails(ctx.userId, { emails: resolved });
+      })(),
   );
 
   server.registerTool(
     "mail_list_emails",
     {
       description:
-        "List email summaries (no body text), newest first. Filter by label, kind, unreadOnly or a text query q; page with before (ISO receivedAt, use nextBefore from the previous result).",
+        "List email summaries (no body text), newest first. Filter by label, kind, unreadOnly, a text query q or personId (person id or name; see list_people); page with before (ISO receivedAt, use nextBefore from the previous result).",
       inputSchema: {
         limit: z.number().int().min(1).max(MAIL_LIMITS.listLimitMax).optional(),
         before: z.string().optional(),
@@ -235,10 +256,14 @@ export function buildFamilyFrameMcpServer(
         kind: z.string().optional(),
         unreadOnly: z.boolean().optional(),
         q: z.string().optional(),
+        personId: z.string().optional(),
       },
     },
-    async (args: { limit?: number; before?: string; label?: string; kind?: string; unreadOnly?: boolean; q?: string }) =>
-      run(MAIL_READ, () => mail.listEmails(ctx.userId, args))(),
+    async (args: { limit?: number; before?: string; label?: string; kind?: string; unreadOnly?: boolean; q?: string; personId?: string }) =>
+      run(MAIL_READ, async () => {
+        const personId = await resolveOptionalPerson(args.personId);
+        return mail.listEmails(ctx.userId, { ...args, personId });
+      })(),
   );
 
   server.registerTool(
@@ -325,26 +350,35 @@ export function buildFamilyFrameMcpServer(
   server.registerTool(
     "data_put_records",
     {
-      description: `Insert or update records (by id) for a schema. Each record is {id, data, emailIds?}; data is validated against the schema's current version. All-or-nothing: one invalid record rejects the batch. Max ${DATA_LIMITS.batchMax} records per call.`,
+      description: `Insert or update records (by id) for a schema. Each record is {id, data, emailIds?, personIds?}; personIds are person ids or names (see list_people), e.g. for the built-in ff-person-day / ff-person-week schemas (see data_list_schemas); data is validated against the schema's current version. All-or-nothing: one invalid record rejects the batch. Max ${DATA_LIMITS.batchMax} records per call.`,
       inputSchema: { schemaId: schemaIdField, records: z.array(insertDataRecordSchema).min(1).max(DATA_LIMITS.batchMax) },
     },
-    async ({ schemaId, records }: { schemaId: string; records: unknown[] }) =>
-      run(DATA_WRITE, () => data.putRecords(ctx.userId, schemaId, { records }))(),
+    async ({ schemaId, records }: { schemaId: string; records: { personIds?: string[] }[] }) =>
+      run(DATA_WRITE, async () => {
+        const resolved = await Promise.all(
+          records.map(async (r) => (r.personIds ? { ...r, personIds: await resolvePersonRefs(r.personIds) } : r)),
+        );
+        return data.putRecords(ctx.userId, schemaId, { records: resolved });
+      })(),
   );
 
   server.registerTool(
     "data_list_records",
     {
-      description: "List records for a schema, newest-updated first. Optionally filter by emailId; page with limit and offset.",
+      description: "List records for a schema, newest-updated first. Optionally filter by emailId or personId (person id or name; see list_people); page with limit and offset.",
       inputSchema: {
         schemaId: schemaIdField,
         emailId: z.string().optional(),
+        personId: z.string().optional(),
         limit: z.number().int().min(1).max(DATA_LIMITS.listLimitMax).optional(),
         offset: z.number().int().min(0).optional(),
       },
     },
-    async ({ schemaId, ...opts }: { schemaId: string; emailId?: string; limit?: number; offset?: number }) =>
-      run(DATA_READ, () => data.listRecords(ctx.userId, schemaId, opts))(),
+    async ({ schemaId, ...opts }: { schemaId: string; emailId?: string; personId?: string; limit?: number; offset?: number }) =>
+      run(DATA_READ, async () => {
+        const personId = await resolveOptionalPerson(opts.personId);
+        return data.listRecords(ctx.userId, schemaId, { ...opts, personId });
+      })(),
   );
 
   server.registerTool(
@@ -373,7 +407,7 @@ export function buildFamilyFrameMcpServer(
   server.registerTool(
     "media_upload",
     {
-      description: `Upload a private file (JPEG, PNG, GIF, WebP or PDF; max ${MEDIA_LIMITS.fileBytesMax / (1024 * 1024)}MB per file) as base64. The declared mimeType must match the file content. Re-uploading identical bytes under the same id is idempotent (created: false). Returned meta includes a url ('/api/files/<id>') serving the file. For bulk uploads prefer REST POST /api/files with raw bytes, which avoids base64 overhead.`,
+      description: `Upload a private file (JPEG, PNG, GIF, WebP or PDF; max ${MEDIA_LIMITS.fileBytesMax / (1024 * 1024)}MB per file) as base64. The declared mimeType must match the file content. Re-uploading identical bytes under the same id is idempotent (created: false). Returned meta includes a url ('/api/files/<id>') serving the file. Optional personIds (person ids or names; see list_people) tag the file to household members. For bulk uploads prefer REST POST /api/files with raw bytes, which avoids base64 overhead.`,
       inputSchema: {
         id: z.string().min(1).optional(),
         filename: z.string().min(1).max(MEDIA_LIMITS.filenameMax),
@@ -381,12 +415,14 @@ export function buildFamilyFrameMcpServer(
         base64: z.string().min(1),
         tags: z.array(z.string()).max(MEDIA_LIMITS.tagsMax).optional(),
         emailIds: z.array(z.string()).max(MEDIA_LIMITS.emailIdsMax).optional(),
+        personIds: z.array(z.string().min(1)).max(PERSON_IDS_MAX).optional(),
       },
     },
-    async (args: { id?: string; filename: string; mimeType: string; base64: string; tags?: string[]; emailIds?: string[] }) =>
+    async (args: { id?: string; filename: string; mimeType: string; base64: string; tags?: string[]; emailIds?: string[]; personIds?: string[] }) =>
       run(MEDIA_WRITE, async () => {
         const { base64, ...rest } = args;
-        const { meta, created } = await media.putMedia(ctx.userId, { ...rest, buffer: decodeBase64(base64) });
+        const personIds = rest.personIds ? await resolvePersonRefs(rest.personIds) : undefined;
+        const { meta, created } = await media.putMedia(ctx.userId, { ...rest, personIds, buffer: decodeBase64(base64) });
         return { meta: withUrl(meta), created };
       })(),
   );
@@ -394,18 +430,20 @@ export function buildFamilyFrameMcpServer(
   server.registerTool(
     "media_list",
     {
-      description: "List file metadata (never file bytes), newest first. Filter by kind (image|pdf), tag or emailId; page with limit and offset. Includes total and storage usage.",
+      description: "List file metadata (never file bytes), newest first. Filter by kind (image|pdf), tag, emailId or personId (person id or name; see list_people); page with limit and offset. Includes total and storage usage.",
       inputSchema: {
         kind: z.enum(["image", "pdf"]).optional(),
         tag: z.string().optional(),
         emailId: z.string().optional(),
+        personId: z.string().optional(),
         limit: z.number().int().min(1).max(MEDIA_LIMITS.listLimitMax).optional(),
         offset: z.number().int().min(0).optional(),
       },
     },
-    async (args: { kind?: "image" | "pdf"; tag?: string; emailId?: string; limit?: number; offset?: number }) =>
+    async (args: { kind?: "image" | "pdf"; tag?: string; emailId?: string; personId?: string; limit?: number; offset?: number }) =>
       run(MEDIA_READ, async () => {
-        const result = await media.listMedia(ctx.userId, args);
+        const personId = await resolveOptionalPerson(args.personId);
+        const result = await media.listMedia(ctx.userId, { ...args, personId });
         return { ...result, items: result.items.map(withUrl) };
       })(),
   );
@@ -440,18 +478,20 @@ export function buildFamilyFrameMcpServer(
   server.registerTool(
     "media_import_url",
     {
-      description: "Fetch an https image or PDF by URL and store it in private media (rehosting an expiring link). The id derives from the URL, so repeating an import costs no fetch. Returns meta (with a url serving the file) and created.",
+      description: "Fetch an https image or PDF by URL and store it in private media (rehosting an expiring link). The id derives from the URL, so repeating an import costs no fetch. Optional personIds (person ids or names; see list_people) tag the file to household members. Returns meta (with a url serving the file) and created.",
       inputSchema: {
         url: z.string().min(1),
         id: z.string().min(1).optional(),
         filename: z.string().min(1).max(MEDIA_LIMITS.filenameMax).optional(),
         tags: z.array(z.string()).max(MEDIA_LIMITS.tagsMax).optional(),
         emailIds: z.array(z.string()).max(MEDIA_LIMITS.emailIdsMax).optional(),
+        personIds: z.array(z.string().min(1)).max(PERSON_IDS_MAX).optional(),
       },
     },
-    async (args: { url: string; id?: string; filename?: string; tags?: string[]; emailIds?: string[] }) =>
+    async (args: { url: string; id?: string; filename?: string; tags?: string[]; emailIds?: string[]; personIds?: string[] }) =>
       run(MEDIA_WRITE, async () => {
-        const { meta, created } = await importer.importFromUrl(ctx.userId, args);
+        const personIds = args.personIds ? await resolvePersonRefs(args.personIds) : undefined;
+        const { meta, created } = await importer.importFromUrl(ctx.userId, { ...args, personIds });
         return { meta: withUrl(meta), created };
       })(),
   );

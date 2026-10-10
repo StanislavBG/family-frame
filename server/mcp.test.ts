@@ -457,3 +457,97 @@ test("mail_rehost_images needs both mail:write and media:write", async () => {
   assert.deepEqual(JSON.parse(text(r)), result);
   assert.deepEqual(calls[0], ["u1", { limit: 5 }]);
 });
+
+const UUID = "123e4567-e89b-12d3-a456-426614174000";
+const email = (personIds: string[]) => ({
+  id: "m1",
+  receivedAt: "2026-01-01T00:00:00.000Z",
+  from: { email: "a@b.c" },
+  text: "hi",
+  subject: "s",
+  personIds,
+});
+
+test("mail_upsert_emails resolves person names, keeps ids and uuid-shaped unknowns", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(["mail:write"], service, mail);
+  const r = await client.callTool({
+    name: "mail_upsert_emails",
+    arguments: { emails: [email(["grandma", "p2", UUID])] },
+  });
+  assert.ok(!r.isError, text(r));
+  assert.deepEqual(calls[0].args[1].emails[0].personIds, ["p1", "p2", UUID]);
+});
+
+test("mail_list_emails resolves personId by name", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(["mail:read"], service, mail);
+  const r = await client.callTool({ name: "mail_list_emails", arguments: { personId: "SAM" } });
+  assert.ok(!r.isError, text(r));
+  assert.equal(calls[0].args[1].personId, "p2");
+});
+
+test("unknown person name errors on upsert and list", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(["mail:read", "mail:write"], service, mail);
+  const w = await client.callTool({ name: "mail_upsert_emails", arguments: { emails: [email(["Nobody"])] } });
+  assert.equal(w.isError, true);
+  assert.match(text(w), /Unknown person "Nobody"/);
+  const l = await client.callTool({ name: "mail_list_emails", arguments: { personId: "Nobody" } });
+  assert.equal(l.isError, true);
+  assert.equal(calls.length, 0);
+});
+
+test("media_list, media_upload and media_import_url resolve person refs", async () => {
+  const { service } = makeFakeService();
+  const { media, calls } = makeFakeMedia();
+  const importer = {
+    async importFromUrl(...args: any[]) {
+      calls.push({ method: "importFromUrl", args });
+      return { meta: { id: "abc" }, created: true };
+    },
+  };
+  const client = await connect(["media:read", "media:write"], service, undefined, undefined, media, { importer });
+  assert.ok(!(await client.callTool({ name: "media_list", arguments: { personId: "grandma" } })).isError);
+  assert.equal(calls.find((c) => c.method === "listMedia")!.args[1].personId, "p1");
+  const up = await client.callTool({
+    name: "media_upload",
+    arguments: { filename: "a.png", mimeType: "image/png", base64: "AAAA", personIds: ["Sam"] },
+  });
+  assert.ok(!up.isError, text(up));
+  assert.deepEqual(calls.find((c) => c.method === "putMedia")!.args[1].personIds, ["p2"]);
+  const imp = await client.callTool({
+    name: "media_import_url",
+    arguments: { url: "https://example.com/a.png", personIds: ["grandma", UUID] },
+  });
+  assert.ok(!imp.isError, text(imp));
+  assert.deepEqual(calls.find((c) => c.method === "importFromUrl")!.args[1].personIds, ["p1", UUID]);
+  const bad = await client.callTool({ name: "media_list", arguments: { personId: "Nobody" } });
+  assert.equal(bad.isError, true);
+});
+
+test("data_put_records into ff-person-day resolves personIds; data_list_records filters by personId", async () => {
+  const { service } = makeFakeService();
+  const { data, calls } = makeFakeData();
+  const client = await connect(["data:read", "data:write"], service, undefined, data);
+  const put = await client.callTool({
+    name: "data_put_records",
+    arguments: { schemaId: "ff-person-day", records: [{ id: "2026-01-01", data: {}, personIds: ["Sam"] }] },
+  });
+  assert.ok(!put.isError, text(put));
+  assert.deepEqual(calls.find((c) => c.method === "putRecords")!.args[2].records[0].personIds, ["p2"]);
+  const list = await client.callTool({
+    name: "data_list_records",
+    arguments: { schemaId: "ff-person-day", personId: "grandma" },
+  });
+  assert.ok(!list.isError, text(list));
+  assert.equal(calls.find((c) => c.method === "listRecords")!.args[2].personId, "p1");
+  const bad = await client.callTool({
+    name: "data_put_records",
+    arguments: { schemaId: "ff-person-day", records: [{ id: "x", data: {}, personIds: ["Nobody"] }] },
+  });
+  assert.equal(bad.isError, true);
+});
