@@ -1,18 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRoute } from "wouter";
-import {
-  ArrowLeft,
-  CalendarDays,
-  ClipboardList,
-  Database,
-  Image,
-  LayoutDashboard,
-  Mail,
-  PanelLeft,
-  PanelLeftClose,
-  UserRound,
-} from "lucide-react";
+import { ArrowLeft, CalendarDays, Database, Image, Mail, Moon, Sun, UserRound } from "lucide-react";
 import type { Person } from "@shared/schema";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
@@ -31,6 +20,19 @@ import {
 } from "@/lib/agent-data";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/format";
+import {
+  LINE,
+  MONO,
+  MUTED,
+  OwlAvatar,
+  PAGE,
+  SATCHEL_TONES,
+  SERIF,
+  SURFACE,
+  SectionLabel,
+  type SatchelTone,
+} from "@/components/person/satchel";
 import PersonDashboard from "@/components/person/person-dashboard";
 import PersonCalendar from "@/components/person/person-calendar";
 import PersonInbox from "@/components/person/person-inbox";
@@ -38,20 +40,31 @@ import PersonPhotos from "@/components/person/person-photos";
 import PersonSheets from "@/components/person/person-sheets";
 import PersonMore from "@/components/person/person-more";
 
+// Order and colours follow the Satchel design's left nav.
 const TABS = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, Component: PersonDashboard },
-  { id: "calendar", label: "Calendar", icon: CalendarDays, Component: PersonCalendar },
-  { id: "inbox", label: "Inbox", icon: Mail, Component: PersonInbox },
-  { id: "photos", label: "Photos", icon: Image, Component: PersonPhotos },
-  { id: "sheets", label: "Sheets", icon: ClipboardList, Component: PersonSheets },
-  { id: "more", label: "More", icon: Database, Component: PersonMore },
-] as const;
+  { id: "dashboard", label: "Dashboard", icon: Sun, tone: "sun", Component: PersonDashboard },
+  { id: "inbox", label: "Inbox", icon: Mail, tone: "sky", Component: PersonInbox },
+  { id: "calendar", label: "Calendar", icon: CalendarDays, tone: "clay", Component: PersonCalendar },
+  { id: "photos", label: "Photos", icon: Image, tone: "leaf", Component: PersonPhotos },
+  { id: "sheets", label: "Daily sheets", icon: Moon, tone: "plum", Component: PersonSheets },
+  { id: "more", label: "More", icon: Database, tone: "stone", Component: PersonMore },
+] as const satisfies readonly { tone: SatchelTone; [key: string]: unknown }[];
 
 type TabId = (typeof TABS)[number]["id"];
 
-/** Which tabs have data for this person. Dashboard and Calendar are always visible. */
-function usePersonTabs(personId: string): TabId[] {
+interface PersonNavInfo {
+  tabs: TabId[];
+  counts: Partial<Record<TabId, string>>;
+  source?: string;
+  syncedAt?: string;
+}
+
+const UNREAD_COUNT_LIMIT = 200;
+
+/** Which tabs have data for this person (Dashboard and Calendar always), nav counts and sync info. */
+function usePersonTabs(personId: string): PersonNavInfo {
   const mail = useMailMessages({ personId, limit: 1 });
+  const unread = useMailMessages({ personId, unreadOnly: true, limit: UNREAD_COUNT_LIMIT });
   const media = useMediaList({ personId, kind: "image", limit: 1 });
   const days = usePersonDays(personId, { limit: 1 });
   const weeks = usePersonWeeks(personId, { limit: 1 });
@@ -79,7 +92,21 @@ function usePersonTabs(personId: string): TabId[] {
     tabs.push("sheets");
   }
   if (customRecords.some((q) => (q.data?.records.length ?? 0) > 0)) tabs.push("more");
-  return tabs;
+
+  const counts: PersonNavInfo["counts"] = {};
+  const unreadCount = unread.data?.emails.length ?? 0;
+  if (unreadCount > 0) counts.inbox = `${unreadCount}${unread.data?.nextBefore ? "+" : ""}`;
+  if (media.data?.total) counts.photos = String(media.data.total);
+  if (days.data?.total) counts.sheets = String(days.data.total);
+
+  const latestDay = days.data?.records[0];
+  const stamps = [latestDay?.updatedAt, mail.data?.emails[0]?.receivedAt].filter((t): t is string => !!t);
+  return {
+    tabs,
+    counts,
+    source: latestDay?.data?.source,
+    syncedAt: stamps.sort().at(-1),
+  };
 }
 
 function PersonCard({ person }: { person: Person }) {
@@ -101,93 +128,120 @@ function PersonCard({ person }: { person: Person }) {
   );
 }
 
-function navItemClass(isActive: boolean, collapsed: boolean) {
-  return cn(
-    "w-full flex items-center rounded-md text-left text-base transition-all duration-200",
-    collapsed ? "justify-center px-2 py-3" : "gap-3 px-3 py-3",
-    isActive
-      ? "bg-primary/10 text-primary font-medium"
-      : "hover-elevate text-muted-foreground hover:text-foreground",
+function NavRow({
+  href,
+  label,
+  icon: Icon,
+  tone,
+  count,
+  active,
+  onClick,
+  testId,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: SatchelTone;
+  count?: string;
+  active: boolean;
+  onClick: () => void;
+  testId: string;
+}) {
+  const t = SATCHEL_TONES[tone];
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex items-center gap-3 rounded-[14px] px-2.5 py-2.5 text-base transition-colors",
+        active ? cn(SURFACE, "font-bold") : "font-medium hover:bg-[#fffaf0] dark:hover:bg-card",
+      )}
+      data-testid={testId}
+    >
+      <span className={cn("flex h-8 w-8 flex-none items-center justify-center rounded-[10px]", t.bg, t.fg)}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="flex-1 truncate">{label}</span>
+      {count && <span className={cn(MONO, "text-xs", MUTED)}>{count}</span>}
+    </Link>
   );
 }
 
-/** Second-level left menu, same pattern as Global Config: person picker, then sections. */
+/** Second-level left menu in the Satchel style: identity card, sections, other people, sync footer. */
 function PersonView({ person, people, tab }: { person: Person; people: Person[]; tab?: string }) {
-  const visible = usePersonTabs(person.id);
+  const nav = usePersonTabs(person.id);
   const active = TABS.find((t) => t.id === tab) ?? TABS[0];
-  const visibleTabs = TABS.filter((t) => visible.includes(t.id) || t.id === active.id);
+  const visibleTabs = TABS.filter((t) => nav.tabs.includes(t.id) || t.id === active.id);
   const Active = active.Component;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const personBase = (p: Person) => `/${encodeURIComponent(p.id)}`;
+  const others = people.filter((p) => p.id !== person.id);
+  const close = () => setMobileNavOpen(false);
 
-  const renderPeople = (collapsed: boolean) =>
-    people.length > 1 && (
-      <div className="space-y-1" role="list" aria-label="Family members">
-        {people.map((p) => {
-          const isActive = p.id === person.id;
-          return (
+  const menu = (
+    <>
+      <nav className="flex flex-col gap-1" aria-label={`${person.name} sections`}>
+        {visibleTabs.map((t) => (
+          <NavRow
+            key={t.id}
+            href={`${personBase(person)}/${t.id}`}
+            label={t.label}
+            icon={t.icon}
+            tone={t.tone}
+            count={nav.counts[t.id]}
+            active={t.id === active.id}
+            onClick={close}
+            testId={`tab-person-${t.id}`}
+          />
+        ))}
+      </nav>
+      {others.length > 0 && (
+        <div className="mt-4 flex flex-col gap-1" role="list" aria-label="Other family members">
+          <SectionLabel className="px-2.5 pb-1">Family</SectionLabel>
+          {others.map((p) => (
             <Link
               key={p.id}
               // Keep the current section when switching person; hidden-empty sections fall back to Dashboard.
               href={`${personBase(p)}/${active.id}`}
               role="listitem"
-              onClick={() => setMobileNavOpen(false)}
-              className={navItemClass(isActive, collapsed)}
-              aria-current={isActive ? "page" : undefined}
-              title={collapsed ? p.name : undefined}
+              onClick={close}
+              className="flex items-center gap-3 rounded-[14px] px-2.5 py-2 text-base font-medium hover:bg-[#fffaf0] dark:hover:bg-card"
               data-testid={`nav-person-${p.id}`}
             >
-              <UserRound className="h-5 w-5 shrink-0" />
-              {!collapsed && <span className="truncate">{p.name}</span>}
+              <UserRound className={cn("h-5 w-5", MUTED)} />
+              <span className="truncate">{p.name}</span>
             </Link>
-          );
-        })}
-      </div>
-    );
-
-  const renderSections = (collapsed: boolean) => (
-    <nav className="space-y-1" aria-label={`${person.name} sections`}>
-      {visibleTabs.map((t) => {
-        const Icon = t.icon;
-        const isActive = t.id === active.id;
-        return (
-          <Link
-            key={t.id}
-            href={`${personBase(person)}/${t.id}`}
-            onClick={() => setMobileNavOpen(false)}
-            className={navItemClass(isActive, collapsed)}
-            aria-current={isActive ? "page" : undefined}
-            aria-label={`${t.label} section`}
-            title={collapsed ? t.label : undefined}
-            data-testid={`tab-person-${t.id}`}
-          >
-            <Icon className="h-5 w-5 shrink-0" />
-            {!collapsed && <span className="truncate">{t.label}</span>}
-          </Link>
-        );
-      })}
-    </nav>
+          ))}
+        </div>
+      )}
+    </>
   );
 
-  const backButton = (
-    <Button asChild variant="ghost" size="icon" className="shrink-0">
-      <Link href="/" aria-label="Back to people" data-testid="button-people-back">
-        <ArrowLeft className="h-5 w-5" />
-      </Link>
-    </Button>
+  const identity = (
+    <div className={cn("flex items-center gap-3 rounded-[18px] border p-3", SURFACE, LINE)}>
+      <OwlAvatar />
+      <div className="min-w-0">
+        <h1 className={cn(SERIF, "truncate text-lg font-bold leading-tight")} data-testid="text-person-name">
+          {person.name}
+        </h1>
+        {nav.source && (
+          <div className="truncate text-xs font-semibold text-[#a83818] dark:text-[#e07a52]">{nav.source}</div>
+        )}
+      </div>
+    </div>
   );
 
   return (
-    <div className="h-full flex flex-col md:flex-row">
+    <div className={cn("h-full flex flex-col md:flex-row text-[#1a1612] dark:text-foreground", PAGE)}>
       {/* Mobile Header */}
-      <div className="md:hidden flex items-center justify-between gap-2 p-4 border-b">
-        <div className="flex items-center gap-2 min-w-0">
-          {backButton}
-          <h1 className="text-lg font-semibold truncate" data-testid="text-person-name">
-            {person.name}
-          </h1>
-        </div>
+      <div className={cn("md:hidden flex items-center justify-between gap-2 border-b p-3", LINE)}>
+        <Button asChild variant="ghost" size="icon" className="flex-none">
+          <Link href="/" aria-label="Back to people" data-testid="button-people-back-mobile">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+        </Button>
+        <div className="min-w-0 flex-1">{identity}</div>
         <Button
           variant="outline"
           size="sm"
@@ -198,65 +252,40 @@ function PersonView({ person, people, tab }: { person: Person; people: Person[];
           {active.label}
         </Button>
       </div>
-
-      {/* Mobile Nav Dropdown */}
-      {mobileNavOpen && (
-        <div className="md:hidden border-b bg-background p-4 space-y-3">
-          {renderPeople(false)}
-          {people.length > 1 && <div className="border-t" />}
-          {renderSections(false)}
-        </div>
-      )}
+      {mobileNavOpen && <div className={cn("md:hidden border-b p-3", LINE)}>{menu}</div>}
 
       {/* Left Navigation Panel - Desktop */}
-      <div
+      <aside
         className={cn(
-          "hidden md:flex flex-col border-r bg-muted/30 shrink-0 transition-all duration-300",
-          sidebarCollapsed ? "w-14" : "w-60",
+          "hidden md:flex w-[232px] shrink-0 flex-col gap-1 border-r px-3.5 py-5",
+          "bg-[#ede6d6] dark:bg-muted/30",
+          LINE,
         )}
       >
-        <div
-          className={cn(
-            "border-b flex items-center transition-all duration-300",
-            sidebarCollapsed ? "p-2 justify-center" : "p-4 gap-2",
-          )}
+        <Link
+          href="/"
+          className={cn("mb-2 flex items-center gap-1.5 px-1 text-sm font-semibold hover:underline", MUTED)}
+          data-testid="button-people-back"
         >
-          {backButton}
-          {!sidebarCollapsed && (
-            <h1 className="text-xl font-semibold truncate" data-testid="text-person-name-desktop">
-              {person.name}
-            </h1>
-          )}
-        </div>
-
-        <ScrollArea className="flex-1">
-          <div className={cn("space-y-3 transition-all duration-300", sidebarCollapsed ? "p-2" : "p-4")}>
-            {renderPeople(sidebarCollapsed)}
-            {people.length > 1 && <div className="border-t" />}
-            {renderSections(sidebarCollapsed)}
-          </div>
-        </ScrollArea>
-
-        <div className={cn("border-t transition-all duration-300", sidebarCollapsed ? "p-2" : "p-4")}>
-          <Button
-            variant="ghost"
-            size={sidebarCollapsed ? "icon" : "default"}
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className={cn("w-full", sidebarCollapsed && "justify-center")}
-            data-testid="button-toggle-person-sidebar"
-            title={sidebarCollapsed ? "Expand menu" : "Collapse menu"}
+          <ArrowLeft className="h-4 w-4" /> People
+        </Link>
+        <div className="mb-3.5">{identity}</div>
+        <ScrollArea className="flex-1">{menu}</ScrollArea>
+        {nav.syncedAt && (
+          <div
+            className="mt-2 rounded-[14px] bg-[#dce8d6] p-3 text-xs leading-normal text-[#2e5a3e] dark:bg-[#8fc49d]/15 dark:text-[#8fc49d]"
+            data-testid="text-person-synced"
           >
-            {sidebarCollapsed ? (
-              <PanelLeft className="h-4 w-4" />
-            ) : (
+            <b>● Synced {formatRelativeTime(nav.syncedAt)}</b>
+            {nav.source && (
               <>
-                <PanelLeftClose className="h-4 w-4 mr-2" />
-                <span>Collapse</span>
+                <br />
+                {nav.source}
               </>
             )}
-          </Button>
-        </div>
-      </div>
+          </div>
+        )}
+      </aside>
 
       {/* Right Content Panel */}
       <div className="flex-1 min-h-0 min-w-0 overflow-auto" role="region" aria-label={`${person.name} ${active.label}`}>
