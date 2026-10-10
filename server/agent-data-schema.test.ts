@@ -101,6 +101,7 @@ test("email: normalized message and summary shapes", () => {
     imageUrls: [],
     attachments: [],
     mediaIds: [],
+    personIds: [],
     ingestedAt: "2026-01-02T03:04:06Z",
     updatedAt: "2026-01-02T03:04:06Z",
     readAt: null,

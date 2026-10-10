@@ -88,7 +88,7 @@ test("success shapes", async () => {
   assert.deepEqual((await call(routes, "GET /api/mail/messages", { query: { limit: "5", unread: "1", q: "x" } })).body,
     { emails: [], nextBefore: null });
   assert.deepEqual(calls.find((c) => c[0] === "list")!.slice(1), ["u1", {
-    limit: 5, before: undefined, label: undefined, kind: undefined, unreadOnly: true, q: "x",
+    limit: 5, before: undefined, label: undefined, kind: undefined, unreadOnly: true, q: "x", personId: undefined,
   }]);
   assert.deepEqual((await call(routes, "GET /api/mail/unread-count")).body, { count: 3 });
   assert.deepEqual((await call(routes, "POST /api/mail/messages/read", { body: { ids: ["a"] } })).body, { updated: 2 });
@@ -137,4 +137,10 @@ test("rehost PAT without media:write gives 403", async () => {
   assert.equal(calls.some((c) => c[0] === "rehost"), false);
   const ok = await call(routes, "POST /api/mail/messages/rehost", { headers: { ...headers, "x-ff-scopes": "mail:write,media:write" } });
   assert.equal(ok.status, 200);
+});
+
+test("GET messages passes personId to the service", async () => {
+  const { routes, calls } = setup();
+  await call(routes, "GET /api/mail/messages", { query: { personId: "p1" } });
+  assert.equal(calls.find((c) => c[0] === "list")![2].personId, "p1");
 });

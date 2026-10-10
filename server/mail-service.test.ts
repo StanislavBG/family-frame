@@ -193,3 +193,35 @@ test("mediaIds round-trip and legacy emails normalize to []", async () => {
   assert.ok(list.emails.every((e) => Array.isArray(e.mediaIds)));
   await rejects400(svc.upsertEmails("u1", { emails: [mail("c", { mediaIds: ["bad.id"] })] }));
 });
+
+test("personIds round-trip, replace on re-post, dedupe, legacy -> []", async () => {
+  const { svc, db } = makeService();
+  await svc.upsertEmails("u1", { emails: [mail("a", { personIds: ["p1", "p2", "p1"] }), mail("b")] });
+  assert.deepEqual((await svc.getEmail("u1", "a"))?.personIds, ["p1", "p2"]);
+  assert.deepEqual((await svc.getEmail("u1", "b"))?.personIds, []);
+  await svc.upsertEmails("u1", { emails: [mail("a", { personIds: ["p3"] })] });
+  assert.deepEqual((await svc.getEmail("u1", "a"))?.personIds, ["p3"]);
+  delete db.mailbox.u1.index.b.personIds;
+  assert.deepEqual((await svc.getEmail("u1", "b"))?.personIds, []);
+  assert.ok((await svc.listEmails("u1")).emails.every((e) => Array.isArray(e.personIds)));
+  await rejects400(svc.upsertEmails("u1", { emails: [mail("c", { personIds: [""] })] }));
+  await rejects400(svc.upsertEmails("u1", { emails: [mail("c", { personIds: Array(21).fill("x") })] }));
+});
+
+test("personId filter alone, with unreadOnly, and multi-person emails", async () => {
+  const { svc } = makeService();
+  await svc.upsertEmails("u1", {
+    emails: [
+      mail("a", { receivedAt: "2026-02-01T00:00:00.000Z", personIds: ["p1"] }),
+      mail("b", { receivedAt: "2026-02-02T00:00:00.000Z", personIds: ["p1", "p2"] }),
+      mail("c", { receivedAt: "2026-02-03T00:00:00.000Z" }),
+    ],
+  });
+  await svc.setRead("u1", ["a"], true);
+  const ids = async (o: any) => (await svc.listEmails("u1", o)).emails.map((e) => e.id);
+  assert.deepEqual(await ids({ personId: "p1" }), ["b", "a"]);
+  assert.deepEqual(await ids({ personId: "p2" }), ["b"]);
+  assert.deepEqual(await ids({ personId: "p1", unreadOnly: true }), ["b"]);
+  assert.deepEqual(await ids({ personId: "nobody" }), []);
+  assert.deepEqual(await ids({ personId: "" }), ["c", "b", "a"]);
+});

@@ -29,6 +29,7 @@ export interface ListEmailsOptions {
   kind?: string;
   unreadOnly?: boolean;
   q?: string;
+  personId?: string;
 }
 
 const root = (userId: string) => `mailbox/${userId}`;
@@ -53,6 +54,7 @@ function normalizeSummary(raw: any): EmailSummary {
     attachments: Array.isArray(raw.attachments) ? raw.attachments : [],
     // Media ids are stored as given and never checked against the media store.
     mediaIds: Array.isArray(raw.mediaIds) ? raw.mediaIds : [],
+    personIds: Array.isArray(raw.personIds) ? Array.from(new Set<string>(raw.personIds)) : [],
     readAt: raw.readAt ?? null,
   };
 }
@@ -141,6 +143,7 @@ export function createMailService(deps: MailDeps) {
       if (opts.unreadOnly) emails = emails.filter((e) => e.readAt === null);
       if (opts.label) emails = emails.filter((e) => e.labels.includes(opts.label!));
       if (opts.kind) emails = emails.filter((e) => e.kind === opts.kind);
+      if (opts.personId) emails = emails.filter((e) => e.personIds.includes(opts.personId!));
       if (opts.q) {
         const q = opts.q.toLowerCase();
         emails = emails.filter((e) =>

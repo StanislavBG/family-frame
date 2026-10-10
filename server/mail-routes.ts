@@ -51,6 +51,7 @@ export function registerMailRoutes(app: Express, service: MailService = mailServ
       kind: queryString(req.query.kind),
       unreadOnly: unread === "1" || unread === "true",
       q: queryString(req.query.q),
+      personId: queryString(req.query.personId),
     }));
   }));
 

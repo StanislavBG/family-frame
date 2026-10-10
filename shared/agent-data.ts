@@ -39,6 +39,9 @@ export const DATA_LIMITS = {
   listLimitMax: 500,
 } as const;
 
+export const PERSON_IDS_MAX = 20;
+export const personIdsSchema = z.array(z.string().min(1).max(128)).max(PERSON_IDS_MAX);
+
 const agentIdSchema = z.string().regex(AGENT_ID_PATTERN);
 
 const httpsUrlSchema = z
@@ -86,6 +89,8 @@ export const insertEmailSchema = z
     // Loose links to uploaded media (/api/files). Ids are NOT checked for existence:
     // media may be uploaded before or after the email.
     mediaIds: z.array(agentIdSchema).max(MAIL_LIMITS.mediaIdsMax).optional(),
+    // Household people this email is about; ids are NOT checked against the people list.
+    personIds: personIdsSchema.optional(),
     source: z.string().max(MAIL_LIMITS.sourceMax).optional(),
     sourceUrl: httpsUrlSchema.optional(),
   })
@@ -100,6 +105,7 @@ export const emailMessageSchema = insertEmailSchema.extend({
   imageUrls: z.array(z.string()),
   attachments: z.array(emailAttachmentSchema),
   mediaIds: z.array(z.string()),
+  personIds: z.array(z.string()),
   ingestedAt: z.string(),
   updatedAt: z.string(),
   readAt: z.string().nullable(),
