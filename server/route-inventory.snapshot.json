@@ -16,6 +16,7 @@
   "GET /api/data/records/:schemaId",
   "GET /api/data/records/:schemaId/:recordId",
   "DELETE /api/data/records/:schemaId/:recordId",
+  "POST /api/files/import",
   "POST /api/files",
   "GET /api/files",
   "GET /api/files/:id/meta",

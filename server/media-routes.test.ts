@@ -25,13 +25,24 @@ const store: any = {
   deleteMedia: async (_u: string, id: string) => id === "abc",
 };
 
+const importCalls: any[] = [];
+let importCreated = true;
+const importer: any = {
+  importFromUrl: async (userId: string, input: any) => {
+    importCalls.push([userId, input]);
+    if (input.url === "https://blocked.example.com/x.png") throw new MediaError("URL not allowed", 400);
+    if (input.url === "https://down.example.com/x.png") throw new MediaError("Upstream fetch failed", 502);
+    return { meta: META, created: importCreated, fetched: importCreated };
+  },
+};
+
 let server: Server;
 let base: string;
 const auth = { "x-clerk-user-id": "u1" };
 
 before(async () => {
   const app = express();
-  registerMediaRoutes(app, store as MediaStore);
+  registerMediaRoutes(app, store as MediaStore, importer);
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
@@ -96,4 +107,36 @@ test("401 without x-clerk-user-id on every route", async () => {
     const res = await fetch(`${base}${path}`, { method, headers: { "content-type": "image/png" }, body: method === "POST" ? PNG : undefined });
     assert.equal(res.status, 401, `${method} ${path}`);
   }
+});
+
+const postImport = (body: unknown, headers: Record<string, string> = auth) =>
+  fetch(`${base}/api/files/import`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body) });
+
+test("import returns 201 then 200 when deduped, passing the parsed body", async () => {
+  const body = { url: "https://cdn.example.com/a.png", id: "abc", filename: "a.png", tags: ["x"], emailIds: ["e1"] };
+  const r1 = await postImport(body);
+  assert.equal(r1.status, 201);
+  const j1 = await r1.json() as any;
+  assert.equal(j1.created, true);
+  assert.equal(j1.meta.id, "abc");
+  assert.deepEqual(importCalls.at(-1), ["u1", body]);
+  importCreated = false;
+  const r2 = await postImport(body);
+  assert.equal(r2.status, 200);
+  assert.equal(((await r2.json()) as any).created, false);
+  importCreated = true;
+});
+
+test("import rejects invalid bodies (400), maps MediaError and requires auth", async () => {
+  const before = importCalls.length;
+  assert.equal((await postImport({})).status, 400);
+  assert.equal((await postImport({ url: "https://x.example.com/" + "a".repeat(2048) })).status, 400);
+  assert.equal((await postImport({ url: "https://cdn.example.com/a.png", tags: "x" })).status, 400);
+  assert.equal(importCalls.length, before);
+  const blocked = await postImport({ url: "https://blocked.example.com/x.png" });
+  assert.equal(blocked.status, 400);
+  assert.deepEqual(await blocked.json(), { error: "URL not allowed" });
+  const down = await postImport({ url: "https://down.example.com/x.png" });
+  assert.equal(down.status, 502);
+  assert.equal((await postImport({ url: "https://cdn.example.com/a.png" }, {})).status, 401);
 });

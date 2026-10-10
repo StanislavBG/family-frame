@@ -1,6 +1,8 @@
 import express from "express";
 import type { Express, Request, Response } from "express";
+import { z } from "zod";
 import { asyncHandler } from "./middleware";
+import { mediaImporter, type MediaImporter } from "./media-import";
 import { mediaStore, MediaError, type MediaStore, type MediaKind } from "./media-store";
 
 type MediaHandler = (req: Request, res: Response, userId: string) => Promise<void>;
@@ -43,7 +45,34 @@ function asciiFilename(name: string, fallback: string): string {
   return cleaned || fallback;
 }
 
-export function registerMediaRoutes(app: Express, store: MediaStore = mediaStore): void {
+const importBodySchema = z.object({
+  url: z.string().min(1).max(2048),
+  id: z.string().min(1).max(128).optional(),
+  filename: z.string().min(1).max(255).optional(),
+  tags: z.array(z.string().max(64)).max(50).optional(),
+  emailIds: z.array(z.string().max(128)).max(50).optional(),
+}).strict();
+
+export function registerMediaRoutes(
+  app: Express,
+  store: MediaStore = mediaStore,
+  importer: Pick<MediaImporter, "importFromUrl"> = mediaImporter,
+): void {
+  // Registered before any /api/files/:id route. JSON body, so no raw parser here.
+  app.post(
+    "/api/files/import",
+    express.json({ limit: "64kb" }),
+    mediaHandler(async (req, res, userId) => {
+      const parsed = importBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid request body" });
+        return;
+      }
+      const { meta, created } = await importer.importFromUrl(userId, parsed.data);
+      res.status(created ? 201 : 200).json({ meta, created });
+    }),
+  );
+
   app.post(
     "/api/files",
     express.raw({ type: () => true, limit: "8mb" }),
