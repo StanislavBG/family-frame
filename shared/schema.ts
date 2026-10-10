@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { APP_MANIFESTS } from "./apps";
+import { personIdsSchema } from "./agent-data";
 
 // Event type enum
 export const EventType = {
@@ -74,6 +75,14 @@ export const PhotoSource = {
 } as const;
 
 export type PhotoSourceValue = (typeof PhotoSource)[keyof typeof PhotoSource];
+
+// Which hosted images the Photos app plays when photoSource is agent_media
+export const PhotoMediaScope = {
+  HOUSEHOLD: "household",
+  PEOPLE: "people",
+} as const;
+
+export type PhotoMediaScopeValue = (typeof PhotoMediaScope)[keyof typeof PhotoMediaScope];
 
 // Google Photos Picker session schema
 export const pickerSessionSchema = z.object({
@@ -237,6 +246,9 @@ export const userSettingsSchema = z.object({
   selectedPhotos: z.array(storedPhotoSchema).default([]), // Persistent photo collection
   photoSource: z.enum([PhotoSource.GOOGLE_PHOTOS, PhotoSource.PIXABAY, PhotoSource.AGENT_MEDIA]).default(PhotoSource.PIXABAY),
   photoInterval: z.number().min(5).max(60).default(10),
+  // Hosted images (agent_media): undefined scope means "household"; ids are People-registry ids
+  photoMediaScope: z.enum([PhotoMediaScope.HOUSEHOLD, PhotoMediaScope.PEOPLE]).optional(),
+  photoMediaPersonIds: personIdsSchema.optional(),
   radioEnabled: z.boolean().default(false),
   radioVolume: z.number().min(0).max(100).default(50),
   radioStation: z.string().default("https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac"),

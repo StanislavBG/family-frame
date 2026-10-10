@@ -98,3 +98,14 @@ test("message: limits content, strips client toUsername, keeps linkedEventId", (
   assert.equal(insertMessageSchema.safeParse({ toUserId: "u2", content: "x".repeat(2001) }).success, false);
   assert.equal(insertMessageSchema.safeParse({ toUserId: "u2", content: "" }).success, false);
 });
+
+test("settings: hosted photo scope", () => {
+  const ok = (body: unknown) => updateUserSettingsSchema.safeParse(body).success;
+  assert.equal(ok({ photoMediaScope: "people", photoMediaPersonIds: ["a"] }), true);
+  assert.equal(ok({ photoMediaPersonIds: [] }), true);
+  assert.equal(ok({ photoMediaScope: "all" }), false);
+  assert.equal(ok({ photoMediaPersonIds: Array.from({ length: 21 }, (_, i) => `p${i}`) }), false);
+  assert.equal(ok({ photoMediaPersonIds: ["x".repeat(129)] }), false);
+  assert.equal(ok({ photoMediaPersonIds: [""] }), false);
+  assert.deepEqual(updateUserSettingsSchema.parse({ photoMediaScope: "people" }), { photoMediaScope: "people" });
+});
