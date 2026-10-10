@@ -29,6 +29,7 @@ import {
   TV_CHANNELS,
 } from "@shared/schema";
 import type { AppId } from "@shared/apps";
+import { EventsPreferencesPanel } from "@/components/events/events-preferences-panel";
 
 // ── Reusable building blocks ───────────────────────────────────────
 
@@ -538,4 +539,5 @@ export const APP_SETTINGS_PANELS: Partial<
   "baby-songs": { title: "Baby Songs", description: "Set age-appropriate content", Panel: BabySongsPanel },
   tv: { title: "TV Settings", description: "Configure your TV experience", Panel: TVPanel },
   stocks: { title: "Stock Tracker", description: "Select stocks to track", Panel: StocksPanel },
+  events: { title: "Events Settings", description: "What kinds of events you would like", Panel: EventsPreferencesPanel },
 };
