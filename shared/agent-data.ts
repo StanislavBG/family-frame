@@ -18,6 +18,7 @@ export const MAIL_LIMITS = {
   recipientsMax: 100,
   imageUrlsMax: 50,
   attachmentsMax: 50,
+  mediaIdsMax: 50,
   urlMax: 2048,
   sourceMax: 60,
   mailboxMax: 2000,
@@ -60,6 +61,8 @@ const emailAttachmentSchema = z
     mimeType: z.string().max(255),
     size: z.number().int().nonnegative().optional(),
     url: httpsUrlSchema.optional(),
+    // Loose link to an uploaded media file; existence is not checked.
+    mediaId: agentIdSchema.optional(),
   })
   .strict();
 
@@ -80,6 +83,9 @@ export const insertEmailSchema = z
     kind: z.string().min(1).max(MAIL_LIMITS.kindMax).optional(),
     imageUrls: z.array(httpsUrlSchema).max(MAIL_LIMITS.imageUrlsMax).optional(),
     attachments: z.array(emailAttachmentSchema).max(MAIL_LIMITS.attachmentsMax).optional(),
+    // Loose links to uploaded media (/api/files). Ids are NOT checked for existence:
+    // media may be uploaded before or after the email.
+    mediaIds: z.array(agentIdSchema).max(MAIL_LIMITS.mediaIdsMax).optional(),
     source: z.string().max(MAIL_LIMITS.sourceMax).optional(),
     sourceUrl: httpsUrlSchema.optional(),
   })
@@ -93,6 +99,7 @@ export const emailMessageSchema = insertEmailSchema.extend({
   labels: z.array(z.string()),
   imageUrls: z.array(z.string()),
   attachments: z.array(emailAttachmentSchema),
+  mediaIds: z.array(z.string()),
   ingestedAt: z.string(),
   updatedAt: z.string(),
   readAt: z.string().nullable(),

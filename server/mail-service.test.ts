@@ -169,3 +169,27 @@ test("users cannot see each other's emails", async () => {
   assert.equal(db.users, undefined);
   assert.ok((await svc.getEmail("A", "a")));
 });
+
+test("mediaIds round-trip and legacy emails normalize to []", async () => {
+  const { svc, db } = makeService();
+  await svc.upsertEmails("u1", {
+    emails: [
+      mail("a", {
+        mediaIds: ["m1", "m2"],
+        attachments: [{ filename: "a.pdf", mimeType: "application/pdf", mediaId: "m1" }],
+      }),
+      mail("b"),
+    ],
+  });
+  const a = await svc.getEmail("u1", "a");
+  assert.deepEqual(a?.mediaIds, ["m1", "m2"]);
+  assert.equal(a?.attachments[0].mediaId, "m1");
+  assert.deepEqual((await svc.getEmail("u1", "b"))?.mediaIds, []);
+
+  // Legacy record written before the field existed.
+  delete db.mailbox.u1.index.b.mediaIds;
+  assert.deepEqual((await svc.getEmail("u1", "b"))?.mediaIds, []);
+  const list = await svc.listEmails("u1");
+  assert.ok(list.emails.every((e) => Array.isArray(e.mediaIds)));
+  await rejects400(svc.upsertEmails("u1", { emails: [mail("c", { mediaIds: ["bad.id"] })] }));
+});
