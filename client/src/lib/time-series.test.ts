@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { timeSeriesKeys, seriesStats, monthlyBuckets, sparklinePath, formatSeriesValue, dueStatus } from "./time-series";
+import {
+  timeSeriesKeys, seriesStats, monthlyBuckets, sparklinePath, formatSeriesValue, dueStatus,
+  billStatus, seriesHealth, seriesCheckedAt, isSeriesStale, boardStaleness,
+} from "./time-series";
+import type { TimeSeries } from "@shared/time-series";
 
 const p = (t: string, value: number) => ({ t, value });
 
@@ -139,5 +143,90 @@ describe("dueStatus", () => {
     expect(dueStatus(undefined, "2026-10-11")).toBeNull();
     expect(dueStatus("", "2026-10-11")).toBeNull();
     expect(dueStatus("soon", "2026-10-11")).toBeNull();
+  });
+});
+
+describe("billStatus", () => {
+  const today = "2026-10-11";
+
+  it("paid:true with a past dueDate is paid, not overdue", () => {
+    expect(billStatus({ dueDate: "2026-10-05", paid: true }, today)).toBe("paid");
+  });
+
+  it("paymentStatus paid/autopay wins over dueDate", () => {
+    expect(billStatus({ dueDate: "2026-04-30", paymentStatus: "paid" }, today)).toBe("paid");
+    expect(billStatus({ dueDate: "2026-10-05", paymentStatus: "autopay" }, today)).toBe("autopay");
+    expect(billStatus({ dueDate: "2026-10-13", paymentStatus: "autopay-scheduled" }, today)).toBe("autopay");
+    expect(billStatus({ dueDate: "2026-10-05", paymentStatus: "autopay", paid: true }, today)).toBe("autopay");
+  });
+
+  it("falls back to dueStatus when not paid", () => {
+    expect(billStatus({ dueDate: "2026-10-05" }, today)).toBe("overdue");
+    expect(billStatus({ dueDate: "2026-10-05", paid: false, paymentStatus: "past-due" }, today)).toBe("overdue");
+    expect(billStatus({ dueDate: "2026-10-13", paymentStatus: "due-soon" }, today)).toBe("soon");
+    expect(billStatus({ dueDate: "2026-12-01", paymentStatus: "unknown" }, today)).toBe("later");
+  });
+
+  it("null without annotations or dueDate", () => {
+    expect(billStatus(undefined, today)).toBeNull();
+    expect(billStatus({}, today)).toBeNull();
+    expect(billStatus({ paid: "yes" }, today)).toBeNull();
+  });
+});
+
+function series(over: Partial<TimeSeries> = {}): TimeSeries {
+  return {
+    id: "pse-gas", title: "PSE Gas", description: "", summary: "", tags: ["utilities"], unit: "USD", color: null,
+    annotations: {}, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-10-10T14:00:00Z",
+    pointCount: 0, firstT: null, lastT: null, latest: null, ...over,
+  };
+}
+
+describe("seriesHealth", () => {
+  it("alert and warn carry the series summary", () => {
+    const s = series({ summary: "ALERT: collector failing 3 runs", annotations: { health: { severity: "alert" } } });
+    expect(seriesHealth(s)).toEqual({ severity: "alert", text: "ALERT: collector failing 3 runs" });
+    const w = series({ summary: "WARN: next bill 5 days behind", annotations: { health: { severity: "warn" } } });
+    expect(seriesHealth(w)).toEqual({ severity: "warn", text: "WARN: next bill 5 days behind" });
+  });
+
+  it("falls back to generic text when summary is empty", () => {
+    expect(seriesHealth(series({ annotations: { health: { severity: "alert" } } }))?.text).toBe("Needs attention");
+  });
+
+  it("null for ok, missing or malformed health", () => {
+    expect(seriesHealth(series({ summary: "OK", annotations: { health: { severity: "ok" } } }))).toBeNull();
+    expect(seriesHealth(series())).toBeNull();
+    expect(seriesHealth(series({ annotations: { health: "alert" } }))).toBeNull();
+    expect(seriesHealth(series({ annotations: { health: [{ severity: "alert" }] } }))).toBeNull();
+  });
+});
+
+describe("staleness", () => {
+  const now = Date.parse("2026-10-11T12:00:00Z");
+  const fresh = series({ id: "a", annotations: { health: { checkedAt: "2026-10-11T07:15:00-07:00" } } });
+  const old = series({ id: "b", updatedAt: "2026-10-01T00:00:00Z", annotations: { health: { checkedAt: "2026-10-08T14:15:00Z" } } });
+  const oldNoHealth = series({ id: "c", updatedAt: "2026-10-05T00:00:00Z" });
+
+  it("checkedAt wins over updatedAt; invalid checkedAt falls back", () => {
+    expect(seriesCheckedAt(fresh)).toBe("2026-10-11T07:15:00-07:00");
+    expect(seriesCheckedAt(oldNoHealth)).toBe("2026-10-05T00:00:00Z");
+    expect(seriesCheckedAt(series({ annotations: { health: { checkedAt: "nope" } } }))).toBe("2026-10-10T14:00:00Z");
+  });
+
+  it("stale after 48 hours", () => {
+    expect(isSeriesStale(fresh, now)).toBe(false);
+    expect(isSeriesStale(old, now)).toBe(true);
+    expect(isSeriesStale(oldNoHealth, now)).toBe(true);
+    // checkedAt keeps a series fresh even if updatedAt is old
+    expect(isSeriesStale(series({ updatedAt: "2026-01-01T00:00:00Z", annotations: { health: { checkedAt: "2026-10-11T00:00:00Z" } } }), now)).toBe(false);
+    expect(isSeriesStale(series({ updatedAt: "2026-10-09T12:00:00Z" }), now)).toBe(false);
+    expect(isSeriesStale(series({ updatedAt: "2026-10-09T11:59:59Z" }), now)).toBe(true);
+  });
+
+  it("board banner only when every series is stale, with the newest check date", () => {
+    expect(boardStaleness([old, oldNoHealth], now)).toEqual({ allStale: true, lastChecked: "2026-10-08T14:15:00Z" });
+    expect(boardStaleness([old, fresh], now).allStale).toBe(false);
+    expect(boardStaleness([], now)).toEqual({ allStale: false, lastChecked: null });
   });
 });

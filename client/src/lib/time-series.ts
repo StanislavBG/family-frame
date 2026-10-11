@@ -179,3 +179,59 @@ export function dueStatus(dueDate: string | null | undefined, today: string): Du
   if (dueDate < today) return "overdue";
   return dueDate <= addDaysIso(today, 7) ? "soon" : "later";
 }
+
+export type BillStatus = DueStatus | "paid" | "autopay";
+
+const AUTOPAY_STATUSES = new Set(["autopay", "autopay-scheduled"]);
+
+/**
+ * Tile status for a bill's latest point: a paid or autopay bill never shows
+ * overdue/due soon; otherwise falls back to dueStatus(dueDate).
+ */
+export function billStatus(annotations: Record<string, unknown> | undefined, today: string): BillStatus | null {
+  const paymentStatus = annotations?.paymentStatus;
+  if (typeof paymentStatus === "string" && AUTOPAY_STATUSES.has(paymentStatus)) return "autopay";
+  if (annotations?.paid === true || paymentStatus === "paid") return "paid";
+  const due = annotations?.dueDate;
+  return dueStatus(typeof due === "string" ? due : null, today);
+}
+
+export type HealthSeverity = "warn" | "alert";
+
+function healthOf(series: TimeSeries): Record<string, unknown> | null {
+  const health = series.annotations?.health;
+  return health && typeof health === "object" && !Array.isArray(health) ? (health as Record<string, unknown>) : null;
+}
+
+/** Warning from series.annotations.health.severity; null when ok or missing. */
+export function seriesHealth(series: TimeSeries): { severity: HealthSeverity; text: string } | null {
+  const severity = healthOf(series)?.severity;
+  if (severity !== "warn" && severity !== "alert") return null;
+  const text = series.summary.trim() || (severity === "alert" ? "Needs attention" : "Check this bill");
+  return { severity, text };
+}
+
+export const STALE_AFTER_MS = 48 * 3_600_000;
+
+/** When the publisher last checked this series: health.checkedAt, else updatedAt. */
+export function seriesCheckedAt(series: TimeSeries): string | null {
+  const checkedAt = healthOf(series)?.checkedAt;
+  if (typeof checkedAt === "string" && !Number.isNaN(Date.parse(checkedAt))) return checkedAt;
+  return Number.isNaN(Date.parse(series.updatedAt)) ? null : series.updatedAt;
+}
+
+export function isSeriesStale(series: TimeSeries, nowMs: number): boolean {
+  const checkedAt = seriesCheckedAt(series);
+  return checkedAt !== null && nowMs - Date.parse(checkedAt) > STALE_AFTER_MS;
+}
+
+/** Board-level staleness: every series stale; lastChecked is the newest check across them. */
+export function boardStaleness(series: TimeSeries[], nowMs: number): { allStale: boolean; lastChecked: string | null } {
+  let lastChecked: string | null = null;
+  for (const s of series) {
+    const checkedAt = seriesCheckedAt(s);
+    if (checkedAt && (lastChecked === null || Date.parse(checkedAt) > Date.parse(lastChecked))) lastChecked = checkedAt;
+  }
+  const allStale = series.length > 0 && series.every((s) => isSeriesStale(s, nowMs));
+  return { allStale, lastChecked };
+}

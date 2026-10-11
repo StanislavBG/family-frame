@@ -86,11 +86,25 @@ The Utilities app reads these conventions. Follow them so tiles show the right t
 - Point `t` = the **billing date** (`YYYY-MM-DD`).
 - Optional point `annotations`:
   - `dueDate` (`YYYY-MM-DD`): shown on the tile, with overdue/due-soon status
+  - `paid` (boolean): `true` shows a **Paid** badge instead of overdue/due soon
+  - `paymentStatus` (string): `paid` shows **Paid**; `autopay` or `autopay-scheduled` shows **Autopay**.
+    Any other value (e.g. `due`, `past-due`, `unknown`) keeps the `dueDate` status.
+    The tile reads `paid`/`paymentStatus` from the **latest** point only.
   - `periodStart`, `periodEnd` (`YYYY-MM-DD`)
   - `usage` (number) and `usageUnit` (e.g. `therms`, `kWh`)
   - `autopay` (boolean)
   - `invoiceNo` (string)
 - Series `annotations` hold facts about the account, such as `account` and `vendor`.
+- Optional series `annotations.health` reports the publisher's own checks:
+  - `severity`: `ok`, `warn` or `alert`. `warn` shows an amber warning on the tile and `alert` a red one,
+    with the series `summary` as its text (so put the reasons there, e.g. `WARN: next bill 5 days behind`).
+    `ok` or missing shows nothing.
+  - `checkedAt` (ISO datetime): when the publisher last checked this series. Re-publish it on every run,
+    even when nothing changed. Missing or invalid falls back to the series `updatedAt`.
+  - Other keys (e.g. `nextBill`, `collector`) are free-form and not read by the tile.
+- **Stale data**: a series whose `checkedAt` (or `updatedAt`) is older than 48 hours shows a
+  "Not updated recently" marker. When every series on the board is stale, the board shows one banner,
+  "Utilities not updated since <date>", instead.
 
 ## Worked example: bills
 

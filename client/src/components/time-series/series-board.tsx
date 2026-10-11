@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
-import { LineChart } from "lucide-react";
+import { AlertTriangle, Clock, LineChart } from "lucide-react";
 import type { TimePoint, TimeSeries } from "@shared/time-series";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,12 @@ import { useToday } from "@/hooks/use-today";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import {
-  dueStatus,
+  billStatus,
+  boardStaleness,
   formatSeriesValue,
+  isSeriesStale,
   monthlyBuckets,
+  seriesHealth,
   seriesStats,
   timeSeriesKeys,
   useSeriesList,
@@ -41,11 +44,13 @@ function pointsQuery(seriesId: string) {
   };
 }
 
-function dueDateOf(points: TimePoint[]): string | null {
+function latestPointOf(points: TimePoint[]): TimePoint | null {
   if (points.length === 0) return null;
-  const latest = points.reduce((a, b) => (Date.parse(b.t) >= Date.parse(a.t) ? b : a));
-  const due = latest.annotations?.dueDate;
-  return typeof due === "string" ? due : null;
+  return points.reduce((a, b) => (Date.parse(b.t) >= Date.parse(a.t) ? b : a));
+}
+
+function formatCheckedDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function SeriesTile({
@@ -53,20 +58,24 @@ function SeriesTile({
   boardTag,
   points,
   loading,
+  stale,
   onSelect,
 }: {
   series: TimeSeries;
   boardTag: string;
   points: TimePoint[];
   loading: boolean;
+  stale: boolean;
   onSelect: (seriesId: string) => void;
 }) {
   const today = useToday();
   const stats = seriesStats(points);
   const color = series.color || "hsl(var(--primary))";
   const otherTags = series.tags.filter((t) => t !== boardTag);
-  const dueDate = dueDateOf(points);
-  const status = dueStatus(dueDate, today);
+  const annotations = latestPointOf(points)?.annotations;
+  const dueDate = typeof annotations?.dueDate === "string" ? annotations.dueDate : null;
+  const status = billStatus(annotations, today);
+  const health = seriesHealth(series);
   const latestValue = stats.latest ?? series.latest?.value ?? null;
   const latestDate = (series.latest?.t ?? series.lastT ?? "").slice(0, 10);
   const spark = monthlyBuckets(points, SPARK_MONTHS).map((b) => b.sum);
@@ -96,9 +105,15 @@ function SeriesTile({
             {latestDate && <p className="text-sm text-muted-foreground">{latestDate}</p>}
           </div>
 
-          {dueDate && (
+          {(dueDate || status === "paid" || status === "autopay") && (
             <div className="flex items-center gap-2 text-sm">
-              <span>Due {dueDate}</span>
+              {dueDate && <span>Due {dueDate}</span>}
+              {status === "paid" && (
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200">Paid</Badge>
+              )}
+              {status === "autopay" && (
+                <Badge className="bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200">Autopay</Badge>
+              )}
               {status === "overdue" && (
                 <Badge className="bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200">Overdue</Badge>
               )}
@@ -106,6 +121,32 @@ function SeriesTile({
                 <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200">Due soon</Badge>
               )}
             </div>
+          )}
+
+          {health && (
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-md px-3 py-2 text-sm",
+                health.severity === "alert"
+                  ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
+                  : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+              )}
+              role="status"
+              data-testid={`health-${health.severity}-${series.id}`}
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <span className="line-clamp-3">{health.text}</span>
+            </div>
+          )}
+
+          {stale && (
+            <p
+              className="flex items-center gap-1 text-sm text-amber-800 dark:text-amber-200"
+              data-testid={`stale-${series.id}`}
+            >
+              <Clock className="h-4 w-4" aria-hidden="true" />
+              Not updated recently
+            </p>
           )}
 
           {loading ? (
@@ -139,6 +180,9 @@ function SeriesTile({
 export function SeriesBoard({ tag, title, onSelect }: SeriesBoardProps) {
   const list = useSeriesList(tag);
   const [filter, setFilter] = useState<string>(ALL);
+  // Re-renders at midnight, so a wall display re-evaluates staleness at least daily.
+  useToday();
+  const nowMs = Date.now();
 
   const all = list.data ?? [];
   const secondaryTags = useMemo(() => {
@@ -155,6 +199,8 @@ export function SeriesBoard({ tag, title, onSelect }: SeriesBoardProps) {
   all.forEach((s, i) => {
     pointsById.set(s.id, { points: pointResults[i]?.data ?? [], loading: pointResults[i]?.isLoading ?? false });
   });
+
+  const staleness = boardStaleness(all, nowMs);
 
   const totals = new Map<string, number>();
   for (const s of visible) {
@@ -199,6 +245,21 @@ export function SeriesBoard({ tag, title, onSelect }: SeriesBoardProps) {
     <div className="p-4 space-y-4" data-testid="series-board">
       <h2 className="text-2xl font-semibold">{title}</h2>
 
+      {staleness.allStale && (
+        <div
+          className="flex items-center gap-2 rounded-lg bg-amber-100 p-4 text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+          role="alert"
+          data-testid="series-board-stale"
+        >
+          <Clock className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <span className="text-lg">
+            {staleness.lastChecked
+              ? `${title} not updated since ${formatCheckedDate(staleness.lastChecked)}`
+              : `${title} not updated recently`}
+          </span>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-6 rounded-lg border bg-card p-4" data-testid="series-board-totals">
         {Array.from(totals.entries()).map(([unit, sum]) => (
           <div key={unit || "none"}>
@@ -239,6 +300,7 @@ export function SeriesBoard({ tag, title, onSelect }: SeriesBoardProps) {
             boardTag={tag}
             points={pointsById.get(s.id)?.points ?? []}
             loading={pointsById.get(s.id)?.loading ?? false}
+            stale={!staleness.allStale && isSeriesStale(s, nowMs)}
             onSelect={onSelect}
           />
         ))}
