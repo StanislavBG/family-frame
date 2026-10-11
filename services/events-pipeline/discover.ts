@@ -52,6 +52,7 @@ export interface DiscoverStats {
   purged: number;
   searches: number;
   candidates: number;
+  invalidCandidates: number;
   newEvents: number;
   merged: number;
   published: number;
@@ -113,6 +114,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     purged: 0,
     searches: 0,
     candidates: 0,
+    invalidCandidates: 0,
     newEvents: 0,
     merged: 0,
     published: 0,
@@ -253,6 +255,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         runId,
       });
       stats.candidates += res.candidates.length;
+      stats.invalidCandidates += res.invalid;
       for (const raw of res.candidates) {
         try {
           const norm = normalizeCandidate(raw, { now, defaultTimezone });

@@ -201,3 +201,10 @@ test("funnel stats: normalize rejects, search failures, skip reasons and phase t
   for (const v of Object.values(stats.phaseMs)) assert.ok(Number.isInteger(v) && v >= 0 && v % 10 === 0);
   assert.ok(stats.phaseMs.prepare > 0 && stats.phaseMs.search > 0);
 });
+
+test("schema-invalid search results are counted in invalidCandidates", async () => {
+  const f = fakeFf([household("h1")], { h1: state("h1") });
+  const stats = await run({ ff: f.ff, runner: fakeRunner(found(candidate, { title: "" }, { nonsense: true })) });
+  assert.equal(stats.candidates, 1);
+  assert.equal(stats.invalidCandidates, 2);
+});
