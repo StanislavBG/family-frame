@@ -47,7 +47,7 @@ const FEEDBACK_AXES: {
   },
 ];
 
-const BIG_BUTTON = "min-h-12 text-base font-semibold";
+const BIG_BUTTON = "min-h-11 text-base font-semibold";
 
 function isPast(item: EventItem): boolean {
   const { schedule } = item.event;
@@ -244,7 +244,7 @@ export function EventActions({ item }: { item: EventItem }) {
   const sendSignal = (signal: FeedbackSignal) => feedback.mutate({ signal });
 
   return (
-    <div className="space-y-4" data-testid={`event-actions-${item.eventId}`}>
+    <div className="space-y-2" data-testid={`event-actions-${item.eventId}`}>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label="Respond to this event">
         {RESPONSE_BUTTONS.map(({ value, label, tone }) => {
           const selected = current === value;
@@ -257,7 +257,7 @@ export function EventActions({ item }: { item: EventItem }) {
               aria-pressed={selected}
               aria-label={selected ? `${label} (selected)` : label}
               disabled={respond.isPending}
-              className={cn(BIG_BUTTON, "min-h-12", selected && cn(t.bg, t.fg, "border-current"))}
+              className={cn(BIG_BUTTON, selected && cn(t.bg, t.fg, "border-current"))}
               onClick={() => onResponseTap(value)}
               data-testid={`button-event-${value}`}
             >
@@ -269,7 +269,7 @@ export function EventActions({ item }: { item: EventItem }) {
       </div>
 
       {choosing && (
-        <div className={cn("space-y-3 rounded-xl border p-3", SURFACE, LINE)} data-testid="panel-add-to-calendar">
+        <div className={cn("space-y-2 rounded-xl border p-2", SURFACE, LINE)} data-testid="panel-add-to-calendar">
           <SectionLabel>Add to calendar</SectionLabel>
           <VisibilityChoice value={calendarVisibility} onChange={setCalendarVisibility} idPrefix="button-calendar" />
           <div className="flex flex-wrap gap-2">
@@ -285,7 +285,7 @@ export function EventActions({ item }: { item: EventItem }) {
       )}
 
       {declining && (
-        <div className={cn("space-y-3 rounded-xl border p-3", SURFACE, LINE)} data-testid="panel-decline-reason">
+        <div className={cn("space-y-2 rounded-xl border p-2", SURFACE, LINE)} data-testid="panel-decline-reason">
           <SectionLabel>Why not? (optional)</SectionLabel>
           <Textarea
             value={reason}
@@ -317,11 +317,11 @@ export function EventActions({ item }: { item: EventItem }) {
         </div>
       )}
 
-      <div className={cn("space-y-3 rounded-xl border p-3", SURFACE, LINE)} data-testid="block-event-feedback">
+      <div className={cn("space-y-2 rounded-xl border p-2", SURFACE, LINE)} data-testid="block-event-feedback">
         <SectionLabel>{past ? "Did you go? How was it?" : "How does this fit us?"}</SectionLabel>
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
           {FEEDBACK_AXES.map((axis) => (
-            <div key={axis.key} className="grid grid-cols-2 gap-2" role="group" aria-label={axis.options.map((o) => o.label).join(" or ")}>
+            <div key={axis.key} className="grid grid-cols-2 gap-1.5 lg:grid-cols-1" role="group" aria-label={axis.options.map((o) => o.label).join(" or ")}>
               {axis.options.map((o, i) => {
                 const selected = item.feedback?.[axis.key] === o.value;
                 const t = SATCHEL_TONES[i === 0 ? "leaf" : "clay"];
