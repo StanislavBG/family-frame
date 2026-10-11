@@ -10,7 +10,7 @@ import type { Notice } from "./notify";
 import type { WatchResult } from "./watch";
 
 test("parseArgs reads modes and flags with defaults", () => {
-  assert.deepEqual(parseArgs(["discover"]), { mode: "discover", dryRun: false, householdId: undefined, maxSessions: 25 });
+  assert.deepEqual(parseArgs(["discover"]), { mode: "discover", dryRun: false, householdId: undefined, maxSessions: 45 });
   assert.deepEqual(parseArgs(["all", "--dry-run", "--household", "h1", "--max-sessions", "7"]), {
     mode: "all",
     dryRun: true,
@@ -118,8 +118,8 @@ test("status prints counts only", async () => {
   openEventsDb(h.deps.env!.EVENTS_DB_PATH!).close();
 });
 
-test("parseArgs accepts watch with a 12-session default", () => {
-  assert.deepEqual(parseArgs(["watch"]), { mode: "watch", dryRun: false, householdId: undefined, maxSessions: 12 });
+test("parseArgs accepts watch with a 20-session default", () => {
+  assert.deepEqual(parseArgs(["watch"]), { mode: "watch", dryRun: false, householdId: undefined, maxSessions: 20 });
   assert.deepEqual(parseArgs(["watch", "--dry-run", "--max-sessions", "4"]), { mode: "watch", dryRun: true, householdId: undefined, maxSessions: 4 });
   assert.equal(parseArgs(["--max-sessions", "9", "watch"]).maxSessions, 9);
 });

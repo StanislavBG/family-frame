@@ -39,7 +39,7 @@ test("never searched: focus general first, within maxTasks", () => {
   assert.equal(tasks[0].categoryKey, "general");
   assert.equal(tasks[0].fromDate, "2026-10-10");
   assert.equal(tasks[0].toDate, "2026-10-24");
-  assert.ok(tasks.length <= 6);
+  assert.equal(tasks.length, 11);
   assert.equal(plan({ maxTasks: 2 }).length, 2);
 });
 
@@ -112,6 +112,9 @@ test("prompt contents and no street address", () => {
   }
   assert.ok(prompt.includes("- Known 59 (2026-10-12)"));
   assert.ok(!prompt.includes("Known 60"));
+  assert.ok(prompt.includes("Return up to 25 candidates"));
+  assert.ok(prompt.includes("no duplicates of the same event on different listing sites"));
+  assert.ok(prompt.includes("library story times, farm days, museum free days, nature programs"));
   assert.ok(!prompt.includes("742 Evergreen"));
   assert.ok(!prompt.includes("line1"));
 });
