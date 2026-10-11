@@ -153,7 +153,7 @@ function Overview() {
   const counts = status?.counts;
 
   return (
-    <div className={cn("min-h-full space-y-5 p-4 sm:p-6", PAGE)} data-testid="events-overview">
+    <div className={cn("space-y-5 p-4 sm:p-6", PAGE)} data-testid="events-overview">
       <header className="space-y-1">
         <h1 className={cn(SERIF, "text-3xl font-bold text-[#1a1612] dark:text-foreground")}>Events</h1>
         {counts && (
@@ -243,7 +243,7 @@ function formatPublished(iso: string): string {
   return new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function EventsPage() {
+function EventsContent() {
   const [, setLocation] = useLocation();
   const [match, params] = useRoute<{ eventId: string }>("/:eventId");
   const { data: status, isLoading } = useEventsStatus();
@@ -290,4 +290,12 @@ export default function EventsPage() {
   }
 
   return <Overview />;
+}
+
+export default function EventsPage() {
+  return (
+    <div className="h-full overflow-y-auto" data-testid="events-scroll">
+      <EventsContent />
+    </div>
+  );
 }
