@@ -22,6 +22,8 @@ You can hold at most 10 tokens per account.
 | `data:write` | Write datasets | Non-`GET` calls on `/api/data/*` and the data write tools. Implies `data:read`. |
 | `media:read` | Read files | `GET` on `/api/files/*` and the `media_list` / `media_get_meta` MCP tools. |
 | `media:write` | Write files | Non-`GET` calls on `/api/files/*` and the media write tools. Implies `media:read`. Also required, with `mail:write`, by `POST /api/mail/messages/rehost`. |
+| `metrics:read` | Read time-series | `GET` on `/api/metrics/*` and the `metrics_list_*` / `metrics_get_series` MCP tools. |
+| `metrics:write` | Write time-series | Non-`GET` calls on `/api/metrics/*` and the metrics write tools. Implies `metrics:read`. See `docs/time-series.md`. |
 
 ## 3. Connect Claude Code
 
@@ -231,6 +233,16 @@ Choose which images play:
 
 Deleting a person removes them from the selection, but never rewrites `personIds` on stored files. The stream holds at most the 2000 newest matching images. It is private to your account and is never exposed through household connections.
 
+## Time-series (metrics)
+
+`metrics:read` / `metrics:write` cover `/api/metrics/*` and the `metrics_*` MCP tools. Series, points, tags and the Utilities conventions are in `docs/time-series.md`.
+
+## Change an existing token's access
+
+Do not create a new token to widen or narrow an agent's rights. In **Settings → Agent Access**, click **Edit access** on the token, change the scopes and save. The secret stays the same (nothing to re-copy or reconfigure in the agent), and the change takes effect on the agent's next request. `calendar:read` is always kept.
+
+The route behind it, `PATCH /api/tokens/:id` with `{"scopes": [...]}`, works only from a signed-in browser session; a PAT cannot call it.
+
 ## 12. Revocation
 
 In **Settings → Agent Access**, click **Revoke** on the token and confirm. Access is lost immediately and this cannot be undone. The list shows each token's scopes, creation date and last use (updated at most hourly).
@@ -238,7 +250,7 @@ In **Settings → Agent Access**, click **Revoke** on the token and confirm. Acc
 ## 13. Security notes
 
 - **Hash-only storage**: only the SHA-256 hash of a token is stored (Firebase `apiTokens/<hash>`); the raw token cannot be recovered, which is why it is shown once.
-- **Path allowlist**: the PAT branch of the session-header middleware in `server/auth.ts` allows only `/api/calendar/*`, `/api/mail/*`, `/api/data/*`, `/api/files/*`, `/api/people/list`, `/mcp` and `/mcp/*`. Everything else returns 403. `GET` on `/api/mail/*`, `/api/data/*` and `/api/files/*` needs the read or write scope of that area; other methods need the write scope (`calendar:write`, `mail:write`, `data:write`, `media:write`).
+- **Path allowlist**: the PAT branch of the session-header middleware in `server/auth.ts` allows only `/api/calendar/*`, `/api/mail/*`, `/api/data/*`, `/api/files/*`, `/api/metrics/*`, `/api/people/list`, `/mcp` and `/mcp/*`. Everything else returns 403. `GET` on `/api/mail/*`, `/api/data/*`, `/api/files/*` and `/api/metrics/*` needs the read or write scope of that area; other methods need the write scope (`calendar:write`, `mail:write`, `data:write`, `media:write`, `metrics:write`).
 - **Tokens cannot mint tokens**: `/api/tokens/*` is not on the allowlist, so a PAT cannot create, list or revoke tokens; that needs a signed-in browser session.
 - Client-supplied identity headers are stripped; identity comes only from a verified Clerk session or PAT.
 - Treat tokens like passwords: one per agent, revoke when unused.

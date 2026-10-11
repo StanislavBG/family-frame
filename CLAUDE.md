@@ -15,6 +15,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 - **Baby Songs**: Age-specific nursery rhymes (0-6 years)
 - **TV**: Bulgarian television channels streaming (HLS-based)
 - **Shopping List**: Shared grocery/shopping lists
+- **Utilities**: Bill tiles (electricity, gas, water, internet) built from agent-published time-series tagged `utilities`
 - **Stocks**: Market tracking (Dow Jones, Bitcoin, Real Estate, MSFT, CRM, ISRG)
 - **Notepad**: Shared note-taking
 - **Chores**: Shared household chore tracking
@@ -242,6 +243,17 @@ The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day
 - "Today" comes from `useToday()` (`client/src/hooks/use-today.ts`), never `new Date()` at render, so wall displays roll over at midnight
 - Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
 - Not built (no data source yet): the design's Ask bar, "Needs you" card, email category filters and photo favourite/hide/review states.
+
+### Time-series (metrics) and Utilities
+Agents publish named series of timestamped numbers (bills, readings); tags decide which display shows them. Guide: `docs/time-series.md`.
+- `shared/time-series.ts` - Zod schemas, types and `TS_LIMITS`
+- `server/time-series-service.ts` - logic shared by REST and MCP; RTDB `timeSeries/<userId>`
+- `server/metrics-routes.ts` - `/api/metrics/*` routes; MCP tools `metrics_*` in `server/mcp.ts` reuse the service
+- `client/src/lib/time-series.ts` - typed hooks and pure display logic; `client/src/components/time-series/` - tiles, charts, detail view
+- Scopes `metrics:read|write` (write implies read); a token's scopes are edited in place via `PATCH /api/tokens/:id` (browser session only), never by minting another token
+- Points upsert by `t`, so re-publishing is idempotent
+- Rule: displays are built by tag. Tag `utilities` feeds the Utilities app (one tile per series; point annotations like `dueDate` follow the conventions in `docs/time-series.md`); never hard-code series ids in the client.
+- Rule: this data is private per account and never exposed through household connections.
 
 ### Events and household address
 Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`, operator's cron + Haiku) finds events for households that opted in and publishes them through the service API.
