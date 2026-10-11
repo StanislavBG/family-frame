@@ -18,6 +18,7 @@ import {
   listRecommendationsForHousehold,
   lastSearchAt,
   logSearch,
+  markHouseholdDiscovered,
   recordRecommendation,
   upsertEvent,
   upsertHousehold,
@@ -80,7 +81,8 @@ interface Active {
   learned: PreferenceSummary;
 }
 
-const hashOf = (v: unknown): string => createHash("sha256").update(JSON.stringify(v)).digest("hex");
+export const addressHashOf = (v: unknown): string => createHash("sha256").update(JSON.stringify(v)).digest("hex");
+const hashOf = addressHashOf;
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
@@ -341,6 +343,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         if (revoked) continue;
       }
       stats.published += published;
+      markHouseholdDiscovered(db, hhId, now.toISOString());
 
       if (!dryRun) {
         const res = await ff.recordRun(hhId, {

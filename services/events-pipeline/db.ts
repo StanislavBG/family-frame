@@ -4,7 +4,7 @@ import { ffEventSchema, type FfEvent, type HouseholdResponse, type Recommendatio
 
 export type EventsDb = DatabaseSync;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS events (
@@ -78,6 +78,11 @@ export function openEventsDb(path: string): EventsDb {
   const cols = db.prepare("PRAGMA table_info(recommendations)").all();
   if (!cols.some((c) => c.name === "published_json")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN published_json TEXT");
+  }
+  // v3: watch bookkeeping, so a cheap frequent check can find households needing discovery.
+  const hCols = db.prepare("PRAGMA table_info(households)").all();
+  for (const col of ["last_discovered_at", "last_triggered_at"]) {
+    if (!hCols.some((c) => c.name === col)) db.exec(`ALTER TABLE households ADD COLUMN ${col} TEXT`);
   }
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   return db;
@@ -184,6 +189,11 @@ export interface HouseholdRecord {
   updatedAt: string;
 }
 
+export interface LocalHouseholdRecord extends HouseholdRecord {
+  lastDiscoveredAt: string | null;
+  lastTriggeredAt: string | null;
+}
+
 export function upsertHousehold(db: EventsDb, h: HouseholdRecord): void {
   db.prepare(
     `INSERT INTO households (id, address_json, address_hash, lat, lon, area_key, profile_json, updated_at)
@@ -199,7 +209,7 @@ export function upsertHousehold(db: EventsDb, h: HouseholdRecord): void {
   ).run(h.id, JSON.stringify(h.address ?? null), h.addressHash, h.lat, h.lon, h.areaKey, JSON.stringify(h.profile ?? null), h.updatedAt);
 }
 
-export function listHouseholds(db: EventsDb): HouseholdRecord[] {
+export function listHouseholds(db: EventsDb): LocalHouseholdRecord[] {
   return db
     .prepare("SELECT * FROM households ORDER BY id")
     .all()
@@ -212,7 +222,19 @@ export function listHouseholds(db: EventsDb): HouseholdRecord[] {
       areaKey: str(r.area_key),
       profile: JSON.parse(str(r.profile_json)) as unknown,
       updatedAt: str(r.updated_at),
+      lastDiscoveredAt: strOrNull(r.last_discovered_at),
+      lastTriggeredAt: strOrNull(r.last_triggered_at),
     }));
+}
+
+/** Record that the watcher started discovery for a household (no-op if it has no local row yet). */
+export function markHouseholdTriggered(db: EventsDb, id: string, iso: string): void {
+  db.prepare("UPDATE households SET last_triggered_at = ? WHERE id = ?").run(iso, id);
+}
+
+/** Record that a discover pass finished for a household (no-op if it has no local row). */
+export function markHouseholdDiscovered(db: EventsDb, id: string, iso: string): void {
+  db.prepare("UPDATE households SET last_discovered_at = ? WHERE id = ?").run(iso, id);
 }
 
 /** Remove a household and every recommendation recorded for it. */

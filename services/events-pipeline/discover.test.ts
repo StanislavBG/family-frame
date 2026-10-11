@@ -169,3 +169,12 @@ test("one household's failure does not stop the others", async () => {
   assert.equal(stats.errors, 1);
   assert.equal(stats.published, 1);
 });
+
+test("household is marked discovered after a successful pass, also in dry-run", async () => {
+  for (const dryRun of [false, true]) {
+    const db = openEventsDb(":memory:");
+    const f = fakeFf([household("h1")], {});
+    await runDiscover({ db, geocoder, now, runId: "r", limits, dryRun, ff: f.ff, runner: fakeRunner(found(candidate)) });
+    assert.equal(listHouseholds(db)[0].lastDiscoveredAt, now.toISOString());
+  }
+});
