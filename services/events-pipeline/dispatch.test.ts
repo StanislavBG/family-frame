@@ -187,3 +187,50 @@ test("notSharing household is purged", async () => {
   assert.deepEqual(listHouseholds(db).map((h) => h.id), ["h2"]);
   assert.deepEqual(listHouseholdsHoldingEvent(db, "e7"), ["h2"]);
 });
+
+const withLocation = (patch: Record<string, unknown>) => {
+  const { parkingNotes: _p, accessibilityNotes: _a, address: _ad, postalCode: _pc, ...rest } = SAMPLE_EVENT.location;
+  return { ...rest, ...patch } as FfEvent["location"];
+};
+
+test("recheck fills missing parking note and pushes a details-changed update", async () => {
+  const db = openEventsDb(":memory:");
+  const base = ev("e8", 5, { location: withLocation({ address: "1 Main St", accessibilityNotes: "Step-free" }) });
+  seed(db, base, ["h1"]);
+  const runner = fakeRunner([
+    okData({
+      status: "scheduled",
+      changes: [],
+      location: { parkingNotes: "Free lot behind the library", accessibilityNotes: "Ignored overwrite" },
+      confidence: 0.9,
+    }),
+  ]);
+  const { ff, pushes } = fakeFf();
+  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "r8" });
+  assert.equal(stats.changed, 1);
+  assert.equal(stats.pushed, 1);
+  assert.equal(pushes.length, 1);
+  assert.match(runner.calls[0].prompt, /parking notes/);
+  const saved = getEvent(db, "e8")!;
+  assert.equal(saved.location.parkingNotes, "Free lot behind the library");
+  assert.equal(saved.location.accessibilityNotes, "Step-free");
+  assert.equal(saved.updates.length, 1);
+  assert.equal(saved.updates[0].kind, "details-changed");
+  assert.match(saved.updates[0].summary, /parking/i);
+});
+
+test("recheck never overwrites an existing address and pushes nothing", async () => {
+  const db = openEventsDb(":memory:");
+  const base = ev("e9", 5, {
+    location: withLocation({ address: "1 Main St", postalCode: "97201", parkingNotes: "Street", accessibilityNotes: "Ramp" }),
+  });
+  seed(db, base, ["h1"]);
+  const runner = fakeRunner([
+    okData({ status: "scheduled", changes: [], location: { address: "99 Other Rd" }, confidence: 0.9 }),
+  ]);
+  const { ff, pushes } = fakeFf();
+  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "r9" });
+  assert.equal(stats.changed, 0);
+  assert.equal(pushes.length, 0);
+  assert.equal(getEvent(db, "e9")!.location.address, "1 Main St");
+});
