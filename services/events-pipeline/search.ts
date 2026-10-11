@@ -176,6 +176,7 @@ export function buildSearchPrompt(
     "- Dates and times must be ISO 8601; set city, region and country to where the event takes place.",
     "- Return distinct events: no duplicates of the same event on different listing sites.",
     "- Include recurring family activities (library story times, farm days, museum free days, nature programs) as one candidate with `occurrences` listing the upcoming dates.",
+    "- From the official or venue page, include the venue's full street address and postal code, and parking (cost, where, tips) and accessibility notes when stated; omit them if not found.",
     "- Do not repeat events already known.",
   );
   if (known.length > 0) {

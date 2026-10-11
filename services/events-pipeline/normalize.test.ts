@@ -31,6 +31,21 @@ test("valid candidate normalizes and parses with ffEventSchema", () => {
   assert.equal(e.location.setting, "unknown");
 });
 
+test("postal code, parking and accessibility notes map into location", () => {
+  const e = ok({ ...base, postalCode: " 97201 ", parkingNotes: " Free field parking ", accessibilityNotes: "Stroller friendly" });
+  assert.equal(e.location.postalCode, "97201");
+  assert.equal(e.location.parkingNotes, "Free field parking");
+  assert.equal(e.location.accessibilityNotes, "Stroller friendly");
+  assert.equal(ffEventSchema.safeParse(e).success, true);
+});
+
+test("blank postal code, parking and accessibility notes are dropped", () => {
+  const e = ok({ ...base, postalCode: "  ", parkingNotes: "", accessibilityNotes: " " });
+  assert.equal("postalCode" in e.location, false);
+  assert.equal("parkingNotes" in e.location, false);
+  assert.equal("accessibilityNotes" in e.location, false);
+});
+
 test("unknown category maps to other", () => {
   assert.equal(ok({ ...base, category: "bungee" }).category, "other");
 });
