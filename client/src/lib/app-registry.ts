@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
+  Receipt,
   Baby,
   Calendar,
   ChefHat,
@@ -49,6 +50,7 @@ export const APP_ICONS: Record<AppId, LucideIcon> = {
   "baby-songs": Baby,
   tv: Tv,
   stocks: BarChart3,
+  utilities: Receipt,
   chores: ListChecks,
   recipes: ChefHat,
   notepad: StickyNote,

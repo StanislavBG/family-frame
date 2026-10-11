@@ -20,7 +20,7 @@ describe("app manifest", () => {
     const ids = APP_MANIFESTS.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...APP_IDS]);
-    expect(ids).toHaveLength(18);
+    expect(ids).toHaveLength(19);
     const urls = APP_MANIFESTS.map((a) => a.url);
     expect(new Set(urls).size).toBe(urls.length);
   });
@@ -72,8 +72,8 @@ describe("app manifest", () => {
   it("legacy undefined settings enable every app", () => {
     for (const s of [undefined, null, {}]) {
       const layout = resolveAppLayout(s);
-      expect(layout.enabledIds).toHaveLength(18);
-      expect(layout.menu).toHaveLength(18);
+      expect(layout.enabledIds).toHaveLength(19);
+      expect(layout.menu).toHaveLength(19);
       expect(isAppEnabled(s, "tv")).toBe(true);
     }
   });
@@ -115,7 +115,7 @@ describe("app manifest", () => {
   it("setAppEnabled", () => {
     expect(setAppEnabled(["clock", "dashboard", "clock"], "tv", true)).toEqual(["home", "settings", "clock", "tv"]);
     expect(setAppEnabled(undefined, "tv", false)).not.toContain("tv");
-    expect(setAppEnabled(undefined, "tv", false)).toHaveLength(17);
+    expect(setAppEnabled(undefined, "tv", false)).toHaveLength(18);
     expect(setAppEnabled(["clock"], "clock", false)).toEqual(["home", "settings"]);
     expect(setAppEnabled(["clock"], "home", false)).toEqual(["home", "settings", "clock"]);
     expect(setAppEnabled([], "dashboard" as never, true)).toEqual(["home", "settings"]);

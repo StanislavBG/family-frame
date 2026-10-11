@@ -22,6 +22,7 @@ import ShoppingPage from "@/pages/shopping";
 import SettingsPage from "@/pages/settings";
 import ClockPage from "@/pages/clock";
 import StocksPage from "@/pages/stocks";
+import UtilitiesPage from "@/pages/utilities";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import ChoresPage from "@/pages/chores";
@@ -206,6 +207,7 @@ const GuardedBabySongs = guarded(BabySongsPage);
 const GuardedTV = guarded(TVPage);
 const GuardedShopping = guarded(ShoppingPage);
 const GuardedStocks = guarded(StocksPage);
+const GuardedUtilities = guarded(UtilitiesPage);
 const GuardedScreensaver = guarded(ScreensaverPage);
 const GuardedSettings = guarded(SettingsPage);
 
@@ -227,6 +229,7 @@ const APP_PAGES: Record<AppId, React.ComponentType> = {
   tv: GuardedTV,
   shopping: GuardedShopping,
   stocks: GuardedStocks,
+  utilities: GuardedUtilities,
   screensaver: GuardedScreensaver,
 };
 

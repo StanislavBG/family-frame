@@ -19,6 +19,7 @@ export const APP_IDS = [
   "tv",
   "shopping",
   "stocks",
+  "utilities",
   "screensaver",
 ] as const;
 
@@ -194,6 +195,16 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     summary: "Follow the markets at a glance.",
     description: "Keep an eye on the markets you care about without any fuss. Choose which ones to show.",
     features: ["Dow Jones, S&P 500, Bitcoin, Gold and more", "Pick which markets to track", "Ticker on the Home screen"],
+  },
+  {
+    id: "utilities",
+    title: "Utilities",
+    url: "/utilities",
+    nested: true,
+    defaultEnabled: false,
+    summary: "Household bills and usage over time.",
+    description: "See your electricity, gas, water, internet and other bills in one place. Your agent publishes them, tagged \"utilities\", and each one gets its own tile.",
+    features: ["One tile for every bill", "See how each bill changes over time", "Tap a tile for the full history"],
   },
   {
     id: "screensaver",
