@@ -84,6 +84,13 @@ Signed-in session (Clerk headers), implemented in `server/apps/events.ts` over `
 
 Only for the pipeline. Auth: `Authorization: Bearer ff_svc_...`. The server compares the token's SHA-256 against `EVENTS_SERVICE_TOKEN_SHA256` (Replit Secret, timing-safe, see `server/service-token.ts`). Unset or malformed hash rejects every token, which disables the service API. A service token is confined to `/api/service/events/`; every other `/api/service` request gets 403. Mint a token and its hash with the one-liner in `services/events-pipeline/README.md`; rotate by minting a new pair and updating both sides.
 
+Two failures look alike but mean different things:
+
+| Status | Body | Meaning | Operator action |
+| --- | --- | --- | --- |
+| 503 | `Service API not configured` | `EVENTS_SERVICE_TOKEN_SHA256` is unset or malformed on the server | set the Replit secret to the 64-hex SHA-256 and republish |
+| 401 | `Invalid service token` | the server has a hash, but the token's SHA-256 does not match it | re-mint the pair, update both the Replit secret (then republish) and `FF_SERVICE_TOKEN` in the env file |
+
 Consent is checked on every per-household route: a household that is not currently sharing is a plain 404.
 
 | Route | Purpose |
@@ -124,7 +131,7 @@ Weights decay with a 120-day half-life. Category sums are normalised with `tanh(
 
 ## 8. Pipeline
 
-`services/events-pipeline/` is a separate Node 22.13+ package (`node:sqlite`), run with `npm run events:run -- <discover|refresh|all|watch|status> [--dry-run] [--household <id>] [--max-sessions <n>]`. It is excluded from the root `npm test` and `npm run check`; use `npm run events:test` and `npm run events:check`.
+`services/events-pipeline/` is a separate Node 22.13+ package (`node:sqlite`), run with `npm run events:run -- <discover|refresh|all|watch|status|report> [--dry-run] [--household <id>] [--max-sessions <n>]` (`report` also takes `--runs <n>`). It is excluded from the root `npm test` and `npm run check`; use `npm run events:test` and `npm run events:check`.
 
 Modules: `cli.ts` (entry, lock, stats line), `ff-client.ts` (service API client), `db.ts` (SQLite state), `geo.ts` (Nominatim, cached, one request at a time), `search.ts` (query planning per window), `haiku.ts` (`claude -p` runner), `normalize.ts` (raw result to `ffEventSchema`), `rank.ts` (scoring with learned weights, distance, busy overlap, dedupe), `explain.ts` (why-for-household/children text, template fallback), `discover.ts` (purge revoked, search, dedupe, rank, explain, publish), `dispatch.ts` (re-check due events, push changes).
 
@@ -148,3 +155,15 @@ Cron: `services/events-pipeline/crontab.example` installs two jobs by hand (`cro
 - Daily at 05:30 America/Los_Angeles (`events:run -- all`): discover plus re-check of known events for every household.
 
 Dry run: add `--dry-run` to search and rank without publishing (`refresh --dry-run` only counts due events). `status` prints household and upcoming-event counts and recent runs, with no addresses or tokens. Always dry-run one household before enabling cron.
+
+`report` (`events:run -- report [--household <id>] [--runs <n>]`, default 10 runs) prints a Markdown profile from the local DB to stdout. It needs no `FF_*` config, takes no lock and makes no network calls. Sections:
+
+- **Runs**: one row per recent run (kind, start, duration, ok/error/running, Haiku sessions, cost USD, searches, candidates, normalize rejected, ranked, published). Watch rows sum their per-household discover stats; cells without data show `-`.
+- **Where candidates were lost**: for the latest run with discover stats, the top normalize reject reasons, search failures, skipped-by-reason counts and phase timings.
+- **Recommendations**: per household (or the one given), last discovered/triggered and up to 30 published recommendations (title, start, category, match, distance, status, response), then cost per published recommendation.
+
+The report contains no address, coordinates, profile or tokens.
+
+Run stats (`runs.stats_json`, also the printed JSON line) carry: `haiku` (`sessions`, `costUsd`), `normalizeRejected` (+ `normalizeRejectReasons`), `searchFailures` and `skippedByReason` (counts by reason), `ranked`, and `phaseMs` (`prepare`, `search`, `rank`, `explain`, `publish`, in milliseconds).
+
+Notifications: `watch`, `discover`, `refresh` and `all` send desktop notices through `notify-send` (rules in `notify.ts`). Per household: a normal notice with published/candidates (and cost) after a successful run, a critical one when that household's run failed. Per job: a critical `failed` notice on the first failure or when the error text changes; the same unchanged failure repeats as `still failing` at most once per 24 hours; the first success after failures sends `recovered`. `all` also sends a low-urgency daily summary (published, candidates, errors, cost). Failure state is kept per job in the local DB (`notify_state`). Notices hold only ids, counts, costs and clipped error text. Set `EVENTS_NOTIFY=off` to disable them; a missing `notify-send` or desktop session is ignored and never fails a run.

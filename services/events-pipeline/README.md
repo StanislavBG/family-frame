@@ -36,9 +36,17 @@ Local job that finds events for households that opted in, publishes them to Fami
 
 ## Commands
 
-`npm run events:run -- <discover|refresh|all|watch|status> [--dry-run] [--household <id>] [--max-sessions <n>]`
+`npm run events:run -- <discover|refresh|all|watch|status|report> [--dry-run] [--household <id>] [--max-sessions <n>]`
 
 Each run prints one JSON stats line and exits 0 (ok, or skipped because another run holds the lock) or 1 (error); exit 2 means bad usage or config. `status` prints household and upcoming-event counts (next 14 days, 15-30, 31-90, later) and the last runs, with no addresses or tokens.
+
+## Profiling a run
+
+`npm run events:run -- report [--household <id>] [--runs <n>]` prints a Markdown profile of the last `n` runs (default 10) from the local DB: a runs table (Haiku sessions, cost, searches, candidates, normalize rejected, ranked, published), where candidates were lost (reject reasons, search failures, skipped by reason, phase timings of the latest discover run) and the published recommendations per household with cost per recommendation. It needs no `FF_*` config, makes no network calls and shows no addresses or tokens. See `docs/events.md` section 8 for the stats fields.
+
+## Notifications
+
+`watch`, `discover`, `refresh` and `all` send desktop notices with `notify-send`: a notice per household run (published of candidates, cost), a critical one when a household run or a whole job fails, and `recovered` when a failing job succeeds again. An unchanged failure repeats as `still failing` at most once per 24 hours; `all` adds a daily summary. Notices carry only ids, counts, costs and clipped error text. Set `EVENTS_NOTIFY=off` in the env file to silence them. A missing `notify-send` or desktop session is ignored.
 
 ## New households
 
