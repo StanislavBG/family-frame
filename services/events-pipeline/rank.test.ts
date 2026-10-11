@@ -28,6 +28,7 @@ function ev(daysAhead: number, over: Partial<FfEvent> = {}): FfEvent {
   const day = new Date(now.getTime() + daysAhead * 86_400_000).toISOString().slice(0, 10);
   e.id = `e${seq}`;
   e.fingerprint = `fp${seq}`;
+  e.title = `Unique${seq} Gathering${seq}`;
   e.category = "kids-activities";
   e.status = "scheduled";
   e.schedule = {
@@ -90,8 +91,8 @@ test("skips events beyond max distance only when both coordinates exist", () => 
   const farAway = ev(3);
   farAway.location.lat = 47.6;
   farAway.location.lon = -122.3;
-  const noCoords = ev(3);
-  const near = ev(3);
+  const noCoords = ev(3, { category: "arts-culture" });
+  const near = ev(3, { category: "sports-fitness" });
   near.location.lat = 45.52;
   near.location.lon = -122.61;
   const r = rankForHousehold(input([farAway, noCoords, near], {}, { maxDistanceKm: 30 }));
@@ -161,20 +162,62 @@ test("caps focus and later windows", () => {
   const r = rankForHousehold(input([...focus, ...later]));
   const focusIds = new Set(focus.map((e) => e.id));
   const nFocus = r.picks.filter((p) => focusIds.has(p.event.id)).length;
-  assert.equal(nFocus, 8);
-  assert.equal(r.picks.length - nFocus, 12);
+  assert.equal(nFocus, 12);
+  assert.equal(r.picks.length - nFocus, 16);
   const small = rankForHousehold(input([...focus, ...later], { limits: { maxFocus: 2, maxLater: 1 } }));
   assert.equal(small.picks.length, 3);
 });
 
-test("variety cap: at most 3 per category per window; no shared fingerprints", () => {
-  const same = Array.from({ length: 6 }, (_, i) => ev(2 + i));
+test("variety cap: 3 per category in the later window, 1 per day in focus; no shared fingerprints", () => {
+  const same = Array.from({ length: 6 }, (_, i) => ev(20 + i));
   const dupA = ev(2, { category: "arts-culture" });
   const dupB = ev(3, { category: "arts-culture", fingerprint: dupA.fingerprint });
-  const r = rankForHousehold(input([...same, dupA, dupB]));
+  const r = rankForHousehold(input([...same, dupA, dupB], { limits: { laterPerDayMax: 3 } }));
   assert.equal(r.picks.filter((p) => p.event.category === "kids-activities").length, 3);
   assert.equal(r.picks.filter((p) => p.event.fingerprint === dupA.fingerprint).length, 1);
   assert.ok(reasonOf(r, same[5]));
+});
+
+test("per-day cap: 5 good events on one day give 3 picks + 2 day full", () => {
+  const day = Array.from({ length: 5 }, (_, i) => ev(3, { category: EVENT_CATEGORIES[i] }));
+  const r = rankForHousehold(input(day));
+  assert.equal(r.picks.length, 3);
+  assert.equal(r.skipped.filter((s) => s.reason === "day full").length, 2);
+});
+
+test("known items count toward their day's cap", () => {
+  const day = Array.from({ length: 5 }, (_, i) => ev(3, { category: EVENT_CATEGORIES[i] }));
+  const known = [{ title: "Something else entirely", start: day[0].schedule.start }];
+  const r = rankForHousehold(
+    input(day, { state: { knownEventIds: [], knownFingerprints: [], busy: [], known } }),
+  );
+  assert.equal(r.picks.length, 2);
+});
+
+test("same series on different days gives one pick", () => {
+  const a = ev(3, { title: "Día de Muertos Festival", category: "arts-culture" });
+  const b = ev(6, { title: "Dia de Muertos Festival", category: "festivals-fairs" });
+  const r = rankForHousehold(input([a, b]));
+  assert.equal(r.picks.length, 1);
+  assert.match(reasonOf(r, r.picks[0].event.id === a.id ? b : a) ?? "", /same series as a higher-ranked pick/);
+});
+
+test("a known title blocks a similar candidate", () => {
+  const c = ev(3, { title: "Día de Muertos Festival" });
+  const known = [{ title: "Festival Día de Muertos", start: ev(9).schedule.start }];
+  const r = rankForHousehold(
+    input([c], { state: { knownEventIds: [], knownFingerprints: [], busy: [], known } }),
+  );
+  assert.equal(r.picks.length, 0);
+  assert.match(reasonOf(r, c) ?? "", /same series as a known recommendation/);
+});
+
+test("two same-category events on one focus day give one pick", () => {
+  const a = ev(3);
+  const b = ev(3);
+  const r = rankForHousehold(input([a, b]));
+  assert.equal(r.picks.length, 1);
+  assert.equal(r.skipped.find((s) => s.eventId !== r.picks[0].event.id)?.reason, "category variety cap");
 });
 
 test("less-like-this category ranks below a liked one", () => {
