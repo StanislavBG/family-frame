@@ -14,7 +14,7 @@ import { buildReport } from "./report";
 import { runWatch, type WatchResult } from "./watch";
 
 const MIN_NODE = [22, 13] as const;
-const LOCK_STALE_MS = 2 * 3600000;
+const LOCK_STALE_MS = 3 * 3600000;
 const DAY_MS = 86_400_000;
 const DEFAULT_MAX_SESSIONS = 25;
 const DEFAULT_WATCH_MAX_SESSIONS = 12;

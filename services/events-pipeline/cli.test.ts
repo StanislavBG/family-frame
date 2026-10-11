@@ -87,7 +87,7 @@ test("stale lock is replaced", () => {
   const p = join(dir, "x.lock");
   writeFileSync(p, "1\n");
   assert.equal(acquireLock(p), null);
-  const old = new Date(Date.now() - 3 * 3600000);
+  const old = new Date(Date.now() - 4 * 3600000);
   utimesSync(p, old, old);
   const release = acquireLock(p);
   assert.ok(release);

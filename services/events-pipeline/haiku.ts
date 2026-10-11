@@ -5,7 +5,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 // the model pinned to Haiku and only read-only web tools.
 export const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 
-const DEFAULT_TIMEOUT_MS = 240000;
+const DEFAULT_TIMEOUT_MS = 360000;
 const KILL_GRACE_MS = 5000;
 const RATE_LIMIT_RE = /rate[\s_-]?limit|usage[\s_-]?limit|too many requests|\b429\b/i;
 

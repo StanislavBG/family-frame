@@ -12,4 +12,4 @@ ExecStart=/usr/bin/npm run --silent events:run -- watch
 StandardOutput=append:%h/.local/state/family-frame-events/watch.log
 StandardError=append:%h/.local/state/family-frame-events/watch.log
 Nice=10
-TimeoutStartSec=45min
+TimeoutStartSec=80min
