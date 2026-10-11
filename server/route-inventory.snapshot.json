@@ -33,6 +33,7 @@
   "PUT /api/household/events-sharing",
   "GET /api/tokens",
   "POST /api/tokens/new",
+  "PATCH /api/tokens/:id",
   "DELETE /api/tokens/:id",
   "GET /api/people/list",
   "POST /api/people/new",

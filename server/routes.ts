@@ -27,7 +27,7 @@ import { getUserData, setUserData, updateUserData, getUserByUsername } from "./f
 import { asyncHandler, getOrCreateUser, toArray, type UserData } from "./middleware";
 import { z } from "zod";
 import { calendarService, CalendarError } from "./calendar-service";
-import { createApiToken, listApiTokens, revokeApiToken, firebaseTokenStore, ApiTokenError, API_TOKEN_SCOPES } from "./api-tokens";
+import { createApiToken, listApiTokens, revokeApiToken, firebaseTokenStore, ApiTokenError, API_TOKEN_SCOPES, updateApiTokenScopes, type TokenStore } from "./api-tokens";
 
 import { getWeather, reverseGeocode, geocodeCity } from "./weather";
 import { getGoogleAuthUrl, exchangeCodeForTokens, refreshAccessToken, createPickerSession, getPickerSession, getPickedMediaItems, deletePickerSession, refreshPickerPhotoUrl } from "./google-photos";
@@ -70,6 +70,93 @@ function getClerkPublishableKey(): string {
 
 // UserData interface and getOrCreateUser moved to middleware.ts
 
+
+export function registerTokenRoutes(app: Express, store: TokenStore = firebaseTokenStore): void {
+  // API token management: browser (Clerk) sessions only, never PAT-authenticated requests
+  const createTokenSchema = z.object({
+    name: z.string().trim().min(1).max(60),
+    scopes: z.array(z.enum(API_TOKEN_SCOPES)).min(1),
+  });
+  const updateTokenScopesSchema = z.object({ scopes: z.array(z.enum(API_TOKEN_SCOPES)).min(1) });
+
+  function getTokenManagerId(req: Request, res: Response): string | null {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return null;
+    }
+    if (req.headers["x-ff-auth"] === "pat") {
+      res.status(403).json({ error: "API tokens cannot manage tokens" });
+      return null;
+    }
+    return userId;
+  }
+
+  app.get("/api/tokens", asyncHandler(async (req: Request, res: Response) => {
+    const userId = getTokenManagerId(req, res);
+    if (!userId) return;
+    res.json(await listApiTokens(store, userId));
+  }));
+
+  app.post("/api/tokens/new", asyncHandler(async (req: Request, res: Response) => {
+    const userId = getTokenManagerId(req, res);
+    if (!userId) return;
+
+    const parseResult = createTokenSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: "Invalid token data", details: parseResult.error.errors });
+      return;
+    }
+
+    try {
+      const { token, record } = await createApiToken(store, userId, parseResult.data.name, parseResult.data.scopes);
+      res.json({ token, record });
+    } catch (err) {
+      if (err instanceof ApiTokenError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }));
+
+  app.patch("/api/tokens/:id", asyncHandler(async (req: Request, res: Response) => {
+    const userId = getTokenManagerId(req, res);
+    if (!userId) return;
+
+    const parseResult = updateTokenScopesSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: "Invalid token data", details: parseResult.error.errors });
+      return;
+    }
+
+    try {
+      const record = await updateApiTokenScopes(store, userId, req.params.id, parseResult.data.scopes);
+      if (!record) {
+        res.status(404).json({ error: "Token not found" });
+        return;
+      }
+      res.json(record);
+    } catch (err) {
+      if (err instanceof ApiTokenError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }));
+
+  app.delete("/api/tokens/:id", asyncHandler(async (req: Request, res: Response) => {
+    const userId = getTokenManagerId(req, res);
+    if (!userId) return;
+    const revoked = await revokeApiToken(store, userId, req.params.id);
+    if (!revoked) {
+      res.status(404).json({ error: "Token not found" });
+      return;
+    }
+    res.json({ success: true });
+  }));
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -127,63 +214,7 @@ export async function registerRoutes(
 
   registerHouseholdRoutes(app);
 
-  // API token management: browser (Clerk) sessions only, never PAT-authenticated requests
-  const createTokenSchema = z.object({
-    name: z.string().trim().min(1).max(60),
-    scopes: z.array(z.enum(API_TOKEN_SCOPES)).min(1),
-  });
-
-  function getTokenManagerId(req: Request, res: Response): string | null {
-    const userId = req.headers["x-clerk-user-id"] as string;
-    if (!userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return null;
-    }
-    if (req.headers["x-ff-auth"] === "pat") {
-      res.status(403).json({ error: "API tokens cannot manage tokens" });
-      return null;
-    }
-    return userId;
-  }
-
-  app.get("/api/tokens", asyncHandler(async (req: Request, res: Response) => {
-    const userId = getTokenManagerId(req, res);
-    if (!userId) return;
-    res.json(await listApiTokens(firebaseTokenStore, userId));
-  }));
-
-  app.post("/api/tokens/new", asyncHandler(async (req: Request, res: Response) => {
-    const userId = getTokenManagerId(req, res);
-    if (!userId) return;
-
-    const parseResult = createTokenSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({ error: "Invalid token data", details: parseResult.error.errors });
-      return;
-    }
-
-    try {
-      const { token, record } = await createApiToken(firebaseTokenStore, userId, parseResult.data.name, parseResult.data.scopes);
-      res.json({ token, record });
-    } catch (err) {
-      if (err instanceof ApiTokenError) {
-        res.status(400).json({ error: err.message });
-        return;
-      }
-      throw err;
-    }
-  }));
-
-  app.delete("/api/tokens/:id", asyncHandler(async (req: Request, res: Response) => {
-    const userId = getTokenManagerId(req, res);
-    if (!userId) return;
-    const revoked = await revokeApiToken(firebaseTokenStore, userId, req.params.id);
-    if (!revoked) {
-      res.status(404).json({ error: "Token not found" });
-      return;
-    }
-    res.json({ success: true });
-  }));
+  registerTokenRoutes(app);
 
   app.get("/api/people/list", asyncHandler(async (req: Request, res: Response) => {
     const userId = req.headers["x-clerk-user-id"] as string;
