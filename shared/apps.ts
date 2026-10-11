@@ -204,7 +204,7 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     defaultEnabled: false,
     summary: "Household bills and usage over time.",
     description: "See your electricity, gas, water, internet and other bills in one place. Your agent publishes them, tagged \"utilities\", and each one gets its own tile.",
-    features: ["One tile for every bill", "See how each bill changes over time", "Tap a tile for the full history"],
+    features: ["Average month and month-by-month chart", "What to pay or check, and what pays itself", "A page for every bill"],
   },
   {
     id: "screensaver",
