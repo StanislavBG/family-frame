@@ -23,6 +23,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { queryKeys } from "@/lib/api";
 import { togglePersonId } from "@/lib/photo-stream";
+import { mediaUrl } from "@/lib/agent-data";
 import { useToast } from "@/hooks/use-toast";
 import type { UserSettings, PhotoSourceValue, Person } from "@shared/schema";
 import {
@@ -585,6 +586,96 @@ function StocksPanel({ settings, update }: AppSettingsPanelProps) {
   );
 }
 
+// ── Utilities panel ────────────────────────────────────────────────
+
+const UTILITIES_PHOTO_MAX_BYTES = 8 * 1024 * 1024;
+
+function UtilitiesPanel({ settings, update }: AppSettingsPanelProps) {
+  const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const photoId = settings?.utilitiesPhotoMediaId;
+
+  const handleFile = async (file: File | undefined) => {
+    if (inputRef.current) inputRef.current.value = "";
+    if (!file) return;
+    if (file.size > UTILITIES_PHOTO_MAX_BYTES) {
+      toast({ title: "Photo is too large", description: "Choose an image under 8 MB.", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await fetch(
+        "/api/files?" + new URLSearchParams({ filename: file.name, tags: "utilities-photo" }),
+        {
+          method: "POST",
+          body: file,
+          headers: { "Content-Type": file.type },
+          credentials: "include",
+        },
+      );
+      if (!res.ok) throw new Error(`${res.status}: ${(await res.text()) || res.statusText}`);
+      const meta = (await res.json()) as { id: string };
+      update({ utilitiesPhotoMediaId: meta.id });
+    } catch (error) {
+      toast({
+        title: "Failed to upload photo",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <SettingsSection title="Household photo">
+      {photoId && (
+        <img
+          src={mediaUrl(photoId)}
+          alt="Household photo"
+          className="w-full max-h-48 rounded-lg border object-cover bg-muted"
+          data-testid="utilities-photo-preview"
+        />
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => void handleFile(e.target.files?.[0])}
+        data-testid="utilities-photo-input"
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          className="min-h-[44px]"
+          aria-label={photoId ? "Replace household photo" : "Upload household photo"}
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          data-testid="utilities-photo-upload"
+        >
+          <Camera className="h-4 w-4 mr-2" />
+          {uploading ? "Uploading..." : photoId ? "Replace photo" : "Upload photo"}
+        </Button>
+        {photoId && (
+          <Button
+            variant="ghost"
+            className="min-h-[44px] text-destructive hover:text-destructive dark:text-red-400"
+            aria-label="Remove household photo"
+            onClick={() => update({ utilitiesPhotoMediaId: undefined })}
+            disabled={uploading}
+            data-testid="utilities-photo-remove"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Remove
+          </Button>
+        )}
+      </div>
+    </SettingsSection>
+  );
+}
+
 // ── Registry ───────────────────────────────────────────────────────
 
 export const APP_SETTINGS_PANELS: Partial<
@@ -596,5 +687,6 @@ export const APP_SETTINGS_PANELS: Partial<
   "baby-songs": { title: "Baby Songs", description: "Set age-appropriate content", Panel: BabySongsPanel },
   tv: { title: "TV Settings", description: "Configure your TV experience", Panel: TVPanel },
   stocks: { title: "Stock Tracker", description: "Select stocks to track", Panel: StocksPanel },
+  utilities: { title: "Utilities Settings", description: "Household photo for the bills screen", Panel: UtilitiesPanel },
   events: { title: "Events Settings", description: "What kinds of events you would like", Panel: EventsPreferencesPanel },
 };

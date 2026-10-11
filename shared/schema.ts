@@ -249,6 +249,8 @@ export const userSettingsSchema = z.object({
   // Hosted images (agent_media): undefined scope means "household"; ids are People-registry ids
   photoMediaScope: z.enum([PhotoMediaScope.HOUSEHOLD, PhotoMediaScope.PEOPLE]).optional(),
   photoMediaPersonIds: personIdsSchema.optional(),
+  // Utilities app: household photo (media store id)
+  utilitiesPhotoMediaId: z.string().min(1).max(200).optional(),
   radioEnabled: z.boolean().default(false),
   radioVolume: z.number().min(0).max(100).default(50),
   radioStation: z.string().default("https://playerservices.streamtheworld.com/api/livestream-redirect/BG_RADIOAAC_H.aac"),
