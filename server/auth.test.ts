@@ -216,6 +216,29 @@ test("patScopeAllows treats exact area paths like the prefixed path", () => {
   assert.equal(patScopeAllows("/api/data", "GET", ["data:read"]), true);
 });
 
+test("metrics area: PAT with metrics:read gets identity headers on GET, 403 on PUT", async () => {
+  const getReq: FakeReq = { headers: { authorization: PAT, ...SPOOFED }, path: "/api/metrics/series", method: "GET" };
+  const r = await runWithRes(getReq, patDeps(["metrics:read"]));
+  assert.equal(r.next, 1);
+  assert.equal(getReq.headers["x-clerk-user-id"], "user_pat");
+  assert.equal(getReq.headers["x-ff-auth"], "pat");
+  assert.equal(getReq.headers["x-ff-scopes"], "metrics:read");
+  const putReq: FakeReq = { headers: { authorization: PAT }, path: "/api/metrics/series/x", method: "PUT" };
+  const w = await runWithRes(putReq, patDeps(["metrics:read"]));
+  assert.equal(w.status, 403);
+  assert.equal(w.next, 0);
+});
+
+test("metrics area: tokens without metrics scopes are forbidden; write scope gates writes", async () => {
+  assert.equal(await patStatus("/api/metrics/series", "GET", ["data:read"]), 403);
+  assert.equal(await patStatus("/api/metrics/series", "GET", ["metrics:write"]), "next");
+  for (const method of ["PUT", "POST", "DELETE"]) {
+    assert.equal(await patStatus("/api/metrics/series/x", method, ["metrics:read"]), 403, method);
+    assert.equal(await patStatus("/api/metrics/series/x", method, ["metrics:write"]), "next", method);
+  }
+  assert.equal(patScopeAllows("/api/metrics", "GET", ["data:read"]), false);
+});
+
 test("/api/tokens stays off the PAT allowlist", async () => {
   const all = ["calendar:write", "mail:write", "data:write"];
   assert.equal(await patStatus("/api/tokens/list", "GET", all), 403);

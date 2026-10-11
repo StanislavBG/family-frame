@@ -44,6 +44,7 @@ function isPatPathAllowed(path: string): boolean {
     path.startsWith("/api/calendar/") ||
     path.startsWith("/api/mail/") ||
     path.startsWith("/api/data/") ||
+    path.startsWith("/api/metrics/") ||
     path === "/api/files" ||
     path.startsWith("/api/files/") ||
     path === "/api/people/list" ||
@@ -61,6 +62,7 @@ const PAT_SCOPED_AREAS: ReadonlyArray<{
   { prefix: "/api/mail/", readScope: "mail:read", writeScope: "mail:write" },
   { prefix: "/api/data/", readScope: "data:read", writeScope: "data:write" },
   { prefix: "/api/files/", readScope: "media:read", writeScope: "media:write" },
+  { prefix: "/api/metrics/", readScope: "metrics:read", writeScope: "metrics:write" },
 ];
 
 /**
@@ -86,7 +88,7 @@ export function patScopeAllows(path: string, method: string, scopes: string[]): 
  * Global middleware: strips client-supplied identity headers, then sets them
  * only from a verified Clerk session cookie or a verified personal access
  * token. Routes trust these headers, so they must never pass through from the
- * client. PAT requests are confined to the calendar/people APIs and /mcp.
+ * client. PAT requests are confined to the calendar, mail, data, files, metrics and people-list APIs and /mcp.
  * A verified service token (ff_svc_, no user identity) sets only
  * x-ff-auth=service and is confined to /api/service/events/; every other kind
  * of request gets 403 on any /api/service path.
