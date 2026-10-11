@@ -50,7 +50,7 @@ Each run prints one JSON stats line and exits 0 (ok, or skipped because another 
 
 ## New households
 
-`watch` runs every 5 minutes and costs one HTTPS request when nothing is pending (no Claude session, no geocoding). It starts a household-only discovery for a household that is new, just re-shared, or changed its address. Each household has a 30-minute cool-down and a tick handles at most 3 households; the rest wait for the next tick. Everything else (other discovery and re-checks) runs once a day at 05:30. `watch` takes the same lock as the other modes and defaults to 12 sessions per tick.
+`watch` runs every 5 minutes and costs one HTTPS request when nothing is pending (no Claude session, no geocoding). It starts a household-only discovery for a household that is new, just re-shared, or changed its address. Each household has a 30-minute cool-down and a tick handles at most 3 households; the rest wait for the next tick. Everything else (other discovery and re-checks) runs once a day at 05:30. `watch` takes the same lock as the other modes and defaults to 20 sessions per tick.
 
 ## Locking
 
@@ -58,7 +58,7 @@ An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapp
 
 ## Cost caps
 
-`--max-sessions` (default 25) caps the Haiku sessions in one run, shared across discover and refresh when running `all` (`watch` defaults to 12). Every session is pinned to the Haiku model with read-only tools. Rate-limit or budget errors stop the run early.
+`--max-sessions` (default 45) caps the Haiku sessions in one run, shared across discover and refresh when running `all` (`watch` defaults to 20). Every session is pinned to the Haiku model with read-only tools. Rate-limit or budget errors stop the run early.
 
 ## Revoking consent
 

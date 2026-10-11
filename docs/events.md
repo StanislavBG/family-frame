@@ -145,13 +145,21 @@ Search windows (`SEARCH_WINDOWS`), each searched again when due:
 
 Known events and the household's busy intervals are passed in so searches avoid duplicates and clashes. Re-check cadence per event (`nextCheckAt`): daily within 3 days of the start (and while running), every 2 days within 14 days, weekly beyond; none once ended. Changes are appended to `updates[]` and pushed.
 
-Cost caps: `--max-sessions` (default 25) caps Haiku sessions per run, shared across discover and refresh in `all`. Every `claude -p` call pins `--model claude-haiku-4-5-20251001` with read-only web tools; rate-limit or budget errors stop the run. A lock file `<EVENTS_DB_PATH>.lock` prevents overlap (stale after 2 hours).
+Search and ranking:
+
+- Search plans up to 11 searches per household (`planSearchTasks`), each asking for up to 25 candidates, capped by `--max-sessions`.
+- Ranking targets up to 3 picks per day in the 14-day focus window and 1 per day later. The count includes the household's active recommendations (withdrawn ones and responses of not-interested or dismissed are excluded), so a day already full is skipped.
+- Same-series dedupe: a candidate whose title is at least 0.6 similar to an already picked or known recommendation is dropped.
+- Events without coordinates are geocoded in `discover.ts` from the event's own public location (venue, address, city, region, country) only, never the household address. A miss or error keeps the event unchanged (`geocodeHits` / `geocodeMisses` in the run stats).
+- Explanations run in consecutive Haiku batches of 12 picks, with a template fallback per failed batch.
+
+Cost caps: `--max-sessions` caps Haiku sessions per run, shared across discover and refresh in `all`; default 45 for `discover`/`refresh`/`all`, 20 for `watch`. Every `claude -p` call pins `--model claude-haiku-4-5-20251001` with read-only web tools; rate-limit or budget errors stop the run. A lock file `<EVENTS_DB_PATH>.lock` prevents overlap (stale after 2 hours).
 
 Config (env file, mode 0600, via `EVENTS_ENV_FILE`): `FF_BASE_URL`, `FF_SERVICE_TOKEN`, optional `EVENTS_DB_PATH`, `CLAUDE_BIN`, `NOMINATIM_USER_AGENT`. Missing config exits 2.
 
 Cron: `services/events-pipeline/crontab.example` installs two jobs by hand (`crontab -e`):
 
-- Watch, every 5 minutes (`events:run -- watch`): one HTTPS request lists the households; a household-only discovery starts for each one that is new (no local row), re-shared, changed its address, or was never discovered. A household is skipped for 30 minutes after it was last triggered, and at most 3 households run per tick (the rest wait for a later tick). An idle tick makes no Claude session. Watch caps Haiku sessions at 12 per household run by default.
+- Watch, every 5 minutes (`events:run -- watch`): one HTTPS request lists the households; a household-only discovery starts for each one that is new (no local row), re-shared, changed its address, or was never discovered. A household is skipped for 30 minutes after it was last triggered, and at most 3 households run per tick (the rest wait for a later tick). An idle tick makes no Claude session. Watch caps Haiku sessions at 20 per household run by default.
 - Daily at 05:30 America/Los_Angeles (`events:run -- all`): discover plus re-check of known events for every household.
 
 Dry run: add `--dry-run` to search and rank without publishing (`refresh --dry-run` only counts due events). `status` prints household and upcoming-event counts and recent runs, with no addresses or tokens. Always dry-run one household before enabling cron.
