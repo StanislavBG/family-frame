@@ -53,6 +53,19 @@ export interface HaikuRunner {
   run(input: HaikuRunInput): Promise<HaikuResult>;
 }
 
+export interface HaikuUsage {
+  sessions: number;
+  ok: number;
+  refused: number;
+  failures: Record<HaikuFailureReason, number>;
+  costUsd: number;
+  totalMs: number;
+}
+
+export interface MeteredHaikuRunner extends HaikuRunner {
+  usage(): HaikuUsage;
+}
+
 const FORBIDDEN_TOOLS = new Set(["Bash", "Edit", "Write", "NotebookEdit"]);
 
 const fail = (reason: HaikuFailureReason, detail: string): HaikuResult => ({
@@ -94,22 +107,45 @@ function parseOutput(stdout: string): HaikuResult & { raw?: Record<string, unkno
   }
 }
 
-export function createHaikuRunner(opts: HaikuRunnerOptions): HaikuRunner {
+export function createHaikuRunner(opts: HaikuRunnerOptions): MeteredHaikuRunner {
   const spawnFn: HaikuSpawn = opts.spawn ?? ((c, a, o) => nodeSpawn(c, a, { cwd: o.cwd, stdio: ["pipe", "pipe", "pipe"] }) as unknown as HaikuChild);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const killGraceMs = opts.killGraceMs ?? KILL_GRACE_MS;
   let started = 0;
   let rateLimited = false;
+  const meter: HaikuUsage = {
+    sessions: 0,
+    ok: 0,
+    refused: 0,
+    failures: { timeout: 0, "rate-limited": 0, "budget-exhausted": 0, "bad-output": 0, failed: 0 },
+    costUsd: 0,
+    totalMs: 0,
+  };
+  const refuse = (reason: HaikuFailureReason, detail: string): HaikuResult => {
+    meter.refused += 1;
+    return fail(reason, detail);
+  };
 
   async function run(input: HaikuRunInput): Promise<HaikuResult> {
-    if (rateLimited) return fail("budget-exhausted", "stopped after rate limit");
+    if (rateLimited) return refuse("budget-exhausted", "stopped after rate limit");
     if (started >= opts.maxSessions) {
-      return fail("budget-exhausted", `session budget of ${opts.maxSessions} used`);
+      return refuse("budget-exhausted", `session budget of ${opts.maxSessions} used`);
     }
     const tools = input.tools ?? ["WebSearch", "WebFetch"];
     const bad = tools.find((t) => FORBIDDEN_TOOLS.has(t));
-    if (bad) return fail("failed", `tool not allowed: ${bad}`);
+    if (bad) return refuse("failed", `tool not allowed: ${bad}`);
     started += 1;
+    meter.sessions += 1;
+    const startedAt = Date.now();
+    const record = (r: HaikuResult) => {
+      meter.totalMs += Date.now() - startedAt;
+      if (r.ok) {
+        meter.ok += 1;
+        if (r.costUsd !== undefined) meter.costUsd += r.costUsd;
+      } else {
+        meter.failures[r.reason] += 1;
+      }
+    };
 
     const args = [
       "-p",
@@ -133,13 +169,16 @@ export function createHaikuRunner(opts: HaikuRunnerOptions): HaikuRunner {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        record(r);
         resolve(r);
       };
 
       try {
         child = spawnFn(process.env.CLAUDE_BIN || "claude", args, { cwd: opts.cwd });
       } catch (err) {
-        resolve(fail("failed", `spawn failed: ${(err as Error).message}`));
+        const r = fail("failed", `spawn failed: ${(err as Error).message}`);
+        record(r);
+        resolve(r);
         return;
       }
 
@@ -181,5 +220,7 @@ export function createHaikuRunner(opts: HaikuRunnerOptions): HaikuRunner {
     });
   }
 
-  return { run };
+  const usage = (): HaikuUsage => ({ ...meter, failures: { ...meter.failures } });
+
+  return { run, usage };
 }

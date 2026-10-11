@@ -113,3 +113,50 @@ test("timeout sends SIGTERM then SIGKILL", async () => {
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.deepEqual(f.calls[0].signals, ["SIGTERM", "SIGKILL"]);
 });
+
+test("usage meters sessions, ok and cost", async () => {
+  let n = 0;
+  const f = fakeSpawn((c) => reply(c, JSON.stringify({ structured_output: {}, total_cost_usd: ++n === 1 ? 0.01 : 0.02 })));
+  const r = createHaikuRunner({ spawn: f.spawn, maxSessions: 5, cwd: "/tmp" });
+  assert.equal(r.usage().sessions, 0);
+  await r.run(input);
+  await r.run(input);
+  const u = r.usage();
+  assert.equal(u.sessions, 2);
+  assert.equal(u.ok, 2);
+  assert.equal(u.refused, 0);
+  assert.ok(Math.abs(u.costUsd - 0.03) < 1e-9);
+  assert.ok(u.totalMs >= 0);
+  assert.deepEqual(u.failures, { timeout: 0, "rate-limited": 0, "budget-exhausted": 0, "bad-output": 0, failed: 0 });
+  u.sessions = 99;
+  u.failures.failed = 99;
+  assert.equal(r.usage().sessions, 2);
+  assert.equal(r.usage().failures.failed, 0);
+});
+
+test("usage counts timeout and bad-output failures by reason", async () => {
+  const hang = fakeSpawn(() => { /* never closes */ });
+  const a = createHaikuRunner({ spawn: hang.spawn, maxSessions: 1, cwd: "/tmp", timeoutMs: 10, killGraceMs: 10 });
+  await a.run(input);
+  assert.equal(a.usage().failures.timeout, 1);
+  assert.equal(a.usage().sessions, 1);
+  assert.equal(a.usage().ok, 0);
+  const bad = fakeSpawn((c) => reply(c, JSON.stringify({ result: "not json" })));
+  const b = createHaikuRunner({ spawn: bad.spawn, maxSessions: 1, cwd: "/tmp" });
+  await b.run(input);
+  assert.equal(b.usage().failures["bad-output"], 1);
+  assert.equal(b.usage().sessions, 1);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+});
+
+test("usage counts calls past maxSessions as refused, not sessions", async () => {
+  const f = fakeSpawn((c) => reply(c, JSON.stringify({ structured_output: {} })));
+  const r = createHaikuRunner({ spawn: f.spawn, maxSessions: 1, cwd: "/tmp" });
+  await r.run(input);
+  await r.run(input);
+  await r.run({ ...input, tools: ["Bash"] });
+  const u = r.usage();
+  assert.equal(u.sessions, 1);
+  assert.equal(u.refused, 2);
+  assert.equal(u.failures["budget-exhausted"], 0);
+});
