@@ -278,7 +278,7 @@ export default function EventsPage() {
       <EmptyState
         icon={Hourglass}
         title="Looking for events"
-        description="We are looking for events near you. First suggestions usually arrive within a day."
+        description="We have started looking for events near you. Your first suggestions usually arrive within the hour."
       >
         {status.lastPublishedAt && (
           <p className="mt-4 text-sm text-muted-foreground" data-testid="events-last-published">

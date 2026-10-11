@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useSearch } from "wouter";
+import { Link, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import { AgentAccessSettings } from "@/components/agent-access-settings";
 import { parseLocalDate } from "@/lib/format";
@@ -627,6 +627,14 @@ export default function SettingsPage() {
                 {profile?.eventsSharing?.enabled && profile.eventsSharing.consentedAt && (
                   <p className="text-sm text-muted-foreground" data-testid="text-events-sharing-since">
                     Sharing since {new Date(profile.eventsSharing.consentedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                  </p>
+                )}
+                {profile?.eventsSharing?.enabled && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-events-sharing-next">
+                    We start looking for events near you within a few minutes. Turn on the Events app to see them.{" "}
+                    <Link href="/events" className="text-primary underline" data-testid="link-events-sharing-events">
+                      Open Events
+                    </Link>
                   </p>
                 )}
               </CardContent>

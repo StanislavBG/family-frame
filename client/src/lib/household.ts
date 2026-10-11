@@ -78,7 +78,11 @@ export function useSetEventsSharing() {
       apiRequest<HouseholdProfile>("PUT", "/api/household/events-sharing", { enabled }),
     onSuccess: (profile) => {
       queryClient.invalidateQueries({ queryKey: [...HOUSEHOLD_PROFILE_KEY] });
-      toast({ title: profile?.eventsSharing?.enabled ? "Event recommendations on" : "Event recommendations off" });
+      toast(
+        profile?.eventsSharing?.enabled
+          ? { title: "Address shared. We will start looking for events within a few minutes." }
+          : { title: "Sharing stopped. We will not look for new events." },
+      );
     },
     onError: (error: Error) => {
       toast({
