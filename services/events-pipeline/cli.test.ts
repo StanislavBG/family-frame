@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { acquireLock, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
 import { openEventsDb } from "./db";
 import type { FfClient } from "./ff-client";
+import type { WatchResult } from "./watch";
 
 test("parseArgs reads modes and flags with defaults", () => {
   assert.deepEqual(parseArgs(["discover"]), { mode: "discover", dryRun: false, householdId: undefined, maxSessions: 25 });
@@ -114,4 +115,85 @@ test("status prints counts only", async () => {
   assert.deepEqual(status.upcoming, { next14d: 0, d15to30: 0, d31to90: 0, later: 0 });
   assert.deepEqual(status.lastRuns, []);
   openEventsDb(h.deps.env!.EVENTS_DB_PATH!).close();
+});
+
+test("parseArgs accepts watch with a 12-session default", () => {
+  assert.deepEqual(parseArgs(["watch"]), { mode: "watch", dryRun: false, householdId: undefined, maxSessions: 12 });
+  assert.deepEqual(parseArgs(["watch", "--dry-run", "--max-sessions", "4"]), { mode: "watch", dryRun: true, householdId: undefined, maxSessions: 4 });
+  assert.equal(parseArgs(["--max-sessions", "9", "watch"]).maxSessions, 9);
+});
+
+const WATCH_ENV = { FF_BASE_URL: "http://localhost:5000", FF_SERVICE_TOKEN: "ff_svc_x" };
+
+test("watch skips with exit 0 when the lock is held", async () => {
+  const h = harness(WATCH_ENV);
+  let called = false;
+  h.deps.makeFf = () => {
+    called = true;
+    return {} as FfClient;
+  };
+  const dbPath = h.deps.env!.EVENTS_DB_PATH!;
+  assert.equal(await main(["status"], h.deps), 0);
+  writeFileSync(`${dbPath}.lock`, "1\n");
+  h.lines.length = 0;
+  assert.equal(await main(["watch"], h.deps), 0);
+  assert.equal(called, false);
+  assert.deepEqual(JSON.parse(h.lines[0]), { skipped: "locked" });
+});
+
+test("watch tick with nothing pending never builds the runner or geocoder", async () => {
+  const h = harness(WATCH_ENV);
+  let built = 0;
+  h.deps.makeRunner = () => {
+    built++;
+    return { run: async () => ({ ok: false, reason: "failed", detail: "x" }) };
+  };
+  h.deps.makeGeocoder = () => {
+    built++;
+    return { geocode: async () => null };
+  };
+  assert.equal(await main(["watch"], h.deps), 0);
+  assert.equal(built, 0);
+  assert.equal(h.lines.length, 1);
+  assert.deepEqual(JSON.parse(h.lines[0]), { mode: "watch", listed: 0, pending: 0, deferred: 0, runs: [] });
+  assert.equal(existsSync(`${h.deps.env!.EVENTS_DB_PATH}.lock`), false);
+});
+
+test("watch with a pending household calls runWatch and builds the runner lazily", async () => {
+  const h = harness(WATCH_ENV);
+  let built = 0;
+  h.deps.makeRunner = () => {
+    built++;
+    return { run: async () => ({ ok: false, reason: "failed", detail: "x" }) };
+  };
+  let seenMax: number | undefined;
+  h.deps.runWatch = async (opts) => {
+    assert.equal(built, 0, "runner not built before first use");
+    await opts.runner.run({} as never);
+    seenMax = opts.limits?.maxSearches;
+    return { listed: 1, pending: 1, deferred: 0, runs: [{ householdId: "h1", reason: "new" }] } satisfies WatchResult;
+  };
+  assert.equal(await main(["watch", "--max-sessions", "5"], h.deps), 0);
+  assert.equal(built, 1);
+  assert.equal(seenMax, 5);
+  const out = JSON.parse(h.lines[0]);
+  assert.equal(out.mode, "watch");
+  assert.equal(out.pending, 1);
+  const { status } = (await (async () => {
+    const h2 = { ...h, lines: [] as string[] };
+    h2.deps.stdout = (l) => h2.lines.push(l);
+    await main(["status"], h2.deps);
+    return JSON.parse(h2.lines[0]);
+  })());
+  assert.equal(status.lastRuns[0].kind, "watch");
+});
+
+test("watch failure prints one line and exits 1", async () => {
+  const h = harness(WATCH_ENV);
+  h.deps.runWatch = async () => {
+    throw new Error("boom");
+  };
+  assert.equal(await main(["watch"], h.deps), 1);
+  assert.equal(h.errs.length, 1);
+  assert.match(h.errs[0], /boom/);
 });

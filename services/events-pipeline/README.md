@@ -32,13 +32,17 @@ Local job that finds events for households that opted in, publishes them to Fami
    ```
 
    Dry runs search and rank but publish nothing; `refresh --dry-run` only counts due events.
-5. **Install the crontab** (manual step): `mkdir -p ~/.local/state/family-frame-events`, copy `crontab.example`, set `REPO` and `EVENTS_ENV_FILE`, then `crontab -e`. Discover runs at 05:30 and 17:30 Pacific, refresh every 6 hours.
+5. **Install the crontab** (manual step): `mkdir -p ~/.local/state/family-frame-events`, copy `crontab.example`, set `REPO` and `EVENTS_ENV_FILE`, then `crontab -e`. Two jobs: `watch` every 5 minutes, and one daily `all` run (discover + refresh) at 05:30 Pacific.
 
 ## Commands
 
-`npm run events:run -- <discover|refresh|all|status> [--dry-run] [--household <id>] [--max-sessions <n>]`
+`npm run events:run -- <discover|refresh|all|watch|status> [--dry-run] [--household <id>] [--max-sessions <n>]`
 
 Each run prints one JSON stats line and exits 0 (ok, or skipped because another run holds the lock) or 1 (error); exit 2 means bad usage or config. `status` prints household and upcoming-event counts (next 14 days, 15-30, 31-90, later) and the last runs, with no addresses or tokens.
+
+## New households
+
+`watch` runs every 5 minutes and costs one HTTPS request when nothing is pending (no Claude session, no geocoding). It starts a household-only discovery for a household that is new, just re-shared, or changed its address. Each household has a 30-minute cool-down and a tick handles at most 3 households; the rest wait for the next tick. Everything else (other discovery and re-checks) runs once a day at 05:30. `watch` takes the same lock as the other modes and defaults to 12 sessions per tick.
 
 ## Locking
 
@@ -46,7 +50,7 @@ An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapp
 
 ## Cost caps
 
-`--max-sessions` (default 25) caps the Haiku sessions in one run, shared across discover and refresh when running `all`. Every session is pinned to the Haiku model with read-only tools. Rate-limit or budget errors stop the run early.
+`--max-sessions` (default 25) caps the Haiku sessions in one run, shared across discover and refresh when running `all` (`watch` defaults to 12). Every session is pinned to the Haiku model with read-only tools. Rate-limit or budget errors stop the run early.
 
 ## Revoking consent
 

@@ -5,7 +5,7 @@ TZ=America/Los_Angeles
 EVENTS_ENV_FILE=/home/YOU/.config/family-frame-events/env
 REPO=/absolute/path/to/family-frame
 
-# Discover new events twice a day.
-30 5,17 * * * cd $REPO && npm run events:run -- discover >> $HOME/.local/state/family-frame-events/discover.log 2>&1
-# Re-check known events every 6 hours.
-0 */6 * * * cd $REPO && npm run events:run -- refresh >> $HOME/.local/state/family-frame-events/refresh.log 2>&1
+# Every 5 minutes: starts first runs for new or changed addresses.
+*/5 * * * * cd $REPO && npm run events:run -- watch >> $HOME/.local/state/family-frame-events/watch.log 2>&1
+# Daily: discover + re-check of known events.
+30 5 * * * cd $REPO && npm run events:run -- all >> $HOME/.local/state/family-frame-events/daily.log 2>&1

@@ -9,13 +9,15 @@ import { runDispatch, type DispatchStats } from "./dispatch";
 import { createFfClient, type FfClient } from "./ff-client";
 import { createGeocoder, type Geocoder } from "./geo";
 import { createHaikuRunner, type HaikuRunner } from "./haiku";
+import { runWatch, type WatchResult } from "./watch";
 
 const MIN_NODE = [22, 13] as const;
 const LOCK_STALE_MS = 2 * 3600000;
 const DAY_MS = 86_400_000;
 const DEFAULT_MAX_SESSIONS = 25;
+const DEFAULT_WATCH_MAX_SESSIONS = 12;
 
-export type Mode = "discover" | "refresh" | "all" | "status";
+export type Mode = "discover" | "refresh" | "all" | "watch" | "status";
 
 export interface CliArgs {
   mode: Mode;
@@ -24,16 +26,16 @@ export interface CliArgs {
   maxSessions: number;
 }
 
-const MODES: readonly string[] = ["discover", "refresh", "all", "status"];
+const MODES: readonly string[] = ["discover", "refresh", "all", "watch", "status"];
 
-export const USAGE = "usage: events:run <discover|refresh|all|status> [--dry-run] [--household <id>] [--max-sessions <n>]";
+export const USAGE = "usage: events:run <discover|refresh|all|watch|status> [--dry-run] [--household <id>] [--max-sessions <n>]";
 
 /** Parse argv (without node and script). Throws an Error with a one-line message on bad input. */
 export function parseArgs(argv: string[]): CliArgs {
   let mode: Mode | undefined;
   let dryRun = false;
   let householdId: string | undefined;
-  let maxSessions = DEFAULT_MAX_SESSIONS;
+  let maxSessions: number | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") dryRun = true;
@@ -51,7 +53,7 @@ export function parseArgs(argv: string[]): CliArgs {
     } else throw new Error(`unknown argument: ${a}`);
   }
   if (!mode) throw new Error("missing mode");
-  return { mode, dryRun, householdId, maxSessions };
+  return { mode, dryRun, householdId, maxSessions: maxSessions ?? (mode === "watch" ? DEFAULT_WATCH_MAX_SESSIONS : DEFAULT_MAX_SESSIONS) };
 }
 
 export interface CliConfig {
@@ -157,6 +159,7 @@ export interface CliDeps {
   makeFf?: (cfg: CliConfig) => FfClient;
   makeRunner?: (opts: { maxSessions: number; cwd: string }) => HaikuRunner;
   makeGeocoder?: (db: EventsDb, userAgent: string) => Geocoder;
+  runWatch?: typeof runWatch;
   tmpRoot?: string;
 }
 
@@ -220,8 +223,36 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
   try {
     db = open(cfg.dbPath);
     const ff = (deps.makeFf ?? ((c) => createFfClient({ baseUrl: c.baseUrl, token: c.token })))(cfg);
-    const runner = (deps.makeRunner ?? ((o) => createHaikuRunner(o)))({ maxSessions: args.maxSessions, cwd: scratch });
-    const geocoder = (deps.makeGeocoder ?? ((d, ua) => createGeocoder({ db: d, userAgent: ua })))(db, cfg.nominatimUserAgent);
+    const openDbNow = db;
+    const buildRunner = () => (deps.makeRunner ?? ((o) => createHaikuRunner(o)))({ maxSessions: args.maxSessions, cwd: scratch });
+    const buildGeocoder = () => (deps.makeGeocoder ?? ((d, ua) => createGeocoder({ db: d, userAgent: ua })))(openDbNow, cfg.nominatimUserAgent);
+
+    if (args.mode === "watch") {
+      // Lazy: a tick with nothing pending must start no claude process and make no Nominatim call.
+      let runnerInst: HaikuRunner | undefined;
+      let geocoderInst: Geocoder | undefined;
+      const lazyRunner: HaikuRunner = { run: (input) => (runnerInst ??= buildRunner()).run(input) };
+      const lazyGeocoder: Geocoder = { geocode: (q) => (geocoderInst ??= buildGeocoder()).geocode(q) };
+      const result: WatchResult = await (deps.runWatch ?? runWatch)({
+        db,
+        ff,
+        runner: lazyRunner,
+        geocoder: lazyGeocoder,
+        now: now(),
+        runIdPrefix: `watch-${randomUUID()}`,
+        dryRun: args.dryRun,
+        limits: { maxSearches: args.maxSessions },
+      });
+      if (result.runs.length > 0 && !args.dryRun) {
+        const runId = startRun(db, "watch", now().toISOString());
+        finishRun(db, runId, now().toISOString(), result, result.runs.every((r) => r.error) ? "all households failed" : null);
+      }
+      out(JSON.stringify({ mode: "watch", listed: result.listed, pending: result.pending, deferred: result.deferred, runs: result.runs }));
+      return 0;
+    }
+
+    const runner = buildRunner();
+    const geocoder = buildGeocoder();
     const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; ms?: number } = {
       mode: args.mode,
       dryRun: args.dryRun,
