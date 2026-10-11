@@ -57,6 +57,12 @@ export interface DiscoverStats {
   published: number;
   skipped: number;
   errors: number;
+  normalizeRejected: number;
+  normalizeRejectReasons: Record<string, number>;
+  searchFailures: Record<string, number>;
+  skippedByReason: Record<string, number>;
+  ranked: number;
+  phaseMs: { prepare: number; search: number; rank: number; explain: number; publish: number };
 }
 
 export interface DiscoverOptions {
@@ -69,6 +75,8 @@ export interface DiscoverOptions {
   dryRun?: boolean;
   onlyHouseholdId?: string;
   limits?: DiscoverLimits;
+  /** Monotonic millisecond clock for phase timings. */
+  clock?: () => number;
 }
 
 interface Active {
@@ -84,6 +92,9 @@ interface Active {
 export const addressHashOf = (v: unknown): string => createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const hashOf = addressHashOf;
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const bump = (m: Record<string, number>, key: string): void => {
+  m[key] = (m[key] ?? 0) + 1;
+};
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
 function parseFeedback(raw: unknown[]): FeedbackEntry[] {
@@ -96,7 +107,7 @@ function parseFeedback(raw: unknown[]): FeedbackEntry[] {
 }
 
 export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats> {
-  const { db, ff, runner, geocoder, now, runId, dryRun = false, onlyHouseholdId, limits = {} } = opts;
+  const { db, ff, runner, geocoder, now, runId, dryRun = false, onlyHouseholdId, limits = {}, clock = () => performance.now() } = opts;
   const stats: DiscoverStats = {
     households: 0,
     purged: 0,
@@ -107,7 +118,15 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     published: 0,
     skipped: 0,
     errors: 0,
+    normalizeRejected: 0,
+    normalizeRejectReasons: {},
+    searchFailures: {},
+    skippedByReason: {},
+    ranked: 0,
+    phaseMs: { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 },
   };
+  const phaseRaw = { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 };
+  const runStart = clock();
   const startedAt = now.toISOString();
   startRun(db, "discover", startedAt, runId);
 
@@ -171,6 +190,9 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     }
   }
 
+  const searchStart = clock();
+  phaseRaw.prepare = searchStart - runStart;
+
   // 3. Search once per area, then normalize, de-duplicate and store.
   const horizonIso = new Date(now.getTime() + SEARCH_HORIZON_DAYS * DAY_MS).toISOString();
   const maxSearches = limits.maxSearches ?? Infinity;
@@ -213,6 +235,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
       stats.searches += 1;
       const res = await runSearchTask(runner, task, area, known(), audienceHint);
       if (!res.ok) {
+        bump(stats.searchFailures, res.reason);
         if (res.reason === "rate-limited" || res.reason === "budget-exhausted") {
           stopped = true;
           break;
@@ -233,7 +256,11 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
       for (const raw of res.candidates) {
         try {
           const norm = normalizeCandidate(raw, { now, defaultTimezone });
-          if (!norm.ok) continue;
+          if (!norm.ok) {
+            stats.normalizeRejected += 1;
+            bump(stats.normalizeRejectReasons, norm.reason || "invalid");
+            continue;
+          }
           const incoming = norm.event;
           const existing =
             getEventByFingerprint(db, incoming.fingerprint) ??
@@ -255,6 +282,9 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     }
   }
 
+  const rankPhaseStart = clock();
+  phaseRaw.search = rankPhaseStart - searchStart;
+
   // 4. Rank, explain and publish per household, from whatever the repository holds.
   const explainRunner: HaikuRunner = stopped
     ? { run: async () => ({ ok: false, reason: "budget-exhausted", detail: "search stopped" }) }
@@ -270,6 +300,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         const ev = getEvent(db, r.eventId);
         if (ev) knownFps.add(ev.fingerprint);
       }
+      const rankStart = clock();
       const ranked = rankForHousehold({
         events,
         household: {
@@ -283,6 +314,10 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         limits: limits.rank,
       });
       stats.skipped += ranked.skipped.length;
+      stats.ranked += ranked.picks.length;
+      for (const sk of ranked.skipped) bump(stats.skippedByReason, sk.reason.endsWith(" window full") ? "window full" : sk.reason);
+      const explainStart = clock();
+      phaseRaw.rank += explainStart - rankStart;
 
       const items: RecommendationInput[] = [];
       if (ranked.picks.length > 0) {
@@ -314,6 +349,8 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         }
       }
 
+      const publishStart = clock();
+      phaseRaw.explain += publishStart - explainStart;
       let published = 0;
       if (dryRun) {
         for (const it of items) console.log(`[dry-run] ${hhId}: would publish "${it.event.title}" (${it.event.schedule.start}) score ${it.matchScore.toFixed(2)}`);
@@ -340,7 +377,10 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
           }
           published += batch.length;
         }
-        if (revoked) continue;
+        if (revoked) {
+          phaseRaw.publish += clock() - publishStart;
+          continue;
+        }
       }
       stats.published += published;
       markHouseholdDiscovered(db, hhId, now.toISOString());
@@ -351,19 +391,31 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
           kind: "discover",
           startedAt,
           finishedAt: new Date().toISOString(),
-          stats: { ...stats, published, skipped: ranked.skipped.length },
+          stats: {
+            households: stats.households,
+            purged: stats.purged,
+            searches: stats.searches,
+            candidates: stats.candidates,
+            newEvents: stats.newEvents,
+            merged: stats.merged,
+            published,
+            skipped: ranked.skipped.length,
+            errors: stats.errors,
+          },
         });
         if ("notSharing" in res) {
           deleteHousehold(db, hhId);
           stats.purged += 1;
         }
       }
+      phaseRaw.publish += clock() - publishStart;
     } catch (e) {
       stats.errors += 1;
       console.error(`discover: household ${hhId} failed: ${errMsg(e)}`);
     }
   }
 
+  for (const k of Object.keys(phaseRaw) as (keyof typeof phaseRaw)[]) stats.phaseMs[k] = Math.max(0, Math.round(phaseRaw[k]));
   finishRun(db, runId, new Date().toISOString(), stats);
   return stats;
 }

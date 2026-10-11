@@ -178,3 +178,26 @@ test("household is marked discovered after a successful pass, also in dry-run", 
     assert.equal(listHouseholds(db)[0].lastDiscoveredAt, now.toISOString());
   }
 });
+
+test("funnel stats: normalize rejects, search failures, skip reasons and phase timings", async () => {
+  const busy = [{ start: "2026-10-17T09:00:00-07:00", end: "2026-10-17T14:00:00-07:00" }];
+  const f = fakeFf([household("h1")], { h1: state("h1", { busy }) });
+  let n = 0;
+  const runner = fakeRunner(() => {
+    n += 1;
+    if (n === 2) return { ok: false, reason: "failed", detail: "boom" };
+    return { ok: true, data: { candidates: [candidate, { ...candidate, title: "Second Festival", sourceUrls: ["https://b.example/x"] }, { ...candidate, start: "not a date" }] } };
+  });
+  let tick = 0;
+  const stats = await run({ ff: f.ff, runner, limits: { maxTasksPerArea: 2 }, clock: () => (tick += 10) });
+  assert.equal(stats.candidates, 3);
+  assert.equal(stats.normalizeRejected, 1);
+  assert.equal(Object.values(stats.normalizeRejectReasons).reduce((a, b) => a + b, 0), 1);
+  assert.equal(stats.searchFailures.failed, 1);
+  assert.ok(stats.skipped >= 1);
+  assert.equal(Object.values(stats.skippedByReason).reduce((a, b) => a + b, 0), stats.skipped);
+  assert.equal(stats.ranked, 0);
+  assert.deepEqual(Object.keys(stats.phaseMs).sort(), ["explain", "prepare", "publish", "rank", "search"]);
+  for (const v of Object.values(stats.phaseMs)) assert.ok(Number.isInteger(v) && v >= 0 && v % 10 === 0);
+  assert.ok(stats.phaseMs.prepare > 0 && stats.phaseMs.search > 0);
+});
