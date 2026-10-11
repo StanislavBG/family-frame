@@ -17,6 +17,7 @@ import { registerTvRoutes } from "./apps/tv";
 import { registerMediaProxyRoutes } from "./media-proxy";
 import { registerMailRoutes } from "./mail-routes";
 import { registerDataRoutes } from "./data-routes";
+import { registerMetricsRoutes } from "./metrics-routes";
 import { registerHouseholdRoutes } from "./household-routes";
 import { registerMediaRoutes } from "./media-routes";
 import { FETCH_TIMEOUT_MS, PUBLIC_CACHE_TTL_MS, memoTTL, discardBody } from "./route-helpers";
@@ -165,6 +166,7 @@ export async function registerRoutes(
   registerMcpRoutes(app);
   registerMailRoutes(app);
   registerDataRoutes(app);
+  registerMetricsRoutes(app);
   registerMediaRoutes(app);
 
   // Config endpoint - provides environment-specific settings to frontend
