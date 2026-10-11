@@ -1,5 +1,6 @@
 import type { EventCategory, EventPreferences, FfEvent } from "../../shared/events";
 import type { PreferenceSummary } from "../../shared/events-preferences";
+import { titleSimilarity } from "./normalize";
 
 // Pure scorer: picks which repository events to recommend to one household.
 // No DB, no network, no clock (uses input.now).
@@ -18,6 +19,10 @@ export interface RankLimits {
   horizonDays?: number;
   maxFocus?: number;
   maxLater?: number;
+  /** Max picks (plus known recommendations) per local start date in the focus window. */
+  perDayMax?: number;
+  /** Same, for the later window. */
+  laterPerDayMax?: number;
 }
 
 export interface RankInput {
@@ -29,7 +34,13 @@ export interface RankInput {
     preferences: EventPreferences;
     learned: PreferenceSummary;
   };
-  state: { knownEventIds: string[]; knownFingerprints: string[]; busy: BusyInterval[] };
+  state: {
+    knownEventIds: string[];
+    knownFingerprints: string[];
+    busy: BusyInterval[];
+    /** The household's active recommendations: they count toward day caps and block same-series titles. */
+    known?: { title: string; start: string }[];
+  };
   now: Date;
   limits?: RankLimits;
 }
@@ -51,6 +62,16 @@ const DEFAULT_DURATION_MS = 2 * 3_600_000;
 const MAX_PER_CATEGORY = 3;
 const CHILD_MAX_AGE = 17;
 const FOCUS_BONUS = 0.1;
+const SERIES_SIMILARITY = 0.6;
+
+/** Local calendar date (YYYY-MM-DD) of an instant in the event's timezone; UTC if the zone is invalid. */
+function dayInZone(ms: number, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+}
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 const unit = (w: number): number => clamp01((w + 1) / 2);
@@ -174,14 +195,17 @@ function dayTimeFit(
 interface Scored {
   pick: RankPick;
   focus: boolean;
+  day: string;
 }
 
 export function rankForHousehold(input: RankInput): RankResult {
   const { events, household, state, now } = input;
   const focusDays = input.limits?.focusDays ?? 14;
   const horizonDays = input.limits?.horizonDays ?? 90;
-  const maxFocus = input.limits?.maxFocus ?? 8;
-  const maxLater = input.limits?.maxLater ?? 12;
+  const maxFocus = input.limits?.maxFocus ?? 42;
+  const maxLater = input.limits?.maxLater ?? 20;
+  const perDayMax = input.limits?.perDayMax ?? 3;
+  const laterPerDayMax = input.limits?.laterPerDayMax ?? 1;
   const { preferences: prefs, learned, memberAges } = household;
   const nowMs = now.getTime();
   const knownIds = new Set(state.knownEventIds);
@@ -291,6 +315,7 @@ export function rankForHousehold(input: RankInput): RankResult {
 
     scored.push({
       focus,
+      day: dayInZone(slot.startMs, event.schedule.timezone),
       pick: { event, score, distanceKm, matchReasons: reasons.slice(0, 5) },
     });
   }
@@ -301,25 +326,49 @@ export function rankForHousehold(input: RankInput): RankResult {
   const pickedFps = new Set<string>();
   const counts = { focus: 0, later: 0 };
   const perCategory = new Map<string, number>();
-  for (const { pick, focus } of scored) {
+  const perDay = new Map<string, number>();
+  const knownTitles: string[] = [];
+  for (const k of state.known ?? []) {
+    if (Number.isNaN(Date.parse(k.start))) continue;
+    knownTitles.push(k.title);
+    const day = k.start.slice(0, 10);
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
+  }
+  const pickedTitles: string[] = [];
+  for (const { pick, focus, day } of scored) {
     const { event } = pick;
     const window = focus ? "focus" : "later";
     if (pickedFps.has(event.fingerprint)) {
       skipped.push({ eventId: event.id, reason: "duplicate of a higher-ranked pick" });
       continue;
     }
+    if (knownTitles.some((t) => titleSimilarity(t, event.title) >= SERIES_SIMILARITY)) {
+      skipped.push({ eventId: event.id, reason: "same series as a known recommendation" });
+      continue;
+    }
+    if (pickedTitles.some((t) => titleSimilarity(t, event.title) >= SERIES_SIMILARITY)) {
+      skipped.push({ eventId: event.id, reason: "same series as a higher-ranked pick" });
+      continue;
+    }
     if (counts[window] >= (focus ? maxFocus : maxLater)) {
       skipped.push({ eventId: event.id, reason: `${window} window full` });
       continue;
     }
-    const catKey = `${window}:${event.category}`;
-    if ((perCategory.get(catKey) ?? 0) >= MAX_PER_CATEGORY) {
+    if ((perDay.get(day) ?? 0) >= (focus ? perDayMax : laterPerDayMax)) {
+      skipped.push({ eventId: event.id, reason: "day full" });
+      continue;
+    }
+    // Focus: one per category per day. Later: MAX_PER_CATEGORY across the window.
+    const catKey = focus ? `focus:${day}:${event.category}` : `later:${event.category}`;
+    if ((perCategory.get(catKey) ?? 0) >= (focus ? 1 : MAX_PER_CATEGORY)) {
       skipped.push({ eventId: event.id, reason: "category variety cap" });
       continue;
     }
     perCategory.set(catKey, (perCategory.get(catKey) ?? 0) + 1);
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
     counts[window] += 1;
     pickedFps.add(event.fingerprint);
+    pickedTitles.push(event.title);
     picks.push(pick);
   }
   return { picks, skipped };

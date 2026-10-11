@@ -386,12 +386,17 @@ function jaccard(a: string[], b: string[]): number {
   return inter / (sa.size + sb.size - inter);
 }
 
+/** Jaccard similarity (0-1) over the accent-folded, stopword-free title tokens. */
+export function titleSimilarity(a: string, b: string): number {
+  return jaccard(titleTokens(a), titleTokens(b));
+}
+
 export function isNearDuplicate(a: FfEvent, b: FfEvent): boolean {
   if (localDate(a.schedule.start, a.schedule.timezone) !== localDate(b.schedule.start, b.schedule.timezone)) {
     return false;
   }
   if (normalizeCity(a.location.city) !== normalizeCity(b.location.city)) return false;
-  return jaccard(titleTokens(a.title), titleTokens(b.title)) >= 0.6;
+  return titleSimilarity(a.title, b.title) >= 0.6;
 }
 
 function completeness(obj: object): number {
