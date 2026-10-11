@@ -8,7 +8,8 @@ import { runDiscover, type DiscoverStats } from "./discover";
 import { runDispatch, type DispatchStats } from "./dispatch";
 import { createFfClient, type FfClient } from "./ff-client";
 import { createGeocoder, type Geocoder } from "./geo";
-import { createHaikuRunner, type HaikuRunner } from "./haiku";
+import { createHaikuRunner, type HaikuRunner, type HaikuUsage } from "./haiku";
+import { buildReport } from "./report";
 import { runWatch, type WatchResult } from "./watch";
 
 const MIN_NODE = [22, 13] as const;
@@ -17,18 +18,19 @@ const DAY_MS = 86_400_000;
 const DEFAULT_MAX_SESSIONS = 25;
 const DEFAULT_WATCH_MAX_SESSIONS = 12;
 
-export type Mode = "discover" | "refresh" | "all" | "watch" | "status";
+export type Mode = "discover" | "refresh" | "all" | "watch" | "status" | "report";
 
 export interface CliArgs {
   mode: Mode;
   dryRun: boolean;
   householdId?: string;
   maxSessions: number;
+  runs?: number;
 }
 
-const MODES: readonly string[] = ["discover", "refresh", "all", "watch", "status"];
+const MODES: readonly string[] = ["discover", "refresh", "all", "watch", "status", "report"];
 
-export const USAGE = "usage: events:run <discover|refresh|all|watch|status> [--dry-run] [--household <id>] [--max-sessions <n>]";
+export const USAGE = "usage: events:run <discover|refresh|all|watch|status|report> [--dry-run] [--household <id>] [--max-sessions <n>]\n       events:run report [--household <id>] [--runs <n>]";
 
 /** Parse argv (without node and script). Throws an Error with a one-line message on bad input. */
 export function parseArgs(argv: string[]): CliArgs {
@@ -36,6 +38,7 @@ export function parseArgs(argv: string[]): CliArgs {
   let dryRun = false;
   let householdId: string | undefined;
   let maxSessions: number | undefined;
+  let runs: number | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") dryRun = true;
@@ -47,13 +50,19 @@ export function parseArgs(argv: string[]): CliArgs {
       const v = a.includes("=") ? a.slice(a.indexOf("=") + 1) : argv[++i];
       if (!v || !/^\d+$/.test(v) || Number(v) < 1) throw new Error("--max-sessions needs a positive integer");
       maxSessions = Number(v);
+    } else if (a === "--runs" || a.startsWith("--runs=")) {
+      const v = a.includes("=") ? a.slice(a.indexOf("=") + 1) : argv[++i];
+      if (!v || !/^\d+$/.test(v) || Number(v) < 1) throw new Error("--runs needs a positive integer");
+      runs = Number(v);
     } else if (MODES.includes(a)) {
       if (mode) throw new Error("only one mode may be given");
       mode = a as Mode;
     } else throw new Error(`unknown argument: ${a}`);
   }
   if (!mode) throw new Error("missing mode");
-  return { mode, dryRun, householdId, maxSessions: maxSessions ?? (mode === "watch" ? DEFAULT_WATCH_MAX_SESSIONS : DEFAULT_MAX_SESSIONS) };
+  const parsed: CliArgs = { mode, dryRun, householdId, maxSessions: maxSessions ?? (mode === "watch" ? DEFAULT_WATCH_MAX_SESSIONS : DEFAULT_MAX_SESSIONS) };
+  if (runs !== undefined) parsed.runs = runs;
+  return parsed;
 }
 
 export interface CliConfig {
@@ -68,11 +77,11 @@ export function nodeVersionOk(version: string): boolean {
   return maj > MIN_NODE[0] || (maj === MIN_NODE[0] && min >= MIN_NODE[1]);
 }
 
-/** Read config from env; returns the first problem as a one-line message. status needs no Family Frame config. */
+/** Read config from env; returns the first problem as a one-line message. status and report need no Family Frame config. */
 export function readConfig(env: NodeJS.ProcessEnv, mode: Mode, home: string): CliConfig | string {
   const baseUrl = env.FF_BASE_URL?.trim() ?? "";
   const token = env.FF_SERVICE_TOKEN?.trim() ?? "";
-  if (mode !== "status") {
+  if (mode !== "status" && mode !== "report") {
     if (!baseUrl) return "missing config: FF_BASE_URL";
     if (!token) return "missing config: FF_SERVICE_TOKEN";
   }
@@ -118,6 +127,21 @@ export function acquireLock(path: string, now: number = Date.now()): (() => void
   return null;
 }
 
+/** Usage accrued since `before` (the runner's meter is cumulative across discover and refresh in `all` mode). */
+export function usageSince(now: HaikuUsage, before?: HaikuUsage): HaikuUsage {
+  if (!before) return now;
+  const failures = { ...now.failures };
+  for (const k of Object.keys(failures) as (keyof HaikuUsage["failures"])[]) failures[k] -= before.failures[k] ?? 0;
+  return {
+    sessions: now.sessions - before.sessions,
+    ok: now.ok - before.ok,
+    refused: now.refused - before.refused,
+    failures,
+    costUsd: now.costUsd - before.costUsd,
+    totalMs: now.totalMs - before.totalMs,
+  };
+}
+
 export interface StatusReport {
   households: number;
   upcoming: { next14d: number; d15to30: number; d31to90: number; later: number };
@@ -157,7 +181,7 @@ export interface CliDeps {
   loadEnvFile?: (path: string) => void;
   openDb?: (path: string) => EventsDb;
   makeFf?: (cfg: CliConfig) => FfClient;
-  makeRunner?: (opts: { maxSessions: number; cwd: string }) => HaikuRunner;
+  makeRunner?: (opts: { maxSessions: number; cwd: string }) => HaikuRunner & { usage?(): HaikuUsage };
   makeGeocoder?: (db: EventsDb, userAgent: string) => Geocoder;
   runWatch?: typeof runWatch;
   tmpRoot?: string;
@@ -212,6 +236,16 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
     }
   }
 
+  if (args.mode === "report") {
+    const db = open(cfg.dbPath);
+    try {
+      out(buildReport(db, { now: now(), runs: args.runs, householdId: args.householdId }));
+      return 0;
+    } finally {
+      db.close();
+    }
+  }
+
   const release = acquireLock(`${cfg.dbPath}.lock`, now().getTime());
   if (!release) {
     out(JSON.stringify({ skipped: "locked" }));
@@ -229,7 +263,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
 
     if (args.mode === "watch") {
       // Lazy: a tick with nothing pending must start no claude process and make no Nominatim call.
-      let runnerInst: HaikuRunner | undefined;
+      let runnerInst: (HaikuRunner & { usage?(): HaikuUsage }) | undefined;
       let geocoderInst: Geocoder | undefined;
       const lazyRunner: HaikuRunner = { run: (input) => (runnerInst ??= buildRunner()).run(input) };
       const lazyGeocoder: Geocoder = { geocode: (q) => (geocoderInst ??= buildGeocoder()).geocode(q) };
@@ -243,33 +277,38 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
         dryRun: args.dryRun,
         limits: { maxSearches: args.maxSessions },
       });
+      const haiku = runnerInst?.usage?.();
       if (result.runs.length > 0 && !args.dryRun) {
         const runId = startRun(db, "watch", now().toISOString());
-        finishRun(db, runId, now().toISOString(), result, result.runs.every((r) => r.error) ? "all households failed" : null);
+        finishRun(db, runId, now().toISOString(), haiku ? { ...result, haiku } : result, result.runs.every((r) => r.error) ? "all households failed" : null);
       }
-      out(JSON.stringify({ mode: "watch", listed: result.listed, pending: result.pending, deferred: result.deferred, runs: result.runs }));
+      out(JSON.stringify({ mode: "watch", listed: result.listed, pending: result.pending, deferred: result.deferred, runs: result.runs, ...(haiku ? { haiku } : {}) }));
       return 0;
     }
 
     const runner = buildRunner();
     const geocoder = buildGeocoder();
-    const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; ms?: number } = {
+    const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; haiku?: HaikuUsage; ms?: number } = {
       mode: args.mode,
       dryRun: args.dryRun,
     };
 
+    let afterDiscover: HaikuUsage | undefined;
     if (args.mode === "discover" || args.mode === "all") {
+      const discoverRunId = randomUUID();
       stats.discover = await runDiscover({
         db,
         ff,
         runner,
         geocoder,
         now: now(),
-        runId: randomUUID(),
+        runId: discoverRunId,
         dryRun: args.dryRun,
         onlyHouseholdId: args.householdId,
         limits: { maxSearches: args.maxSessions },
       });
+      afterDiscover = runner.usage?.();
+      if (afterDiscover) finishRun(db, discoverRunId, now().toISOString(), { ...stats.discover, haiku: afterDiscover });
     }
     if (args.mode === "refresh" || args.mode === "all") {
       if (args.dryRun) {
@@ -278,13 +317,16 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
         const runId = startRun(db, "refresh", now().toISOString());
         try {
           stats.refresh = await runDispatch({ db, runner, ff, now: now(), runId, maxChecks: args.maxSessions });
-          finishRun(db, runId, now().toISOString(), stats.refresh);
+          const total = runner.usage?.();
+          const refreshHaiku = total && usageSince(total, afterDiscover);
+          finishRun(db, runId, now().toISOString(), refreshHaiku ? { ...stats.refresh, haiku: refreshHaiku } : stats.refresh);
         } catch (e) {
           finishRun(db, runId, now().toISOString(), null, (e as Error).message);
           throw e;
         }
       }
     }
+    stats.haiku = runner.usage?.();
     stats.ms = Date.now() - t0;
     out(JSON.stringify(stats));
     return 0;

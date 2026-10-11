@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireLock, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
-import { openEventsDb } from "./db";
+import { openEventsDb, startRun, finishRun } from "./db";
 import type { FfClient } from "./ff-client";
 import type { WatchResult } from "./watch";
 
@@ -196,4 +196,65 @@ test("watch failure prints one line and exits 1", async () => {
   assert.equal(await main(["watch"], h.deps), 1);
   assert.equal(h.errs.length, 1);
   assert.match(h.errs[0], /boom/);
+});
+
+test("parseArgs accepts report with --runs and rejects bad values", () => {
+  assert.equal(parseArgs(["report", "--runs", "3"]).runs, 3);
+  assert.equal(parseArgs(["report"]).runs, undefined);
+  assert.throws(() => parseArgs(["report", "--runs", "0"]), /--runs needs a positive integer/);
+  assert.throws(() => parseArgs(["report", "--runs=x"]), /--runs needs a positive integer/);
+});
+
+test("report prints the markdown profile without FF env vars", async () => {
+  const h = harness({});
+  const dbPath = h.deps.env!.EVENTS_DB_PATH!;
+  assert.equal(await main(["status"], h.deps), 0); // creates the data dir
+  const db = openEventsDb(dbPath);
+  const id = startRun(db, "discover", "2026-10-10T10:00:00.000Z");
+  finishRun(db, id, "2026-10-10T10:01:00.000Z", { searches: 2 });
+  db.close();
+  h.lines.length = 0;
+  assert.equal(await main(["report", "--runs", "5"], h.deps), 0);
+  assert.equal(h.lines.length, 1);
+  assert.match(h.lines[0], /## Runs/);
+  assert.equal(h.errs.length, 0);
+});
+
+test("--runs 0 and --runs x exit 2 with usage", async () => {
+  for (const bad of ["0", "x"]) {
+    const h = harness({});
+    assert.equal(await main(["report", "--runs", bad], h.deps), 2);
+    assert.match(h.errs[0], /--runs needs a positive integer/);
+  }
+});
+
+test("discover writes haiku usage into the runs row and stdout", async () => {
+  const h = harness(WATCH_ENV);
+  const usage = { sessions: 3, ok: 2, refused: 0, failures: { timeout: 1 }, costUsd: 0.12, totalMs: 900 };
+  h.deps.makeRunner = () => ({
+    run: async () => ({ ok: false, reason: "failed", detail: "x" }),
+    usage: () => usage as never,
+  });
+  assert.equal(await main(["discover"], h.deps), 0);
+  assert.deepEqual(JSON.parse(h.lines[0]).haiku, usage);
+  const db = openEventsDb(h.deps.env!.EVENTS_DB_PATH!);
+  const row = db.prepare("SELECT stats_json FROM runs WHERE kind = 'discover'").get() as { stats_json: string };
+  db.close();
+  assert.deepEqual(JSON.parse(row.stats_json).haiku, usage);
+});
+
+test("watch stats include haiku only when a runner was created", async () => {
+  const h = harness(WATCH_ENV);
+  const usage = { sessions: 1, ok: 1, refused: 0, failures: {}, costUsd: 0.01, totalMs: 10 };
+  h.deps.makeRunner = () => ({ run: async () => ({ ok: false, reason: "failed", detail: "x" }), usage: () => usage as never });
+  h.deps.runWatch = async (opts) => {
+    await opts.runner.run({} as never);
+    return { listed: 1, pending: 1, deferred: 0, runs: [{ householdId: "h1", reason: "new" }] } satisfies WatchResult;
+  };
+  assert.equal(await main(["watch"], h.deps), 0);
+  assert.deepEqual(JSON.parse(h.lines[0]).haiku, usage);
+  const db = openEventsDb(h.deps.env!.EVENTS_DB_PATH!);
+  const row = db.prepare("SELECT stats_json FROM runs WHERE kind = 'watch'").get() as { stats_json: string };
+  db.close();
+  assert.deepEqual(JSON.parse(row.stats_json).haiku, usage);
 });
