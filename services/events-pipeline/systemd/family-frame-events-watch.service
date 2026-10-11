@@ -1,0 +1,15 @@
+# WorkingDirectory assumes the repo is at ~/Projects/family-frame (edit if elsewhere).
+[Unit]
+Description=Family Frame events: start a search for households that just shared or changed their address
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/family-frame
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=EVENTS_ENV_FILE=%h/.config/family-frame-events/env
+Environment=NODE_OPTIONS=--disable-warning=ExperimentalWarning
+ExecStart=/usr/bin/npm run --silent events:run -- watch
+StandardOutput=append:%h/.local/state/family-frame-events/watch.log
+StandardError=append:%h/.local/state/family-frame-events/watch.log
+Nice=10
+TimeoutStartSec=45min

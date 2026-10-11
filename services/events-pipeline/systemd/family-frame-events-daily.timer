@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily 05:30 Family Frame events run (catches up after the laptop was off or asleep)
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

@@ -55,3 +55,25 @@ An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapp
 ## Revoking consent
 
 When a household turns off sharing, it disappears from the household list (or the API answers "not sharing"). The next discover run deletes its local address, profile and recommendations, and any push to it is dropped. Shared canonical events stay, since they hold no household data.
+
+## Run on a laptop (systemd user timers)
+
+Cron skips jobs while a laptop is asleep or off. systemd user timers can catch up. Templates are in `systemd/`; they assume the repo is at `~/Projects/family-frame` (edit `WorkingDirectory` if not) and the env file at `~/.config/family-frame-events/env`.
+
+```
+mkdir -p ~/.config/systemd/user ~/.local/state/family-frame-events
+cp systemd/family-frame-events-* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now family-frame-events-watch.timer family-frame-events-daily.timer
+```
+
+Check:
+
+```
+systemctl --user list-timers
+tail ~/.local/state/family-frame-events/watch.log
+```
+
+The daily timer has `Persistent=true`, so a missed 05:30 run starts after the laptop wakes or boots. The watch timer runs every 5 minutes and does not catch up.
+
+Cron (`crontab.example`) remains an alternative for always-on machines. Use one or the other, not both.
