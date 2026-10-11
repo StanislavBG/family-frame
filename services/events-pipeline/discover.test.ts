@@ -208,3 +208,65 @@ test("schema-invalid search results are counted in invalidCandidates", async () 
   assert.equal(stats.candidates, 1);
   assert.equal(stats.invalidCandidates, 2);
 });
+
+const recRow = (title: string, start: string, over: Record<string, unknown> = {}) => ({
+  eventId: "old1",
+  fingerprint: "fp-old",
+  title,
+  start,
+  category: "kids-activities",
+  status: "scheduled",
+  response: "interested",
+  feedback: null,
+  calendarLinked: false,
+  recommendedAt: "2026-10-09T00:00:00Z",
+  withdrawn: false,
+  ...over,
+});
+
+test("known recommendations reach the ranker and block a same-series candidate", async () => {
+  const known = recRow("Riverside Family Pumpkin Festival", "2026-10-17T10:00:00-07:00");
+  const f = fakeFf([household("h1")], { h1: state("h1", { recommendations: [known] as FfState["recommendations"] }) });
+  const stats = await run({ ff: f.ff, runner: fakeRunner(found(candidate)) });
+  assert.equal(stats.published, 0);
+  assert.equal(stats.skippedByReason["same series as a known recommendation"], 1);
+
+  const dismissed = recRow("Riverside Family Pumpkin Festival", "2026-10-17T10:00:00-07:00", { response: "dismissed" });
+  const f2 = fakeFf([household("h1")], { h1: state("h1", { recommendations: [dismissed] as FfState["recommendations"] }) });
+  const stats2 = await run({ ff: f2.ff, runner: fakeRunner(found(candidate)) });
+  assert.equal(stats2.published, 1);
+});
+
+test("candidate without coordinates is geocoded from its public location only", async () => {
+  const queries: string[] = [];
+  const geo = { geocode: async (q: string) => (queries.push(q), q.includes("1 Main St") ? null : { lat: 45.51, lon: -122.61 }) };
+  const f = fakeFf([household("h1")], {});
+  const stats = await run({
+    ff: f.ff,
+    geocoder: geo,
+    runner: fakeRunner(found({ ...candidate, venueName: "Riverside Farm", address: "9 Farm Rd", region: "OR" })),
+  });
+  assert.equal(stats.geocodeHits, 1);
+  assert.equal(stats.geocodeMisses, 0);
+  assert.ok(queries.includes("Riverside Farm, 9 Farm Rd, Portland, OR, United States"), queries.join("|"));
+  assert.ok(queries.filter((q) => q.includes("1 Main St")).length <= 1);
+  assert.equal(f.puts[0].event.location.lat, 45.51);
+  assert.equal(f.puts[0].event.location.lon, -122.61);
+});
+
+test("failing event geocode counts a miss and keeps the event", async () => {
+  let n = 0;
+  const geo = {
+    geocode: async () => {
+      n += 1;
+      if (n === 1) return { lat: 45.5, lon: -122.6 }; // household
+      throw new Error("nominatim down");
+    },
+  };
+  const f = fakeFf([household("h1")], {});
+  const stats = await run({ ff: f.ff, geocoder: geo, runner: fakeRunner(found(candidate)) });
+  assert.equal(stats.geocodeMisses, 1);
+  assert.equal(stats.geocodeHits, 0);
+  assert.equal(stats.newEvents, 1);
+  assert.equal(stats.published, 1);
+});

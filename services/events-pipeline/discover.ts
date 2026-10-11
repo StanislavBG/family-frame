@@ -63,6 +63,8 @@ export interface DiscoverStats {
   searchFailures: Record<string, number>;
   skippedByReason: Record<string, number>;
   ranked: number;
+  geocodeHits: number;
+  geocodeMisses: number;
   phaseMs: { prepare: number; search: number; rank: number; explain: number; publish: number };
 }
 
@@ -125,6 +127,8 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     searchFailures: {},
     skippedByReason: {},
     ranked: 0,
+    geocodeHits: 0,
+    geocodeMisses: 0,
     phaseMs: { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 },
   };
   const phaseRaw = { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 };
@@ -265,6 +269,24 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
             continue;
           }
           const incoming = norm.event;
+          const loc = incoming.location;
+          if (!loc.online && (loc.lat === undefined || loc.lon === undefined)) {
+            // Public event location only; never the household's address.
+            const query = [loc.venueName, loc.address, loc.city, loc.region, loc.country].filter((p) => p && p.trim()).join(", ");
+            try {
+              const g = await geocoder.geocode(query);
+              if (g) {
+                loc.lat = g.lat;
+                loc.lon = g.lon;
+                stats.geocodeHits += 1;
+              } else {
+                stats.geocodeMisses += 1;
+              }
+            } catch (e) {
+              stats.geocodeMisses += 1;
+              console.error(`discover: event geocode failed: ${errMsg(e)}`);
+            }
+          }
           const existing =
             getEventByFingerprint(db, incoming.fingerprint) ??
             getEvent(db, incoming.id) ??
@@ -312,7 +334,11 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
           preferences: a.state.preferences,
           learned: a.learned,
         },
-        state: { knownEventIds: Array.from(knownIds), knownFingerprints: Array.from(knownFps), busy: a.state.busy as BusyInterval[] },
+        state: { knownEventIds: Array.from(knownIds), knownFingerprints: Array.from(knownFps), busy: a.state.busy as BusyInterval[],
+          known: a.state.recommendations
+            .filter((r) => !r.withdrawn && r.response !== "not-interested" && r.response !== "dismissed")
+            .map((r) => ({ title: r.title, start: r.start })),
+        },
         now,
         limits: limits.rank,
       });
