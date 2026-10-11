@@ -250,6 +250,7 @@ Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`,
 - LLM prompts never contain the street address, names or birthdays; the service API sends member ages only.
 - `services/events-pipeline` is Node 22 only (`node:sqlite`): keep it out of the root `npm test` / `npm run check`; use `npm run events:test` / `events:check`.
 - Every `claude -p` call pins `--model` (Haiku, `services/events-pipeline/haiku.ts`).
+- The pipeline runs daily; its watch mode (`services/events-pipeline/watch.ts`, every 5 minutes) starts a household's first discovery within minutes of opting in or changing its address.
 - Preference weights come from the append-only feedback log via `shared/events-preferences.ts`; calendar linking rules live in `server/events-service.ts`.
 
 ### App Registry (framework vs apps)

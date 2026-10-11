@@ -124,7 +124,7 @@ Weights decay with a 120-day half-life. Category sums are normalised with `tanh(
 
 ## 8. Pipeline
 
-`services/events-pipeline/` is a separate Node 22.13+ package (`node:sqlite`), run with `npm run events:run -- <discover|refresh|all|status> [--dry-run] [--household <id>] [--max-sessions <n>]`. It is excluded from the root `npm test` and `npm run check`; use `npm run events:test` and `npm run events:check`.
+`services/events-pipeline/` is a separate Node 22.13+ package (`node:sqlite`), run with `npm run events:run -- <discover|refresh|all|watch|status> [--dry-run] [--household <id>] [--max-sessions <n>]`. It is excluded from the root `npm test` and `npm run check`; use `npm run events:test` and `npm run events:check`.
 
 Modules: `cli.ts` (entry, lock, stats line), `ff-client.ts` (service API client), `db.ts` (SQLite state), `geo.ts` (Nominatim, cached, one request at a time), `search.ts` (query planning per window), `haiku.ts` (`claude -p` runner), `normalize.ts` (raw result to `ffEventSchema`), `rank.ts` (scoring with learned weights, distance, busy overlap, dedupe), `explain.ts` (why-for-household/children text, template fallback), `discover.ts` (purge revoked, search, dedupe, rank, explain, publish), `dispatch.ts` (re-check due events, push changes).
 
@@ -142,6 +142,9 @@ Cost caps: `--max-sessions` (default 25) caps Haiku sessions per run, shared acr
 
 Config (env file, mode 0600, via `EVENTS_ENV_FILE`): `FF_BASE_URL`, `FF_SERVICE_TOKEN`, optional `EVENTS_DB_PATH`, `CLAUDE_BIN`, `NOMINATIM_USER_AGENT`. Missing config exits 2.
 
-Cron: `services/events-pipeline/crontab.example` runs discover at 05:30 and 17:30 Pacific and refresh every 6 hours; install it by hand with `crontab -e`.
+Cron: `services/events-pipeline/crontab.example` installs two jobs by hand (`crontab -e`):
+
+- Watch, every 5 minutes (`events:run -- watch`): one HTTPS request lists the households; a household-only discovery starts for each one that is new (no local row), re-shared, changed its address, or was never discovered. A household is skipped for 30 minutes after it was last triggered, and at most 3 households run per tick (the rest wait for a later tick). An idle tick makes no Claude session. Watch caps Haiku sessions at 12 per household run by default.
+- Daily at 05:30 America/Los_Angeles (`events:run -- all`): discover plus re-check of known events for every household.
 
 Dry run: add `--dry-run` to search and rank without publishing (`refresh --dry-run` only counts due events). `status` prints household and upcoming-event counts and recent runs, with no addresses or tokens. Always dry-run one household before enabling cron.
