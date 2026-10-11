@@ -103,7 +103,7 @@ function HeroSkeleton() {
 
 function BackLink() {
   return (
-    <Link href="/events" className={cn("inline-flex min-h-11 items-center gap-1 text-base font-semibold", SATCHEL_TONES.sky.fg)} data-testid="link-event-back">
+    <Link href="/" className={cn("inline-flex min-h-11 items-center gap-1 text-base font-semibold", SATCHEL_TONES.sky.fg)} data-testid="link-event-back">
       <ArrowLeft className="h-4 w-4" aria-hidden />
       Back to events
     </Link>
@@ -160,6 +160,10 @@ export function EventHero({ eventId }: { eventId: string }) {
   ]
     .filter(Boolean)
     .join(" · ");
+  const whereSummary =
+    [location.venueName, location.address || [location.city, location.region].filter(Boolean).join(", ")]
+      .filter(Boolean)
+      .join(" · ") || (location.online ? "Online event" : "See map");
   const goodToKnow: { label: string; value: string }[] = [
     ...(ageText ? [{ label: "Ages", value: ageText }] : []),
     ...(setting ? [{ label: "Setting", value: setting }] : []),
@@ -193,6 +197,23 @@ export function EventHero({ eventId }: { eventId: string }) {
         <p className={cn("text-lg font-semibold", tone.fg)} data-testid="text-event-when">
           {formatWhen(event.schedule)}
         </p>
+        <a
+          href={mapUrl(location)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn("flex min-h-11 items-start gap-2 text-base font-semibold underline underline-offset-2", tone.fg)}
+          data-testid="event-where-summary"
+        >
+          <MapPin className="mt-1 h-4 w-4 flex-none" aria-hidden />
+          <span>
+            {whereSummary}
+            {distance && <span className="font-normal"> · {distance}</span>}
+            <span className="ml-2 inline-flex items-center gap-1">
+              Open map
+              <ExternalLink className="h-4 w-4 flex-none" aria-hidden />
+            </span>
+          </span>
+        </a>
         <p className={cn("flex flex-wrap gap-x-4 gap-y-1 text-base font-semibold", tone.fg)}>
           {distance && <span data-testid="text-event-distance">{distance}</span>}
           <span data-testid="text-event-cost">{formatCost(cost)}</span>
