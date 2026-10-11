@@ -151,3 +151,51 @@ curl -X POST "$BASE/api/metrics/series/pse-gas/points" \
 ```
 
 The series now appears as a tile in the Utilities app because of its `utilities` tag.
+
+## Household bills layout (Utilities app)
+
+The Utilities app ("Household bills") shows an Overview (average month, a month-by-month stacked chart, To do and Next up), a Due dates list, and one page per bill. The nav is grouped by `group`. Design source: `docs/design/household-bills-v2.dc.html`.
+
+All display text comes from series fields and annotations; nothing is hard-coded per vendor.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `annotations.category` | string | Short plain name shown as the bill's title, e.g. `Electricity`. Default: series `title`. |
+| `annotations.vendorShort` | string | Short company name, e.g. `Snohomish PUD`. Default: `annotations.vendor`. |
+| `annotations.group` | string | Nav group. `Utilities`, `Internet`, `Home` sort first, others alphabetically. Default `Bills`. |
+| `annotations.setAside` | boolean | Lump-sum bills (property tax) are left out of the monthly chart and average, and shown as "Plus <category>: $X/mo set aside". |
+| `description` (series) | string | One or two plain sentences shown under the bill's chart. Write for a grandparent, e.g. "Billed every two months." |
+| `color` (series) | `#RRGGBB` | The bill's colour in charts and nav. Default palette if omitted. |
+
+### Status rules (latest point only)
+
+- **Paid**: `paymentStatus` is `paid`, or `paid: true` without autopay, or autopay and the due date has passed, or there is no `dueDate`.
+- **Check**: past due without confirmed payment, or `autopay` is missing (unknown).
+- **You pay**: `autopay: false`.
+- **Upcoming**: everything else; due soon means within 7 days.
+
+Send `autopay` only when known. Omit it when unsure, so the app asks the household to check.
+
+Footer: "All N bills checked this morning" comes from series `annotations.health.checkedAt`. Any `annotations.health.severity` of `warn` or `alert` shows "N bills need a look".
+
+### Example
+
+```bash
+curl -X PUT "$FF/api/metrics/series/snohomish-property-tax" \
+  -H "Authorization: Bearer $FF_PAT" -H "Content-Type: application/json" \
+  -d '{
+    "title": "Property tax",
+    "description": "Paid twice a year. We set aside a little each month so it is ready.",
+    "tags": ["utilities", "property-tax"],
+    "unit": "USD",
+    "color": "#3a342b",
+    "annotations": {
+      "vendor": "Snohomish County Treasurer",
+      "vendorShort": "County",
+      "category": "Property tax",
+      "group": "Home",
+      "setAside": true,
+      "health": { "checkedAt": "2026-10-11T07:00:00-07:00", "severity": "ok" }
+    }
+  }'
+```

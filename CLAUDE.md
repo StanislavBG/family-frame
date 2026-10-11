@@ -252,6 +252,8 @@ Agents publish named series of timestamped numbers (bills, readings); tags decid
 - `client/src/lib/time-series.ts` - typed hooks and pure display logic; `client/src/components/time-series/` - tiles, charts, detail view
 - Scopes `metrics:read|write` (write implies read); a token's scopes are edited in place via `PATCH /api/tokens/:id` (browser session only), never by minting another token
 - Points upsert by `t`, so re-publishing is idempotent
+- `client/src/lib/bills.ts` - pure Bill model (status, grouping); `client/src/lib/bills-chart.ts` - pure chart math; `client/src/components/bills/` - Utilities (Household bills) UI; design source `docs/design/household-bills-v2.dc.html`
+- Rule: bill display text (title, vendor, group, notes, colour) comes from series annotations, never hard-coded vendors; the annotation fields are in `docs/time-series.md`
 - Rule: displays are built by tag. Tag `utilities` feeds the Utilities app (one tile per series; point annotations like `dueDate` follow the conventions in `docs/time-series.md`); never hard-code series ids in the client.
 - Rule: this data is private per account and never exposed through household connections.
 

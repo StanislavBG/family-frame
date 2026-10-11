@@ -1,0 +1,293 @@
+<!-- Reference copy of claude.ai/design project 26cf42e4-5c9b-4dd2-b7e5-e60913f5b043, file "Household Bills v2.dc.html" (imported 2026-10-11).
+     Design-tool format: <x-dc> template with {{ }} bindings + a DCLogic class. Sample data is hard-coded; Family Frame derives it from `utilities` time-series.
+     Fonts: the app self-hosts Inter / Source Serif 4 / JetBrains Mono; never add the Google Fonts link below to the app. image-slot = household photo placeholder. -->
+<x-dc>
+<style>body{margin:0;background:#2a241c;color:#1a1612;font-family:"Inter Tight",-apple-system,"Helvetica Neue",Arial,sans-serif;line-height:1.45}*{box-sizing:border-box}a{color:#a83818}a:hover{color:#1a1612}button{font:inherit}</style>
+<div data-screen-label="iPad landscape" style="width:1194px;height:834px;margin:0 auto;display:grid;grid-template-columns:256px minmax(0,1fr);background:#f5f0e6;overflow:hidden">
+
+  <nav style="background:#ede6d6;border-right:1px solid #d4ccb8;padding:18px 14px;display:flex;flex-direction:column;gap:14px;min-height:0">
+    <div style="height:150px;flex-shrink:0">
+      <image-slot id="household-photo" shape="rounded" radius="8" placeholder="Drop a household photo"></image-slot>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <button onClick="{{ goOverview }}" style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:0;border-radius:6px;cursor:pointer;text-align:left;font-size:16px;font-weight:600;color:#1a1612;background:{{ navOverviewBg }}">Overview</button>
+      <button onClick="{{ goDue }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;padding:0 12px;border:0;border-radius:6px;cursor:pointer;text-align:left;font-size:16px;font-weight:600;color:#1a1612;background:{{ navDueBg }}">
+        <span>Due dates</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;background:#a83818;color:#f5f0e6;border-radius:10px;padding:1px 8px">2</span>
+      </button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow:auto">
+      <sc-for list="{{ navGroups }}" as="g">
+        <div style="display:flex;flex-direction:column;gap:0">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#a83818;font-weight:600;padding:0 12px 4px">{{ g.title }}</div>
+          <sc-for list="{{ g.items }}" as="s">
+            <button onClick="{{ s.go }}" style="display:grid;grid-template-columns:10px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:0;border-radius:6px;cursor:pointer;text-align:left;color:#1a1612;background:{{ s.navBg }}">
+              <span style="width:10px;height:10px;border-radius:2px;background:{{ s.color }}"></span>
+              <span style="font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.what }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:{{ s.amtInk }}">{{ s.latestShort }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5d5648;padding:0 12px;flex-shrink:0">
+      <span style="width:8px;height:8px;border-radius:50%;background:#2e5a3e"></span>
+      <span>All 7 bills checked this morning</span>
+    </div>
+  </nav>
+
+  <main style="padding:22px 28px;display:flex;flex-direction:column;gap:16px;min-width:0;min-height:0">
+    <header style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-shrink:0">
+      <h1 style="font-family:'Source Serif 4',Georgia,serif;font-size:32px;line-height:1.1;margin:0;font-weight:700">{{ title }}</h1>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#5d5648;letter-spacing:.04em">SUNDAY, OCT 11 · 8127 229TH PL SE</span>
+    </header>
+
+    <sc-if value="{{ isOverview }}">
+      <section style="background:#fffaf0;border:1px solid #d4ccb8;border-radius:10px;padding:20px 22px;display:grid;grid-template-columns:250px minmax(0,1fr);gap:24px;height:456px;flex-shrink:0">
+        <div style="display:flex;flex-direction:column;gap:12px;min-height:0">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:13px;color:#5d5648;font-weight:600;text-transform:uppercase;letter-spacing:.06em">{{ sumLabel }}</span>
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:52px;font-weight:700;line-height:1">{{ sumTotal }}</span>
+            <span style="font-size:14px;color:#3a342b">{{ sumSub }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px;border-top:1px solid #d4ccb8;padding-top:12px">
+            <sc-for list="{{ breakdown }}" as="r">
+              <button onClick="{{ r.go }}" style="display:flex;flex-direction:column;gap:3px;border:0;background:transparent;padding:0;cursor:pointer;text-align:left;color:#1a1612">
+                <span style="display:flex;justify-content:space-between;width:100%;font-size:14px">
+                  <span style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:2px;background:{{ r.color }}"></span>{{ r.what }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px">{{ r.amt }}</span>
+                </span>
+                <span style="display:block;width:100%;height:4px;background:#ede6d6;border-radius:2px;overflow:hidden"><span style="display:block;height:100%;width:{{ r.pct }};background:{{ r.color }}"></span></span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="margin-top:auto;font-size:13px;color:#3a342b;background:#ede6d6;border-radius:6px;padding:10px 12px">Plus property tax: <b>$1,279/mo</b> set aside → <b>$1,794</b> a month total</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600">Month by month</span>
+            <sc-if value="{{ hasSel }}">
+              <button onClick="{{ clearSel }}" style="border:1px solid #2a241c;background:transparent;border-radius:4px;min-height:36px;padding:0 12px;cursor:pointer;font-size:13px;font-weight:600;color:#1a1612">Show average</button>
+            </sc-if>
+            <sc-if value="{{ noSel }}">
+              <span style="font-size:13px;color:#5d5648">Tap a month for its breakdown · <span style="color:#a83818">- - average</span></span>
+            </sc-if>
+          </div>
+          {{ stackChart }}
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;flex:1;min-height:0">
+        <section style="display:flex;flex-direction:column;gap:10px;min-height:0">
+          <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#a83818;margin:0">To do</h2>
+          <button onClick="{{ goTax }}" style="background:#1a1612;color:#f5f0e6;border:0;border-radius:8px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;text-align:left">
+            <span style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#f4b942;letter-spacing:.06em">PAY BY OCT 31 · 20 DAYS</span>
+              <span style="font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600">Pay the property tax</span>
+            </span>
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:24px;font-weight:700">$7,674.40</span>
+          </button>
+          <button onClick="{{ goWater }}" style="background:#ede6d6;color:#1a1612;border:1px solid #d4ccb8;border-radius:8px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;text-align:left">
+            <span style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#a83818;letter-spacing:.06em">WAS DUE YESTERDAY</span>
+              <span style="font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:600">Check the water bill</span>
+              <span style="font-size:13px;color:#3a342b">Autopay unclear · usually $161</span>
+            </span>
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:24px;font-weight:700">$360.77</span>
+          </button>
+        </section>
+        <section style="display:flex;flex-direction:column;gap:10px;min-height:0">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#a83818;margin:0">Next up · pays itself</h2>
+            <button onClick="{{ goDue }}" style="border:0;background:transparent;cursor:pointer;font-size:13px;font-weight:600;color:#a83818;padding:0">All due dates →</button>
+          </div>
+          <div style="display:flex;flex-direction:column;border-top:1px solid #2a241c">
+            <sc-for list="{{ nextUp }}" as="b">
+              <button onClick="{{ b.go }}" style="display:grid;grid-template-columns:64px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:56px;border:0;border-bottom:1px solid #d4ccb8;background:transparent;cursor:pointer;text-align:left;color:#1a1612;padding:0 4px">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600">{{ b.date }}</span>
+                <span style="display:flex;flex-direction:column">
+                  <span style="font-size:16px;font-weight:600">{{ b.what }}</span>
+                  <span style="font-size:12px;color:#5d5648">{{ b.dueIn }}</span>
+                </span>
+                <span style="font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:700">{{ b.latestFmt }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDue }}">
+      <div style="display:flex;flex-direction:column;gap:18px;min-height:0;overflow:auto">
+        <div style="display:flex;flex-direction:column;border-top:2px solid #2a241c">
+          <sc-for list="{{ dueList }}" as="b">
+            <button onClick="{{ b.go }}" style="display:grid;grid-template-columns:80px minmax(0,1fr) auto;align-items:center;gap:18px;min-height:76px;border:0;border-bottom:1px solid #d4ccb8;background:transparent;cursor:pointer;text-align:left;color:#1a1612;padding:8px 4px">
+              <span style="display:flex;flex-direction:column;align-items:center;border-radius:6px;padding:6px 0;background:{{ b.dateBg }};color:{{ b.dateInk }}">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em">{{ b.mon }}</span>
+                <span style="font-family:'Source Serif 4',Georgia,serif;font-size:26px;font-weight:700;line-height:1.1">{{ b.day }}</span>
+              </span>
+              <span style="display:flex;flex-direction:column;gap:2px">
+                <span style="display:flex;align-items:baseline;gap:10px"><span style="font-family:'Source Serif 4',Georgia,serif;font-size:22px;font-weight:600">{{ b.what }}</span><span style="font-size:14px;color:#5d5648">{{ b.name }}</span></span>
+                <span style="font-size:14px;color:#3a342b"><b style="color:{{ b.whenInk }}">{{ b.dueIn }}</b> · {{ b.pay }}</span>
+              </span>
+              <span style="font-family:'Source Serif 4',Georgia,serif;font-size:26px;font-weight:700">{{ b.latestFmt }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:14px;color:#5d5648">Already paid · next bill not out yet</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <sc-for list="{{ paidList }}" as="p">
+              <button onClick="{{ p.go }}" style="border:1px dashed #d4ccb8;background:transparent;border-radius:8px;padding:14px 16px;display:flex;justify-content:space-between;gap:12px;cursor:pointer;text-align:left;color:#1a1612">
+                <span style="display:flex;flex-direction:column"><span style="font-size:16px;font-weight:600">{{ p.what }}</span><span style="font-size:13px;color:#2e5a3e">{{ p.due }}</span></span>
+                <span style="font-family:'Source Serif 4',Georgia,serif;font-size:20px;font-weight:700">{{ p.latestFmt }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isService }}">
+      <div style="display:flex;flex-direction:column;gap:16px;min-height:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+          <span style="font-size:15px;color:#3a342b">{{ svc.name }} · {{ svc.sub }}</span>
+          <span style="font-size:13px;font-weight:600;border-radius:12px;padding:4px 12px;background:{{ svc.payBg }};color:{{ svc.payInk }}">{{ svc.pay }}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;border-top:2px solid #2a241c;border-bottom:1px solid #d4ccb8;padding:14px 0">
+          <sc-for list="{{ svc.stats }}" as="st">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-family:'Source Serif 4',Georgia,serif;font-size:26px;font-weight:700">{{ st.value }}</span>
+              <span style="font-size:13px;color:#5d5648">{{ st.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="background:#fffaf0;border:1px solid #d4ccb8;border-radius:10px;padding:16px 18px">{{ svc.chart }}</div>
+        <div style="font-size:15px;color:#3a342b;background:#ede6d6;border-radius:6px;padding:12px 16px">{{ svc.note }}</div>
+      </div>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const MON = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'];
+const YR = ['2025', '2025', '2025', '2026', '2026', '2026', '2026', '2026', '2026', '2026', '2026', '2026', '2026', '2026'];
+const _ = null;
+const SERIES = {
+  elec: [27.19, 60.38, 84.83, 88.66, 94.53, 75.31, 81.64, 60.77, 72.71, 92.61, 102.58, 99.26, 72.46, _],
+  gas: [120, 260, 420, 495.85, 380, 300, 210, 130, 80, 60, 54.26, 54.71, _, _],
+  water: [159, _, 82.08, _, 95, _, 110, _, 160, _, 360.77, _, _, _],
+  net: [75, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, _],
+  tax: [_, _, _, _, _, _, 7165.29, _, _, _, _, _, 7674.40, _],
+  pest: [_, _, 1672.45, 64.74, 64.74, 64.74, 64.74, 64.74, 64.74, 64.74, 64.74, 64.74, _, _],
+  trash: [_, 36.08, _, _, 150, _, _, 155, _, _, 160, _, _, 167.23]
+};
+const YEARLY = { elec: 979.68, gas: 2062.26, water: 785.97, net: 960, tax: 15348.79, pest: 776.88, trash: 620.04 };
+const SVC = [
+  { id: 'elec', what: 'Electricity', name: 'Snohomish PUD', group: 'Utilities', color: '#f4b942', latest: 72.46, due: 'Due Oct 26', mon: 'OCT', day: '26', dueIn: 'In 15 days', st: 'ok', pay: 'Pays automatically', note: 'Changes with the season and how much power we use.' },
+  { id: 'gas', what: 'Gas', name: 'PSE', group: 'Utilities', color: '#a83818', latest: 54.71, due: 'Paid Oct 5', paid: true, pay: 'Pays automatically', note: 'Low in summer, much higher in winter because of heating (up to ~$500).' },
+  { id: 'water', what: 'Water', name: 'Cross Valley Water', group: 'Utilities', color: '#2e5a3e', latest: 360.77, due: 'Due Oct 10', mon: 'OCT', day: '10', dueIn: 'Was due yesterday', st: 'check', pay: 'Autopay? Not sure', note: 'Billed every two months. The latest bill is more than double the usual — check it was paid and why it went up.' },
+  { id: 'trash', what: 'Garbage', name: 'Waste Management', group: 'Utilities', color: '#5d5648', latest: 167.23, due: 'Due Dec 1', mon: 'DEC', day: '1', dueIn: 'In 7 weeks', st: 'ok', pay: 'Pays automatically', note: 'Billed every few months, so each bill covers more than one month.' },
+  { id: 'net', what: 'Internet', name: 'Ziply Fiber', group: 'Internet', color: '#1a1612', latest: 80, due: 'Due Oct 13', mon: 'OCT', day: '13', dueIn: 'In 2 days', st: 'soon', pay: 'Pays automatically', note: 'A fixed plan, so it\'s about the same every month.' },
+  { id: 'tax', what: 'Property tax', name: 'County', group: 'Home', color: '#3a342b', latest: 7674.40, due: 'Due Oct 31', mon: 'OCT', day: '31', dueIn: 'In 20 days', st: 'action', pay: 'You pay this one', note: 'Billed twice a year (spring and fall). Doesn\'t pay itself — pay by Oct 31.' },
+  { id: 'pest', what: 'Pest control', name: 'United Pest', group: 'Home', color: '#9c937f', latest: 64.74, due: 'Paid Sep 22', paid: true, pay: 'Pays automatically', note: 'Usually about $65. A one-time $1,672 treatment in December is shown but isn\'t typical.' }
+];
+const STACK = ['gas', 'elec', 'water', 'net', 'trash', 'pest'];
+const TONE = { check: ['#a83818', '#f5f0e6', '#a83818'], action: ['#1a1612', '#f5f0e6', '#1a1612'], soon: ['#f4b942', '#1a1612', '#1a1612'], ok: ['#e3dcc8', '#1a1612', '#3a342b'] };
+const money = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const short = v => v >= 1000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + Math.round(v);
+const mono = { fontFamily: "'JetBrains Mono',monospace" };
+
+class Component extends DCLogic {
+  state = { view: 'overview', sel: null };
+
+  stackChart(sel) {
+    const h = React.createElement, N = 13, W = 600, H = 390, L = 46, R = 6, T = 26, B = 40;
+    const totals = Array.from({ length: N }, (_, i) => STACK.reduce((a, id) => a + (SERIES[id][i] || 0), 0));
+    const hi = Math.ceil(Math.max(...totals) / 500) * 500;
+    const slot = (W - L - R) / N, bw = slot * 0.64;
+    const y = v => T + (1 - v / hi) * (H - T - B);
+    const kids = [];
+    for (let v = 0; v <= hi; v += 500) kids.push(h('line', { key: 'g' + v, x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: '#e3dcc8' }), h('text', { key: 'gt' + v, x: L - 8, y: y(v) + 4, textAnchor: 'end', fontSize: 12, fill: '#5d5648', style: mono }, '$' + v));
+    totals.forEach((t, i) => {
+      const x = L + i * slot + (slot - bw) / 2, dim = sel != null && sel !== i;
+      let acc = 0;
+      const segs = STACK.map(id => {
+        const v = SERIES[id][i] || 0; if (!v) return null;
+        const r = h('rect', { key: id, x, y: y(acc + v), width: bw, height: Math.max(0, y(acc) - y(acc + v) - 1), fill: SVC.find(s => s.id === id).color });
+        acc += v; return r;
+      });
+      kids.push(h('g', { key: 'b' + i, onClick: () => this.setState(s => ({ sel: s.sel === i ? null : i })), style: { cursor: 'pointer' }, opacity: dim ? 0.3 : 1 },
+        h('rect', { x: L + i * slot, y: T, width: slot, height: H - T - B, fill: 'transparent' }),
+        ...segs,
+        h('text', { x: x + bw / 2, y: y(t) - 7, textAnchor: 'middle', fontSize: 11, fontWeight: 600, fill: '#1a1612', style: mono }, short(t)),
+        h('text', { x: x + bw / 2, y: H - 20, textAnchor: 'middle', fontSize: 13, fontWeight: sel === i ? 700 : 400, fill: '#1a1612' }, MON[i]),
+        (i === 0 || MON[i] === 'Jan') ? h('text', { x: x + bw / 2, y: H - 4, textAnchor: 'middle', fontSize: 11, fill: '#5d5648', style: mono }, YR[i]) : null));
+    });
+    const avg = STACK.reduce((a, id) => a + YEARLY[id], 0) / 12;
+    kids.push(h('line', { key: 'avg', x1: L, x2: W - R, y1: y(avg), y2: y(avg), stroke: '#a83818', strokeWidth: 1.5, strokeDasharray: '6 4', pointerEvents: 'none' }));
+    return h('svg', { viewBox: `0 0 ${W} ${H}`, style: { width: '100%', height: 'auto', display: 'block', flexShrink: 0 } }, kids);
+  }
+
+  lineChart(vals, avg) {
+    const h = React.createElement, W = 860, H = 330, L = 60, R = 80, T = 30, B = 40;
+    const nums = vals.filter(v => v != null), mn = Math.min(...nums), mx = Math.max(...nums), span = (mx - mn) || mx * 0.2;
+    const lo = Math.max(0, mn - span * 0.15), hi = mx + span * 0.15;
+    const x = i => L + i * (W - L - R) / 13, y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+    const f = v => v >= 1000 ? '$' + (v / 1000).toFixed(2) + 'k' : '$' + v.toFixed(2);
+    const pts = vals.map((v, i) => v == null ? null : { x: x(i), y: y(v), v }).filter(Boolean);
+    const kids = [];
+    for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4; kids.push(h('line', { key: 'g' + i, x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: '#e3dcc8' }), h('text', { key: 'gt' + i, x: L - 8, y: y(v) + 4, textAnchor: 'end', fontSize: 12, fill: '#5d5648', style: mono }, f(v))); }
+    MON.forEach((m, i) => kids.push(h('text', { key: 'm' + i, x: x(i), y: H - 20, textAnchor: 'middle', fontSize: 13, fill: '#1a1612' }, m), (i === 0 || m === 'Jan') ? h('text', { key: 'y' + i, x: x(i), y: H - 4, textAnchor: 'middle', fontSize: 11, fill: '#5d5648', style: mono }, YR[i]) : null));
+    kids.push(h('line', { key: 'avg', x1: L, x2: W - R, y1: y(avg), y2: y(avg), stroke: '#a83818', strokeWidth: 1.5, strokeDasharray: '6 4' }), h('text', { key: 'avgt', x: W - R + 6, y: y(avg) + 4, fontSize: 12, fill: '#a83818', style: mono }, 'avg ' + f(avg)));
+    kids.push(h('polyline', { key: 'line', points: pts.map(p => p.x + ',' + p.y).join(' '), fill: 'none', stroke: '#1a1612', strokeWidth: 2.5, strokeLinejoin: 'round' }));
+    pts.forEach((p, i) => kids.push(h('circle', { key: 'c' + i, cx: p.x, cy: p.y, r: 5, fill: '#fffaf0', stroke: '#1a1612', strokeWidth: 2 }), h('text', { key: 'l' + i, x: p.x, y: p.y - 12, textAnchor: 'middle', fontSize: 12, fontWeight: 600, fill: '#1a1612', style: mono }, f(p.v))));
+    return h('svg', { viewBox: `0 0 ${W} ${H}`, style: { width: '100%', height: 'auto', display: 'block', flexShrink: 0 } }, kids);
+  }
+
+  renderVals() {
+    const { view, sel } = this.state;
+    const go = id => () => this.setState({ view: id });
+    const svcs = SVC.map(s => ({ ...s, latestFmt: money(s.latest), latestShort: short(s.latest), go: go(s.id), navBg: view === s.id ? '#f5f0e6' : 'transparent', amtInk: s.st === 'check' || s.st === 'action' ? '#a83818' : '#5d5648' }));
+    const by = id => svcs.find(s => s.id === id);
+    const navGroups = ['Utilities', 'Internet', 'Home'].map(t => ({ title: t, items: svcs.filter(s => s.group === t) }));
+
+    const vals = STACK.map(id => sel == null ? YEARLY[id] / 12 : (SERIES[id][sel] || 0));
+    const total = vals.reduce((a, b) => a + b, 0), max = Math.max(...vals);
+    const breakdown = STACK.map((id, i) => ({ what: by(id).what, color: by(id).color, go: go(id), amt: vals[i] ? money(vals[i]) : 'no bill', pct: (vals[i] / max * 100).toFixed(0) + '%' }))
+      .sort((a, b) => parseFloat(b.pct) - parseFloat(a.pct));
+
+    const order = ['water', 'net', 'elec', 'tax', 'trash'];
+    const dueList = order.map(id => { const s = by(id), t = TONE[s.st]; return { ...s, dateBg: t[0], dateInk: t[1], whenInk: t[2] }; });
+    const nextUp = ['net', 'elec', 'trash'].map(id => ({ ...by(id), date: by(id).due.replace('Due ', '') }));
+
+    let svc = null;
+    const cur = SVC.find(s => s.id === view);
+    if (cur) {
+      const v = SERIES[cur.id], nums = v.filter(x => x != null), sorted = [...nums].sort((a, b) => a - b);
+      const avg = nums.reduce((a, b) => a + b, 0) / nums.length, n = sorted.length;
+      const med = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+      const manual = cur.st === 'action' || cur.st === 'check';
+      svc = {
+        name: cur.name, sub: nums.length + ' bills on file · ' + cur.due, pay: cur.pay, note: cur.note,
+        payBg: manual ? '#a83818' : '#2e5a3e', payInk: '#f5f0e6',
+        stats: [['Latest', nums[nums.length - 1]], ['Average', avg], ['Middle bill', med], ['Lowest', sorted[0]], ['Highest', sorted[n - 1]], ['Per year', YEARLY[cur.id]]].map(([label, x]) => ({ label, value: x >= 10000 ? short(x) : money(x) })),
+        chart: this.lineChart(v, avg)
+      };
+    }
+
+    return {
+      title: view === 'overview' ? 'Household bills' : view === 'due' ? 'Due dates' : cur.what,
+      isOverview: view === 'overview', isDue: view === 'due', isService: !!cur, svc,
+      navOverviewBg: view === 'overview' ? '#f5f0e6' : 'transparent', navDueBg: view === 'due' ? '#f5f0e6' : 'transparent',
+      goOverview: go('overview'), goDue: go('due'), goTax: go('tax'), goWater: go('water'),
+      navGroups, breakdown, dueList, nextUp, paidList: svcs.filter(s => s.paid),
+      sumLabel: sel == null ? 'Average month' : MON[sel] + ' ' + YR[sel],
+      sumTotal: '$' + Math.round(total).toLocaleString('en-US'),
+      sumSub: sel == null ? 'Regular bills, without property tax' : 'Billed this month, without property tax',
+      hasSel: sel != null, noSel: sel == null, clearSel: () => this.setState({ sel: null }),
+      stackChart: this.stackChart(sel)
+    };
+  }
+}
+</script>
