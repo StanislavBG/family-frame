@@ -256,6 +256,31 @@ export function groupForAgenda<T extends { event: { schedule: ScheduleLike } }>(
   return { next14, later };
 }
 
+/**
+ * Split day groups into `columns` columns in date order, balanced by item
+ * count. A day group is never split. Always returns exactly `columns` arrays.
+ */
+export function agendaColumns<T>(
+  groups: { date: string; items: T[] }[],
+  columns: number,
+): { date: string; items: T[]; }[][] {
+  const count = Math.max(1, Math.floor(columns) || 1);
+  const out: { date: string; items: T[] }[][] = Array.from({ length: count }, () => []);
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  const target = Math.ceil(total / count);
+  let col = 0;
+  let size = 0;
+  for (const group of groups) {
+    if (col < count - 1 && size > 0 && size + group.items.length > target) {
+      col += 1;
+      size = 0;
+    }
+    out[col].push(group);
+    size += group.items.length;
+  }
+  return out;
+}
+
 function formatDay(iso: string, tz: string): string {
   if (DATE_ONLY.test(iso)) {
     const [y, m, d] = iso.split("-").map(Number);

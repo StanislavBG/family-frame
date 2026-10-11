@@ -11,7 +11,6 @@ import {
   MUTED,
   PAGE,
   SATCHEL_TONES,
-  SectionLabel,
   SERIF,
   SURFACE,
   ToneChip,
@@ -23,6 +22,7 @@ import {
   dateKeyInZone,
   formatCost,
   formatWhen,
+  agendaColumns,
   groupForAgenda,
   statusBadge,
   useEventItems,
@@ -43,7 +43,8 @@ const RESPONSE_FILTERS: { id: ResponseFilter; label: string }[] = [
 ];
 
 const HIDDEN_RESPONSES = new Set(["not-interested", "dismissed"]);
-const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-4 text-base font-semibold";
+const BTN =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-3 text-sm lg:text-base font-semibold";
 
 function matchesResponse(item: EventItem, filter: ResponseFilter): boolean {
   if (filter === "all") return true;
@@ -51,7 +52,17 @@ function matchesResponse(item: EventItem, filter: ResponseFilter): boolean {
   return item.response === filter;
 }
 
-function Chip({ active, onClick, children, testId }: { active: boolean; onClick: () => void; children: React.ReactNode; testId: string }) {
+function Chip({
+  active,
+  onClick,
+  children,
+  testId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  testId: string;
+}) {
   return (
     <button
       type="button"
@@ -90,30 +101,50 @@ function AgendaCard({ item }: { item: EventItem }) {
   return (
     <Link
       href={`/${encodeURIComponent(item.eventId)}`}
-      className={cn("flex min-h-16 items-start gap-3 rounded-2xl border p-3 sm:p-4", SURFACE, LINE)}
+      className={cn(
+        "flex min-h-16 items-start gap-2.5 rounded-2xl border p-2.5",
+        SURFACE,
+        LINE,
+      )}
       data-testid={`events-card-${item.eventId}`}
     >
       <DateBadge
         tone={cat.tone}
-        top={new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })}
+        top={new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+          month: "short",
+          timeZone: "UTC",
+        })}
         num={d}
-        size={56}
+        size={44}
       />
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className={cn(SERIF, "text-lg font-bold leading-snug text-[#1a1612] dark:text-foreground", event.status === "cancelled" && "line-through")}>
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div
+          className={cn(
+            SERIF,
+            "line-clamp-2 text-base font-bold leading-snug text-[#1a1612] dark:text-foreground",
+            event.status === "cancelled" && "line-through",
+          )}
+        >
           {event.title}
         </div>
-        <div className={cn("text-base", MUTED)}>
-          {formatWhen(event.schedule, "12h")}
-          {km !== undefined && ` · ${km.toFixed(1)} km`}
-          {` · ${formatCost(event.cost)}`}
-        </div>
-        <div className="flex flex-wrap gap-1.5 pt-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={cn("text-sm", MUTED)}>
+            {formatWhen(event.schedule, "12h")}
+            {km !== undefined && ` · ${km.toFixed(1)} km`}
+            {` · ${formatCost(event.cost)}`}
+          </span>
           <ToneChip tone={cat.tone}>{cat.label}</ToneChip>
-          {responseLabel && <ToneChip tone={item.response === "going" ? "leaf" : "stone"}>{responseLabel}</ToneChip>}
+          {responseLabel && (
+            <ToneChip tone={item.response === "going" ? "leaf" : "stone"}>
+              {responseLabel}
+            </ToneChip>
+          )}
           {badge && <ToneChip tone={badge.tone}>{badge.label}</ToneChip>}
           {item.hasUnseenUpdate && (
-            <ToneChip tone="clay" data-testid={`events-changed-${item.eventId}`}>
+            <ToneChip
+              tone="clay"
+              data-testid={`events-changed-${item.eventId}`}
+            >
               Changed
             </ToneChip>
           )}
@@ -140,54 +171,108 @@ function Overview() {
   const [category, setCategory] = useState<EventCategory | null>(null);
   const [response, setResponse] = useState<ResponseFilter>("active");
   const [month, setMonth] = useState(`${today.slice(0, 7)}-01`);
-  const { data: items = [], isLoading } = useEventItems({ includeHidden: response === "all" });
+  const { data: items = [], isLoading } = useEventItems({
+    includeHidden: response === "all",
+  });
   const { data: status } = useEventsStatus();
 
   const visible = useMemo(
-    () => items.filter((i) => !i.withdrawn && (!category || i.event.category === category) && matchesResponse(i, response)),
+    () =>
+      items.filter(
+        (i) =>
+          !i.withdrawn &&
+          (!category || i.event.category === category) &&
+          matchesResponse(i, response),
+      ),
     [items, category, response],
   );
-  const { next14, later } = useMemo(() => groupForAgenda(visible, today), [visible, today]);
-  const usedCategories = useMemo(() => Array.from(new Set(items.map((i) => i.event.category))), [items]);
+  const { next14, later } = useMemo(
+    () => groupForAgenda(visible, today),
+    [visible, today],
+  );
+  const usedCategories = useMemo(
+    () => Array.from(new Set(items.map((i) => i.event.category))),
+    [items],
+  );
 
   const counts = status?.counts;
+  const columns = useMemo(() => agendaColumns(next14, 3), [next14]);
 
   return (
-    <div className={cn("space-y-5 p-4 sm:p-6", PAGE)} data-testid="events-overview">
-      <header className="space-y-1">
-        <h1 className={cn(SERIF, "text-3xl font-bold text-[#1a1612] dark:text-foreground")}>Events</h1>
+    <div
+      className={cn("space-y-3 p-3 lg:p-4", PAGE)}
+      data-testid="events-overview"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h1
+          className={cn(
+            SERIF,
+            "mr-2 text-2xl font-bold text-[#1a1612] dark:text-foreground",
+          )}
+        >
+          Events
+        </h1>
         {counts && (
-          <p className={cn("text-base", MUTED)} data-testid="events-counts">
+          <p className={cn("mr-2 text-sm", MUTED)} data-testid="events-counts">
             {counts.new} new · {counts.going} going · {counts.changed} changed
           </p>
         )}
-      </header>
-
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="View">
-        <Chip active={view === "agenda"} onClick={() => setView("agenda")} testId="events-view-agenda">
-          <List className="h-5 w-5" aria-hidden /> Agenda
-        </Chip>
-        <Chip active={view === "month"} onClick={() => setView("month")} testId="events-view-month">
-          <CalendarDays className="h-5 w-5" aria-hidden /> Month
-        </Chip>
-      </div>
-
-      <div className="space-y-2">
-        <SectionLabel>Show</SectionLabel>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Response filter">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="View"
+        >
+          <Chip
+            active={view === "agenda"}
+            onClick={() => setView("agenda")}
+            testId="events-view-agenda"
+          >
+            <List className="h-5 w-5" aria-hidden /> Agenda
+          </Chip>
+          <Chip
+            active={view === "month"}
+            onClick={() => setView("month")}
+            testId="events-view-month"
+          >
+            <CalendarDays className="h-5 w-5" aria-hidden /> Month
+          </Chip>
+        </div>
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Response filter"
+        >
           {RESPONSE_FILTERS.map((f) => (
-            <Chip key={f.id} active={response === f.id} onClick={() => setResponse(f.id)} testId={`events-response-${f.id}`}>
+            <Chip
+              key={f.id}
+              active={response === f.id}
+              onClick={() => setResponse(f.id)}
+              testId={`events-response-${f.id}`}
+            >
               {f.label}
             </Chip>
           ))}
         </div>
         {usedCategories.length > 0 && (
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Category filter">
-            <Chip active={category === null} onClick={() => setCategory(null)} testId="events-category-all">
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Category filter"
+          >
+            <Chip
+              active={category === null}
+              onClick={() => setCategory(null)}
+              testId="events-category-all"
+            >
               All categories
             </Chip>
             {usedCategories.map((c) => (
-              <Chip key={c} active={category === c} onClick={() => setCategory(category === c ? null : c)} testId={`events-category-${c}`}>
+              <Chip
+                key={c}
+                active={category === c}
+                onClick={() => setCategory(category === c ? null : c)}
+                testId={`events-category-${c}`}
+              >
                 {CATEGORY_META[c].label}
               </Chip>
             ))}
@@ -202,35 +287,67 @@ function Overview() {
           ))}
         </div>
       ) : view === "month" ? (
-        <EventsMonth items={visible} monthIso={month} onMonthChange={setMonth} weekStartsMonday />
+        <EventsMonth
+          items={visible}
+          monthIso={month}
+          onMonthChange={setMonth}
+          weekStartsMonday
+        />
       ) : next14.length === 0 && later.length === 0 ? (
         <p className={cn("text-lg", MUTED)} data-testid="events-none-match">
           No events match these filters.
         </p>
       ) : (
-        <div className="space-y-6">
-          <section aria-labelledby="events-next14" className="space-y-4">
-            <h2 id="events-next14" className={cn(SERIF, "text-2xl font-bold", SATCHEL_TONES.clay.fg)}>
+        <div className="space-y-4">
+          <section aria-labelledby="events-next14" className="space-y-2">
+            <h2
+              id="events-next14"
+              className={cn(SERIF, "text-2xl font-bold", SATCHEL_TONES.clay.fg)}
+            >
               Next 14 days
             </h2>
-            {next14.length === 0 && <p className={cn("text-base", MUTED)}>Nothing in the next two weeks.</p>}
-            {next14.map((group) => (
-              <div key={group.date} className="space-y-2" data-testid={`events-day-${group.date}`}>
-                <h3 className="text-lg font-bold text-[#1a1612] dark:text-foreground">{dayHeading(group.date, today)}</h3>
-                {group.items.map((item) => (
+            {next14.length === 0 && (
+              <p className={cn("text-base", MUTED)}>
+                Nothing in the next two weeks.
+              </p>
+            )}
+            <div className="space-y-2 lg:grid lg:grid-cols-3 lg:items-start lg:gap-3 lg:space-y-0">
+              {columns.map((col, i) => (
+                <div key={i} className="space-y-2 lg:space-y-3">
+                  {col.map((group) => (
+                    <div
+                      key={group.date}
+                      className="space-y-1.5"
+                      data-testid={`events-day-${group.date}`}
+                    >
+                      <h3 className="text-base font-bold text-[#1a1612] dark:text-foreground">
+                        {dayHeading(group.date, today)}
+                      </h3>
+                      {group.items.map((item) => (
+                        <AgendaCard key={item.eventId} item={item} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+          {later.length > 0 && (
+            <section aria-labelledby="events-later" className="space-y-2">
+              <h2
+                id="events-later"
+                className={cn(
+                  SERIF,
+                  "text-xl font-bold text-[#1a1612] dark:text-foreground",
+                )}
+              >
+                Later
+              </h2>
+              <div className="grid gap-2 lg:grid-cols-3 xl:grid-cols-4">
+                {later.map((item) => (
                   <AgendaCard key={item.eventId} item={item} />
                 ))}
               </div>
-            ))}
-          </section>
-          {later.length > 0 && (
-            <section aria-labelledby="events-later" className="space-y-3">
-              <h2 id="events-later" className={cn(SERIF, "text-xl font-bold text-[#1a1612] dark:text-foreground")}>
-                Later
-              </h2>
-              {later.map((item) => (
-                <AgendaCard key={item.eventId} item={item} />
-              ))}
             </section>
           )}
         </div>
@@ -240,7 +357,10 @@ function Overview() {
 }
 
 function formatPublished(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+  return new Date(iso).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 function EventsContent() {
@@ -249,7 +369,8 @@ function EventsContent() {
   const { data: status, isLoading } = useEventsStatus();
   const { data: items, isLoading: itemsLoading } = useEventItems();
 
-  if (match && params) return <EventHero eventId={decodeURIComponent(params.eventId)} />;
+  if (match && params)
+    return <EventHero eventId={decodeURIComponent(params.eventId)} />;
 
   if (isLoading || itemsLoading) {
     return (
@@ -281,7 +402,10 @@ function EventsContent() {
         description="We have started looking for events near you. Your first suggestions usually arrive within the hour."
       >
         {status.lastPublishedAt && (
-          <p className="mt-4 text-sm text-muted-foreground" data-testid="events-last-published">
+          <p
+            className="mt-4 text-sm text-muted-foreground"
+            data-testid="events-last-published"
+          >
             Last checked {formatPublished(status.lastPublishedAt)}
           </p>
         )}

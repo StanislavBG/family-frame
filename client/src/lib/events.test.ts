@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_EVENT } from "@shared/events";
-import { formatCost, formatWhen, groupForAgenda, statusBadge, CATEGORY_META } from "./events";
+import { formatCost, formatWhen, agendaColumns, groupForAgenda, statusBadge, CATEGORY_META } from "./events";
 import { EVENT_CATEGORIES } from "@shared/events";
 
 type Sched = typeof SAMPLE_EVENT.schedule;
@@ -125,5 +125,34 @@ describe("statusBadge", () => {
 describe("CATEGORY_META", () => {
   it("covers every category", () => {
     for (const c of EVENT_CATEGORIES) expect(CATEGORY_META[c].label).not.toBe("");
+  });
+});
+
+describe("agendaColumns", () => {
+  const g = (date: string, n: number) => ({ date, items: Array.from({ length: n }, (_, i) => `${date}-${i}`) });
+  const size = (col: { items: unknown[] }[]) => col.reduce((n, x) => n + x.items.length, 0);
+
+  it("returns N empty columns for empty input", () => {
+    expect(agendaColumns([], 3)).toEqual([[], [], []]);
+  });
+
+  it("keeps date order reading column by column", () => {
+    const groups = ["01", "02", "03", "04", "05", "06", "07"].map((d, i) => g(`2026-10-${d}`, (i % 3) + 1));
+    const flat = agendaColumns(groups, 3).flat().map((x) => x.date);
+    expect(flat).toEqual(groups.map((x) => x.date));
+  });
+
+  it("balances within one day group of the smallest column", () => {
+    const groups = [3, 1, 2, 2, 1, 3, 2, 1, 2].map((n, i) => g(`2026-10-${String(i + 1).padStart(2, "0")}`, n));
+    const sizes = agendaColumns(groups, 3).map(size);
+    const maxGroup = Math.max(...groups.map((x) => x.items.length));
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(maxGroup);
+    expect(sizes.reduce((a, b) => a + b, 0)).toBe(17);
+  });
+
+  it("puts everything in one column when columns=1 (or < 1)", () => {
+    const groups = [g("2026-10-01", 2), g("2026-10-02", 1)];
+    expect(agendaColumns(groups, 1)).toEqual([groups]);
+    expect(agendaColumns(groups, 0)).toEqual([groups]);
   });
 });
