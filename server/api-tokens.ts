@@ -11,6 +11,8 @@ export const API_TOKEN_SCOPES = [
   "data:write",
   "media:read",
   "media:write",
+  "metrics:read",
+  "metrics:write",
 ] as const;
 export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
 
@@ -46,6 +48,17 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function validateScopes(scopes: ApiTokenScope[]): void {
+  if (!Array.isArray(scopes) || scopes.length === 0) {
+    throw new ApiTokenError("At least one scope is required");
+  }
+  for (const scope of scopes) {
+    if (!(API_TOKEN_SCOPES as readonly string[]).includes(scope)) {
+      throw new ApiTokenError(`Unknown scope: ${String(scope)}`);
+    }
+  }
+}
+
 export async function createApiToken(
   store: TokenStore,
   userId: string,
@@ -57,14 +70,7 @@ export async function createApiToken(
   if (trimmed.length > MAX_NAME_LENGTH) {
     throw new ApiTokenError(`Token name must be at most ${MAX_NAME_LENGTH} characters`);
   }
-  if (!Array.isArray(scopes) || scopes.length === 0) {
-    throw new ApiTokenError("At least one scope is required");
-  }
-  for (const scope of scopes) {
-    if (!(API_TOKEN_SCOPES as readonly string[]).includes(scope)) {
-      throw new ApiTokenError(`Unknown scope: ${String(scope)}`);
-    }
-  }
+  validateScopes(scopes);
 
   const existing = await store.listByUser(userId);
   if (existing.length >= MAX_TOKENS_PER_USER) {
@@ -119,6 +125,21 @@ export async function revokeApiToken(store: TokenStore, userId: string, id: stri
   if (!match) return false;
   await store.remove(match.hash);
   return true;
+}
+
+export async function updateApiTokenScopes(
+  store: TokenStore,
+  userId: string,
+  id: string,
+  scopes: ApiTokenScope[],
+): Promise<ApiTokenRecord | null> {
+  validateScopes(scopes);
+  const entries = await store.listByUser(userId);
+  const match = entries.find((e) => e.rec.id === id && e.rec.userId === userId);
+  if (!match) return null;
+  const updated: ApiTokenRecord = { ...match.rec, scopes: Array.from(new Set(scopes)) };
+  await store.set(match.hash, updated);
+  return updated;
 }
 
 // Firebase drops null children, so lastUsedAt is normalized on read.

@@ -7,6 +7,7 @@ import {
   createApiToken,
   listApiTokens,
   revokeApiToken,
+  updateApiTokenScopes,
   verifyApiToken,
   type ApiTokenRecord,
   type TokenStore,
@@ -57,7 +58,7 @@ test("only the hash is stored", async () => {
 });
 
 test("scope list includes mail and data scopes and new scopes verify", async () => {
-  assert.deepEqual([...API_TOKEN_SCOPES], ["calendar:read", "calendar:write", "mail:read", "mail:write", "data:read", "data:write", "media:read", "media:write"]);
+  assert.deepEqual([...API_TOKEN_SCOPES], ["calendar:read", "calendar:write", "mail:read", "mail:write", "data:read", "data:write", "media:read", "media:write", "metrics:read", "metrics:write"]);
   const store = memoryStore();
   const { token } = await createApiToken(store, "u1", "Agent", ["mail:write", "data:read"]);
   const v = await verifyApiToken(store, token);
@@ -136,4 +137,27 @@ test("listApiTokens is newest first and hides hashes", async () => {
   assert.deepEqual(list.map((r) => r.id), [t2.record.id, t1.record.id]);
   assert.ok(!JSON.stringify(list).match(/[0-9a-f]{64}/));
   assert.deepEqual(await listApiTokens(store, "nobody"), []);
+});
+
+test("updateApiTokenScopes changes scopes in place with the same token", async () => {
+  const store = memoryStore();
+  const { token, record } = await createApiToken(store, "u1", "Agent", ["calendar:read"]);
+  const [hashBefore] = [...store.map.keys()];
+  const updated = await updateApiTokenScopes(store, "u1", record.id, ["metrics:write", "metrics:read", "metrics:write"]);
+  assert.deepEqual(updated, { ...record, scopes: ["metrics:write", "metrics:read"] });
+  assert.equal(store.map.size, 1);
+  assert.deepEqual([...store.map.keys()], [hashBefore]);
+  const v = await verifyApiToken(store, token);
+  assert.deepEqual(v, { userId: "u1", scopes: ["metrics:write", "metrics:read"], id: record.id });
+});
+
+test("updateApiTokenScopes is isolated per user and validates scopes", async () => {
+  const store = memoryStore();
+  const { token, record } = await createApiToken(store, "u1", "Agent", ["calendar:read"]);
+  assert.equal(await updateApiTokenScopes(store, "u2", record.id, ["metrics:read"]), null);
+  assert.equal(await updateApiTokenScopes(store, "u1", "nope", ["metrics:read"]), null);
+  await assert.rejects(updateApiTokenScopes(store, "u1", record.id, []), ApiTokenError);
+  await assert.rejects(updateApiTokenScopes(store, "u1", record.id, ["admin" as never]), ApiTokenError);
+  const v = await verifyApiToken(store, token);
+  assert.deepEqual(v?.scopes, ["calendar:read"]);
 });
