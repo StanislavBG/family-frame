@@ -20,6 +20,8 @@ export interface SessionHeaderDeps {
   ) => Promise<{ userId: string; username: string; scopes: string[] } | null>;
   /** Verifies an `ff_svc_` service token; defaults to rejecting everything. */
   verifyServiceToken?: (token: string) => boolean;
+  /** False when the service token hash secret is missing/malformed (answers 503). */
+  serviceTokenConfigured?: () => boolean;
 }
 
 const USERNAME_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -112,6 +114,10 @@ export function createSessionHeaderMiddleware(
 
     const authorization = req.headers.authorization;
     if (typeof authorization === "string" && authorization.startsWith(SERVICE_BEARER_PREFIX)) {
+      if (deps.serviceTokenConfigured?.() === false) {
+        res.status(503).json({ error: "Service API not configured" });
+        return;
+      }
       const token = authorization.slice("Bearer ".length).trim();
       let valid = false;
       try {

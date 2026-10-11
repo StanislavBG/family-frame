@@ -5,6 +5,11 @@ export const SERVICE_TOKEN_PREFIX = "ff_svc_";
 const BODY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
 
+/** True when the EVENTS_SERVICE_TOKEN_SHA256 secret is set to a 64-hex SHA-256. */
+export function isServiceTokenHashConfigured(expectedSha256Hex: string | undefined): boolean {
+  return typeof expectedSha256Hex === "string" && HASH_PATTERN.test(expectedSha256Hex.trim());
+}
+
 /**
  * True when `token` is a well-formed service token whose SHA-256 equals
  * `expectedSha256Hex` (the EVENTS_SERVICE_TOKEN_SHA256 secret). An unset,

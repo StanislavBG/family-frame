@@ -333,6 +333,48 @@ test("service token with unset env hash is rejected", async () => {
   assert.equal(r.next, 0);
 });
 
+test("unconfigured service API responds 503 for any ff_svc_ token", async () => {
+  for (const ok of [true, false]) {
+    const req: FakeReq = { headers: { authorization: SVC }, path: "/api/service/events/households" };
+    const r = await runWithRes(req, { ...svcDeps(ok), serviceTokenConfigured: () => false });
+    assert.equal(r.status, 503);
+    assert.deepEqual(r.body, { error: "Service API not configured" });
+    assert.equal(r.next, 0);
+    assert.equal(req.headers["x-ff-auth"], undefined);
+  }
+});
+
+test("configured service API with failing verify still responds 401", async () => {
+  const req: FakeReq = { headers: { authorization: SVC }, path: "/api/service/events/households" };
+  const r = await runWithRes(req, { ...svcDeps(false), serviceTokenConfigured: () => true });
+  assert.equal(r.status, 401);
+  assert.deepEqual(r.body, { error: "Invalid service token" });
+  assert.equal(r.next, 0);
+});
+
+test("serviceTokenConfigured false does not affect PAT or session requests", async () => {
+  const unconfigured = { serviceTokenConfigured: () => false };
+  const patReq: FakeReq = { headers: { authorization: PAT }, path: "/api/calendar/events", method: "GET" };
+  const patRes = await runWithRes(patReq, { ...patDeps(["calendar:write"]), ...unconfigured });
+  assert.equal(patRes.next, 1);
+  assert.equal(patReq.headers["x-clerk-user-id"], "user_pat");
+  const sessReq: FakeReq = { headers: {}, cookies: { __session: "good" }, path: "/api/messages" };
+  const sessRes = await runWithRes(sessReq, { ...okDeps, ...unconfigured });
+  assert.equal(sessRes.next, 1);
+  assert.equal(sessReq.headers["x-clerk-user-id"], "user_real");
+});
+
+test("isServiceTokenHashConfigured accepts only a 64-hex hash", async () => {
+  const { isServiceTokenHashConfigured } = await import("./service-token");
+  assert.equal(isServiceTokenHashConfigured(undefined), false);
+  assert.equal(isServiceTokenHashConfigured(""), false);
+  assert.equal(isServiceTokenHashConfigured("   "), false);
+  assert.equal(isServiceTokenHashConfigured("a".repeat(63)), false);
+  assert.equal(isServiceTokenHashConfigured("g".repeat(64)), false);
+  assert.equal(isServiceTokenHashConfigured("a".repeat(64)), true);
+  assert.equal(isServiceTokenHashConfigured(` ${"A1".repeat(32)}\n`), true);
+});
+
 test("valid service token outside /api/service/events/ is forbidden", async () => {
   for (const path of ["/api/messages", "/api/service/other", "/api/service/eventsx", "/api/calendar/events", "/mcp"]) {
     const req: FakeReq = { headers: { authorization: SVC }, path, method: "GET" };
