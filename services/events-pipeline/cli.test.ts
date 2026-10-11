@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { acquireLock, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
 import { openEventsDb, startRun, finishRun } from "./db";
 import type { FfClient } from "./ff-client";
+import type { Notice } from "./notify";
 import type { WatchResult } from "./watch";
 
 test("parseArgs reads modes and flags with defaults", () => {
@@ -257,4 +258,81 @@ test("watch stats include haiku only when a runner was created", async () => {
   const row = db.prepare("SELECT stats_json FROM runs WHERE kind = 'watch'").get() as { stats_json: string };
   db.close();
   assert.deepEqual(JSON.parse(row.stats_json).haiku, usage);
+});
+
+function notifyHarness() {
+  const h = harness(WATCH_ENV);
+  const notices: Notice[] = [];
+  h.deps.notify = (n) => notices.push(n);
+  return { ...h, notices };
+}
+
+const oneRun = {
+  listed: 1,
+  pending: 1,
+  deferred: 0,
+  runs: [{ householdId: "household-abc", reason: "new", stats: { published: 4, candidates: 9 } }],
+} as unknown as WatchResult;
+
+test("watch with one household run sends one notice", async () => {
+  const h = notifyHarness();
+  h.deps.runWatch = async () => oneRun;
+  assert.equal(await main(["watch"], h.deps), 0);
+  assert.equal(h.notices.length, 1);
+  assert.match(h.notices[0].body, /published 4 of 9/);
+});
+
+test("idle watch sends no notice", async () => {
+  const h = notifyHarness();
+  assert.equal(await main(["watch"], h.deps), 0);
+  assert.equal(h.notices.length, 0);
+});
+
+test("dry-run sends no notice and keeps notify state untouched", async () => {
+  const h = notifyHarness();
+  h.deps.runWatch = async () => oneRun;
+  assert.equal(await main(["watch", "--dry-run"], h.deps), 0);
+  assert.equal(await main(["all", "--dry-run"], h.deps), 0);
+  assert.equal(h.notices.length, 0);
+});
+
+test("two consecutive identical failures send one notice", async () => {
+  const h = notifyHarness();
+  h.deps.runWatch = async () => {
+    throw new Error("Invalid service token");
+  };
+  assert.equal(await main(["watch"], h.deps), 1);
+  assert.equal(await main(["watch"], h.deps), 1);
+  assert.equal(h.notices.length, 1);
+  assert.equal(h.notices[0].urgency, "critical");
+  assert.match(h.notices[0].body, /Invalid service token/);
+  assert.equal(h.errs.length, 2);
+});
+
+test("failure then success sends a recovered notice", async () => {
+  const h = notifyHarness();
+  h.deps.runWatch = async () => {
+    throw new Error("boom");
+  };
+  assert.equal(await main(["watch"], h.deps), 1);
+  h.deps.runWatch = async () => ({ listed: 0, pending: 0, deferred: 0, runs: [] });
+  assert.equal(await main(["watch"], h.deps), 0);
+  assert.equal(h.notices.length, 2);
+  assert.match(h.notices[1].title, /recovered/);
+});
+
+test("a throwing notify never changes the exit code", async () => {
+  const h = notifyHarness();
+  h.deps.notify = () => {
+    throw new Error("no dbus");
+  };
+  h.deps.runWatch = async () => oneRun;
+  assert.equal(await main(["watch"], h.deps), 0);
+});
+
+test("discover sends no daily summary notice but all does", async () => {
+  const h = notifyHarness();
+  assert.equal(await main(["all"], h.deps), 0);
+  assert.equal(h.notices.length, 1);
+  assert.match(h.notices[0].title, /daily run finished/);
 });

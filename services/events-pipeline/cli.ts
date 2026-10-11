@@ -9,6 +9,7 @@ import { runDispatch, type DispatchStats } from "./dispatch";
 import { createFfClient, type FfClient } from "./ff-client";
 import { createGeocoder, type Geocoder } from "./geo";
 import { createHaikuRunner, type HaikuRunner, type HaikuUsage } from "./haiku";
+import { loadJobState, planNotices, saveJobState, sendNotice, type JobOutcome, type Notice, type NotifyJob } from "./notify";
 import { buildReport } from "./report";
 import { runWatch, type WatchResult } from "./watch";
 
@@ -171,6 +172,23 @@ export function buildStatus(db: EventsDb, now: Date): StatusReport {
   };
 }
 
+/** Plan, send and persist notices for one job outcome. Never throws: a notification problem must not change the exit code. */
+function notifyOutcome(db: EventsDb, job: NotifyJob, outcome: JobOutcome, nowIso: string, notify: (n: Notice) => void): void {
+  try {
+    const { notices, next } = planNotices(job, loadJobState(db, job), outcome, nowIso);
+    for (const n of notices) {
+      try {
+        notify(n);
+      } catch {
+        // a failed notification is not a pipeline failure
+      }
+    }
+    saveJobState(db, job, next);
+  } catch {
+    // notify state unavailable; carry on
+  }
+}
+
 export interface CliDeps {
   env?: NodeJS.ProcessEnv;
   home?: string;
@@ -184,6 +202,7 @@ export interface CliDeps {
   makeRunner?: (opts: { maxSessions: number; cwd: string }) => HaikuRunner & { usage?(): HaikuUsage };
   makeGeocoder?: (db: EventsDb, userAgent: string) => Geocoder;
   runWatch?: typeof runWatch;
+  notify?: (n: Notice) => void;
   tmpRoot?: string;
 }
 
@@ -253,6 +272,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
   }
   const scratch = mkdtempSync(join(deps.tmpRoot ?? tmpdir(), "ff-events-"));
   let db: EventsDb | undefined;
+  const notify = deps.notify ?? sendNotice;
   const t0 = Date.now();
   try {
     db = open(cfg.dbPath);
@@ -281,6 +301,24 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
       if (result.runs.length > 0 && !args.dryRun) {
         const runId = startRun(db, "watch", now().toISOString());
         finishRun(db, runId, now().toISOString(), haiku ? { ...result, haiku } : result, result.runs.every((r) => r.error) ? "all households failed" : null);
+      }
+      if (!args.dryRun) {
+        notifyOutcome(
+          db,
+          "watch",
+          {
+            ok: true,
+            householdRuns: result.runs.map((r) => ({
+              householdId: r.householdId,
+              reason: r.reason,
+              published: r.stats?.published ?? 0,
+              candidates: r.stats?.candidates ?? 0,
+              ...(r.error ? { error: r.error } : {}),
+            })),
+          },
+          now().toISOString(),
+          notify,
+        );
       }
       out(JSON.stringify({ mode: "watch", listed: result.listed, pending: result.pending, deferred: result.deferred, runs: result.runs, ...(haiku ? { haiku } : {}) }));
       return 0;
@@ -328,10 +366,32 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
     }
     stats.haiku = runner.usage?.();
     stats.ms = Date.now() - t0;
+    if (!args.dryRun) {
+      const d = stats.discover;
+      notifyOutcome(
+        db,
+        args.mode,
+        {
+          ok: true,
+          summary: {
+            published: d?.published ?? 0,
+            candidates: d?.candidates ?? 0,
+            errors: d?.errors ?? 0,
+            ...(stats.haiku ? { costUsd: stats.haiku.costUsd } : {}),
+          },
+        },
+        now().toISOString(),
+        notify,
+      );
+    }
     out(JSON.stringify(stats));
     return 0;
   } catch (e) {
-    err(`events-pipeline failed: ${e instanceof Error ? e.message : String(e)}`);
+    const message = e instanceof Error ? e.message : String(e);
+    err(`events-pipeline failed: ${message}`);
+    if (db && !args.dryRun) {
+      notifyOutcome(db, args.mode, { ok: false, error: message }, now().toISOString(), notify);
+    }
     return 1;
   } finally {
     try {
