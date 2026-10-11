@@ -33,17 +33,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type TokenScope =
-  | "calendar:read"
-  | "calendar:write"
-  | "mail:read"
-  | "mail:write"
-  | "data:read"
-  | "data:write"
-  | "media:read"
-  | "media:write";
-
-type AccessLevel = "none" | "read" | "write";
+import {
+  accessFromScopes,
+  scopesFromAccess,
+  type AccessLevel,
+  type TokenAccess,
+  type TokenScope,
+} from "@/lib/token-scopes";
 
 interface ApiTokenRecord {
   id: string;
@@ -67,7 +63,11 @@ const SCOPE_LABELS: Record<TokenScope, string> = {
   "data:write": "Publish app data & schemas",
   "media:read": "Read media",
   "media:write": "Upload/delete photos & files",
+  "metrics:read": "Read metrics",
+  "metrics:write": "Publish metrics & time-series",
 };
+
+const NEW_TOKEN_ACCESS: TokenAccess = { calendarWrite: true, mail: "none", data: "none", media: "none", metrics: "none" };
 
 const ACCESS_OPTIONS: { value: AccessLevel; label: string }[] = [
   { value: "none", label: "None" },
@@ -88,14 +88,70 @@ function serverErrorMessage(err: unknown): string {
   return body || "Something went wrong";
 }
 
+const LEVEL_CONTROLS: {
+  key: "mail" | "data" | "media" | "metrics";
+  label: string;
+  hint: string;
+}[] = [
+  { key: "mail", label: "Mailbox access", hint: "Lets an agent publish processed emails" },
+  { key: "data", label: "App data access", hint: "Lets an agent upload custom JSON schemas and records" },
+  { key: "media", label: "Media access", hint: "Lets an agent upload photos and PDFs" },
+  { key: "metrics", label: "Metrics & charts access", hint: "Lets an agent publish metrics and time-series for charts" },
+];
+
+function AccessControls({
+  idPrefix,
+  access,
+  onChange,
+}: {
+  idPrefix: string;
+  access: TokenAccess;
+  onChange: (next: TokenAccess) => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Checkbox id={`${idPrefix}-scope-read`} checked disabled aria-required="true" />
+        <Label htmlFor={`${idPrefix}-scope-read`}>Read calendar</Label>
+      </div>
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id={`${idPrefix}-scope-write`}
+          checked={access.calendarWrite}
+          onCheckedChange={(v) => onChange({ ...access, calendarWrite: v === true })}
+          data-testid="checkbox-scope-write"
+        />
+        <Label htmlFor={`${idPrefix}-scope-write`}>Create/edit/delete events</Label>
+      </div>
+      {LEVEL_CONTROLS.map((c) => (
+        <div key={c.key} className="space-y-2">
+          <Label htmlFor={`${idPrefix}-scope-${c.key}`}>{c.label}</Label>
+          <Select value={access[c.key]} onValueChange={(v) => onChange({ ...access, [c.key]: v as AccessLevel })}>
+            <SelectTrigger id={`${idPrefix}-scope-${c.key}`} aria-label={c.label} data-testid={`select-scope-${c.key}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCESS_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value} data-testid={`option-scope-${c.key}-${o.value}`}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-sm text-muted-foreground">{c.hint}</p>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export function AgentAccessSettings() {
   const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
-  const [writeScope, setWriteScope] = useState(true);
-  const [mailAccess, setMailAccess] = useState<AccessLevel>("none");
-  const [dataAccess, setDataAccess] = useState<AccessLevel>("none");
-  const [mediaAccess, setMediaAccess] = useState<AccessLevel>("none");
+  const [access, setAccess] = useState<TokenAccess>(NEW_TOKEN_ACCESS);
+  const [editTarget, setEditTarget] = useState<ApiTokenRecord | null>(null);
+  const [editAccess, setEditAccess] = useState<TokenAccess>(NEW_TOKEN_ACCESS);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState<"token" | "command" | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenRecord | null>(null);
@@ -112,13 +168,23 @@ export function AgentAccessSettings() {
       setCreatedToken(result.token);
       setFormOpen(false);
       setName("");
-      setWriteScope(true);
-      setMailAccess("none");
-      setDataAccess("none");
-      setMediaAccess("none");
+      setAccess(NEW_TOKEN_ACCESS);
     },
     onError: (err) => {
       toast({ title: "Could not create token", description: serverErrorMessage(err), variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, scopes }: { id: string; scopes: TokenScope[] }) =>
+      apiRequest<ApiTokenRecord>("PATCH", `/api/tokens/${id}`, { scopes }),
+    onSuccess: (record) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiTokens() });
+      setEditTarget(null);
+      toast({ title: "Access updated", description: `"${record.name}" now has the new access levels.` });
+    },
+    onError: (err) => {
+      toast({ title: "Could not update access", description: serverErrorMessage(err), variant: "destructive" });
     },
   });
 
@@ -137,15 +203,13 @@ export function AgentAccessSettings() {
   const handleCreate = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const scopes: TokenScope[] = ["calendar:read"];
-    if (writeScope) scopes.push("calendar:write");
-    if (mailAccess !== "none") scopes.push("mail:read");
-    if (mailAccess === "write") scopes.push("mail:write");
-    if (dataAccess !== "none") scopes.push("data:read");
-    if (dataAccess === "write") scopes.push("data:write");
-    if (mediaAccess !== "none") scopes.push("media:read");
-    if (mediaAccess === "write") scopes.push("media:write");
+    const scopes = scopesFromAccess(access);
     createMutation.mutate({ name: trimmed, scopes });
+  };
+
+  const openEdit = (t: ApiTokenRecord) => {
+    setEditAccess(accessFromScopes(t.scopes));
+    setEditTarget(t);
   };
 
   const command = createdToken
@@ -195,13 +259,22 @@ export function AgentAccessSettings() {
                     {t.lastUsedAt ? formatRelativeTime(t.lastUsedAt) : "Never"}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setRevokeTarget(t)}
-                  data-testid={`button-revoke-${t.id}`}
-                >
-                  Revoke
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => openEdit(t)}
+                    data-testid={`button-edit-token-${t.id}`}
+                  >
+                    Edit access
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setRevokeTarget(t)}
+                    data-testid={`button-revoke-${t.id}`}
+                  >
+                    Revoke
+                  </Button>
+                </div>
               </div>
             ))}
           </CardContent>
@@ -239,67 +312,7 @@ export function AgentAccessSettings() {
                 data-testid="input-token-name"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="scope-read" checked disabled aria-required="true" />
-              <Label htmlFor="scope-read">Read calendar</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="scope-write"
-                checked={writeScope}
-                onCheckedChange={(v) => setWriteScope(v === true)}
-                data-testid="checkbox-scope-write"
-              />
-              <Label htmlFor="scope-write">Create/edit/delete events</Label>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="scope-mail">Mailbox access</Label>
-              <Select value={mailAccess} onValueChange={(v) => setMailAccess(v as AccessLevel)}>
-                <SelectTrigger id="scope-mail" aria-label="Mailbox access" data-testid="select-scope-mail">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACCESS_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value} data-testid={`option-scope-mail-${o.value}`}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">Lets an agent publish processed emails</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="scope-data">App data access</Label>
-              <Select value={dataAccess} onValueChange={(v) => setDataAccess(v as AccessLevel)}>
-                <SelectTrigger id="scope-data" aria-label="App data access" data-testid="select-scope-data">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACCESS_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value} data-testid={`option-scope-data-${o.value}`}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">Lets an agent upload custom JSON schemas and records</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="scope-media">Media access</Label>
-              <Select value={mediaAccess} onValueChange={(v) => setMediaAccess(v as AccessLevel)}>
-                <SelectTrigger id="scope-media" aria-label="Media access" data-testid="select-scope-media">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACCESS_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value} data-testid={`option-scope-media-${o.value}`}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">Lets an agent upload photos and PDFs</p>
-            </div>
+            <AccessControls idPrefix="new" access={access} onChange={setAccess} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
@@ -309,6 +322,33 @@ export function AgentAccessSettings() {
               data-testid="button-create-token"
             >
               {createMutation.isPending ? "Creating..." : "Create token"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editTarget !== null} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit access</DialogTitle>
+            <DialogDescription>
+              Token: <span className="font-medium" data-testid="text-edit-token-name">{editTarget?.name}</span>. Changing
+              access does not change the token secret, so agents keep working with the same token.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <AccessControls idPrefix="edit" access={editAccess} onChange={setEditAccess} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (editTarget) updateMutation.mutate({ id: editTarget.id, scopes: scopesFromAccess(editAccess) });
+              }}
+              disabled={updateMutation.isPending}
+              data-testid="button-save-token-access"
+            >
+              {updateMutation.isPending ? "Saving..." : "Save access"}
             </Button>
           </DialogFooter>
         </DialogContent>
