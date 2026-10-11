@@ -6,6 +6,7 @@ import { buildFamilyFrameMcpServer } from "./mcp";
 import { CalendarError, type CalendarService } from "./calendar-service";
 import type { MailService } from "./mail-service";
 import type { MediaStore } from "./media-store";
+import { createTimeSeriesService, type TimeSeriesDeps } from "./time-series-service";
 import { DatasetError, type DatasetService } from "./dataset-service";
 
 function makeFakeService() {
@@ -162,7 +163,7 @@ async function connect(
 const text = (r: any) => (r.content as any[])[0].text as string;
 const RW = ["calendar:read", "calendar:write"];
 
-test("lists the 24 tools", async () => {
+test("lists the 31 tools", async () => {
   const { service } = makeFakeService();
   const client = await connect(RW, service);
   const { tools } = await client.listTools();
@@ -192,6 +193,13 @@ test("lists the 24 tools", async () => {
       "media_import_url",
       "media_list",
       "media_upload",
+      "metrics_add_points",
+      "metrics_delete_point",
+      "metrics_delete_series",
+      "metrics_get_series",
+      "metrics_list_series",
+      "metrics_list_tags",
+      "metrics_put_series",
       "update_event",
     ],
   );
@@ -550,4 +558,89 @@ test("data_put_records into ff-person-day resolves personIds; data_list_records 
     arguments: { schemaId: "ff-person-day", records: [{ id: "x", data: {}, personIds: ["Nobody"] }] },
   });
   assert.equal(bad.isError, true);
+});
+
+function makeMemoryTimeSeries() {
+  const root: Record<string, any> = {};
+  const parts = (path: string) => path.split("/").filter(Boolean);
+  const read = (path: string) => parts(path).reduce<any>((n, k) => (n == null ? undefined : n[k]), root);
+  const parent = (path: string) => {
+    const ks = parts(path);
+    const last = ks.pop() as string;
+    const node = ks.reduce<any>((n, k) => (n[k] ??= {}), root);
+    return { node, last };
+  };
+  const deps: TimeSeriesDeps = {
+    async get(path) {
+      const v = read(path);
+      return v === undefined ? null : JSON.parse(JSON.stringify(v));
+    },
+    async set(path, value) {
+      const { node, last } = parent(path);
+      node[last] = JSON.parse(JSON.stringify(value));
+    },
+    async update(path, values) {
+      for (const [k, v] of Object.entries(values)) {
+        const { node, last } = parent(`${path}/${k}`);
+        if (v === null) delete node[last];
+        else node[last] = JSON.parse(JSON.stringify(v));
+      }
+    },
+    async remove(path) {
+      const { node, last } = parent(path);
+      delete node[last];
+    },
+  };
+  return createTimeSeriesService(deps);
+}
+
+test("data:read token is denied metrics_put_series", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["data:read"], service, undefined, undefined, undefined, { timeSeries: makeMemoryTimeSeries() });
+  const put = await client.callTool({ name: "metrics_put_series", arguments: { seriesId: "power", title: "Power" } });
+  assert.equal(put.isError, true);
+  assert.match(text(put), /metrics:write/);
+  const list = await client.callTool({ name: "metrics_list_series", arguments: {} });
+  assert.equal(list.isError, true);
+});
+
+test("metrics:write token puts a series, adds points and gets it back", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["metrics:write"], service, undefined, undefined, undefined, { timeSeries: makeMemoryTimeSeries() });
+  const put = await client.callTool({
+    name: "metrics_put_series",
+    arguments: { seriesId: "power", title: "Power", tags: ["utilities"], unit: "USD", annotations: { vendor: "PG&E" } },
+  });
+  assert.ok(!put.isError, text(put));
+  const add = await client.callTool({
+    name: "metrics_add_points",
+    arguments: { seriesId: "power", points: [{ t: "2026-02-01", value: 90 }, { t: "2026-01-01", value: 80.5, label: "Jan" }] },
+  });
+  assert.ok(!add.isError, text(add));
+  assert.equal(JSON.parse(text(add)).upserted, 2);
+  const got = await client.callTool({ name: "metrics_get_series", arguments: { seriesId: "power" } });
+  assert.ok(!got.isError, text(got));
+  const body = JSON.parse(text(got));
+  assert.equal(body.series.title, "Power");
+  assert.deepEqual(body.series.annotations, { vendor: "PG&E" });
+  assert.deepEqual(body.points.map((p: any) => p.t), ["2026-01-01", "2026-02-01"]);
+  const bad = await client.callTool({ name: "metrics_add_points", arguments: { seriesId: "nope", points: [{ t: "2026-01-01", value: 1 }] } });
+  assert.equal(bad.isError, true);
+  const del = await client.callTool({ name: "metrics_delete_point", arguments: { seriesId: "power", t: "2026-01-01" } });
+  assert.ok(!del.isError, text(del));
+  const delSeries = await client.callTool({ name: "metrics_delete_series", arguments: { seriesId: "power" } });
+  assert.ok(!delSeries.isError, text(delSeries));
+});
+
+test("metrics_list_series filters by tag", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["metrics:write"], service, undefined, undefined, undefined, { timeSeries: makeMemoryTimeSeries() });
+  await client.callTool({ name: "metrics_put_series", arguments: { seriesId: "power", title: "Power", tags: ["utilities"] } });
+  await client.callTool({ name: "metrics_put_series", arguments: { seriesId: "steps", title: "Steps", tags: ["health"] } });
+  const all = JSON.parse(text(await client.callTool({ name: "metrics_list_series", arguments: {} })));
+  assert.equal(all.length, 2);
+  const util = JSON.parse(text(await client.callTool({ name: "metrics_list_series", arguments: { tag: "utilities" } })));
+  assert.deepEqual(util.map((s: any) => s.id), ["power"]);
+  const tags = JSON.parse(text(await client.callTool({ name: "metrics_list_tags", arguments: {} })));
+  assert.equal(tags.length, 2);
 });

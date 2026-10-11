@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { calendarService, CalendarError, type CalendarService } from "./calendar-service";
 import { mailService, MailError, type MailService } from "./mail-service";
 import { datasetService, DatasetError, type DatasetService } from "./dataset-service";
+import { timeSeriesService, TimeSeriesError, type TimeSeriesService } from "./time-series-service";
 import { mediaStore, MediaError, MEDIA_LIMITS, type MediaStore, type MediaMeta } from "./media-store";
 import { mediaImporter, type MediaImporter } from "./media-import";
 import { mailRehoster, type MailRehoster } from "./mail-rehost";
@@ -51,6 +52,9 @@ const DATA_WRITE = ["data:write"];
 const MEDIA_READ = ["media:read", "media:write"];
 const MEDIA_WRITE = ["media:write"];
 
+const TS_READ = ["metrics:read", "metrics:write"];
+const TS_WRITE = ["metrics:write"];
+
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 function decodeBase64(input: string): Buffer {
@@ -68,6 +72,7 @@ const schemaIdField = z.string().regex(SCHEMA_ID_PATTERN, "Lowercase letters, di
 export interface McpServices {
   mail?: MailService;
   data?: DatasetService;
+  timeSeries?: TimeSeriesService;
   media?: MediaStore;
   importer?: Pick<MediaImporter, "importFromUrl">;
   rehoster?: Pick<MailRehoster, "rehostEmailImages">;
@@ -80,6 +85,7 @@ export function buildFamilyFrameMcpServer(
 ): McpServer {
   const mail = services.mail ?? mailService;
   const data = services.data ?? datasetService;
+  const timeSeries = services.timeSeries ?? timeSeriesService;
   const media = services.media ?? mediaStore;
   const importer = services.importer ?? mediaImporter;
   const rehoster = services.rehoster ?? mailRehoster;
@@ -104,7 +110,7 @@ export function buildFamilyFrameMcpServer(
     try {
       return ok(await fn());
     } catch (err) {
-      if (err instanceof ToolError || err instanceof CalendarError || err instanceof MailError || err instanceof DatasetError || err instanceof MediaError) return fail(err.message);
+      if (err instanceof ToolError || err instanceof CalendarError || err instanceof MailError || err instanceof DatasetError || err instanceof MediaError || err instanceof TimeSeriesError) return fail(err.message);
       console.error("MCP tool error:", err);
       return fail("Internal error while processing the request.");
     }
@@ -401,6 +407,108 @@ export function buildFamilyFrameMcpServer(
       run(DATA_WRITE, async () => {
         await data.deleteRecord(ctx.userId, schemaId, recordId);
         return { deleted: recordId };
+      })(),
+  );
+
+  server.registerTool(
+    "metrics_list_tags",
+    { description: "List the tags in use across the time-series, with the number of series per tag. The tag \"utilities\" shows a series in the Utilities app." },
+    run(TS_READ, () => timeSeries.listTags(ctx.userId)),
+  );
+
+  server.registerTool(
+    "metrics_list_series",
+    {
+      description: "List time-series (id, title, description, summary, tags, unit, color, annotations, pointCount, firstT, lastT, latest). Optionally filter by one tag.",
+      inputSchema: { tag: z.string().optional() },
+    },
+    async ({ tag }: { tag?: string }) => run(TS_READ, () => timeSeries.listSeries(ctx.userId, { tag }))(),
+  );
+
+  server.registerTool(
+    "metrics_get_series",
+    {
+      description: "Get one time-series and its points ({series, points}), oldest first. Optionally restrict to from..to (YYYY-MM-DD or ISO datetime) and cap with limit (the newest points are kept).",
+      inputSchema: {
+        seriesId: z.string().min(1),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        limit: z.number().int().min(1).optional(),
+      },
+    },
+    async ({ seriesId, from, to, limit }: { seriesId: string; from?: string; to?: string; limit?: number }) =>
+      run(TS_READ, async () => {
+        const series = await timeSeries.getSeries(ctx.userId, seriesId);
+        const points = await timeSeries.listPoints(ctx.userId, seriesId, { from, to, limit });
+        return { series, points };
+      })(),
+  );
+
+  server.registerTool(
+    "metrics_put_series",
+    {
+      description:
+        "Create or replace a time-series by seriesId (lowercase slug). Replacing keeps the existing points. tags are lowercase slugs (letters, digits, hyphens); tag \"utilities\" shows the series in the Utilities app, and other tags group series for display. annotations is free-form JSON for anything unique to this series (vendor, account number, billing cycle, ...). Add data with metrics_add_points; points upsert by t (YYYY-MM-DD or ISO datetime).",
+      inputSchema: {
+        seriesId: z.string().min(1),
+        title: z.string(),
+        description: z.string().optional(),
+        summary: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        unit: z.string().optional(),
+        color: z.string().optional(),
+        annotations: z.record(z.unknown()).optional(),
+      },
+    },
+    async ({ seriesId, ...rest }: { seriesId: string } & Record<string, unknown>) =>
+      run(TS_WRITE, () => timeSeries.putSeries(ctx.userId, seriesId, rest))(),
+  );
+
+  server.registerTool(
+    "metrics_add_points",
+    {
+      description: "Add or update points in an existing series. Each point is {t, value, label?, annotations?}; t is YYYY-MM-DD or an ISO datetime with Z/offset, and a point with an existing t replaces it (upsert). annotations is free-form JSON. All-or-nothing per call.",
+      inputSchema: {
+        seriesId: z.string().min(1),
+        points: z
+          .array(
+            z.object({
+              t: z.string(),
+              value: z.number(),
+              label: z.string().optional(),
+              annotations: z.record(z.unknown()).optional(),
+            }),
+          )
+          .min(1),
+      },
+    },
+    async ({ seriesId, points }: { seriesId: string; points: unknown[] }) =>
+      run(TS_WRITE, () => timeSeries.putPoints(ctx.userId, seriesId, { points }))(),
+  );
+
+  server.registerTool(
+    "metrics_delete_point",
+    {
+      description: "Delete one point from a series by its t.",
+      inputSchema: { seriesId: z.string().min(1), t: z.string().min(1) },
+    },
+    async ({ seriesId, t }: { seriesId: string; t: string }) =>
+      run(TS_WRITE, async () => {
+        await timeSeries.deletePoint(ctx.userId, seriesId, t);
+        return { deleted: t };
+      })(),
+  );
+
+  server.registerTool(
+    "metrics_delete_series",
+    {
+      description: "Delete a time-series and ALL of its points.",
+      inputSchema: { seriesId: z.string().min(1) },
+    },
+    async ({ seriesId }: { seriesId: string }) =>
+      run(TS_WRITE, async () => {
+        await timeSeries.deleteSeries(ctx.userId, seriesId);
+        return { deleted: seriesId };
       })(),
   );
 
