@@ -40,10 +40,24 @@ test("argv pins model, limits tools, never --bare; prompt on stdin", async () =>
   assert.equal(args[args.indexOf("--output-format") + 1], "json");
   assert.equal(args[args.indexOf("--json-schema") + 1], JSON.stringify(input.jsonSchema));
   assert.equal(args[args.indexOf("--tools") + 1], "WebSearch,WebFetch");
+  assert.equal(args[args.indexOf("--allowedTools") + 1], "WebSearch,WebFetch");
   for (const flag of ["--no-session-persistence", "--strict-mcp-config"]) assert.ok(args.includes(flag));
   assert.equal(args[args.indexOf("--permission-mode") + 1], "dontAsk");
   assert.ok(!args.includes("--bare"));
   assert.ok(!args.join(" ").match(/Bash|Edit|Write/));
+});
+
+test("permission_denials in the envelope is a failure, counted under failed", async () => {
+  const f = fakeSpawn((c) => reply(c, JSON.stringify({
+    structured_output: { candidates: [] },
+    permission_denials: [{ tool_name: "WebSearch" }, { tool_name: "WebSearch" }, { tool_name: "WebFetch" }],
+  })));
+  const r = createHaikuRunner({ spawn: f.spawn, maxSessions: 1, cwd: "/tmp" });
+  const res = await r.run(input);
+  assert.equal(res.ok, false);
+  assert.equal(res.ok === false && res.reason, "failed");
+  assert.equal(res.ok === false && res.detail, "tool permission denied: WebSearch, WebFetch");
+  assert.equal(r.usage().failures.failed, 1);
 });
 
 test("refuses write-capable tools without spawning", async () => {

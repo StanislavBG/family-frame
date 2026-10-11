@@ -91,6 +91,14 @@ function parseOutput(stdout: string): HaikuResult & { raw?: Record<string, unkno
     return fail("bad-output", "claude output was not a result object");
   }
   const env = envelope as Record<string, unknown>;
+  if (Array.isArray(env.permission_denials) && env.permission_denials.length > 0) {
+    const names = new Set<string>();
+    for (const d of env.permission_denials) {
+      const name = (d as { tool_name?: unknown } | null)?.tool_name;
+      names.add(typeof name === "string" ? name : "unknown");
+    }
+    return fail("failed", `tool permission denied: ${Array.from(names).join(", ")}`);
+  }
   const costUsd = typeof env.total_cost_usd === "number" ? env.total_cost_usd : undefined;
   const withCost = (data: unknown): HaikuResult =>
     costUsd === undefined ? { ok: true, data } : { ok: true, data, costUsd };
@@ -153,6 +161,7 @@ export function createHaikuRunner(opts: HaikuRunnerOptions): MeteredHaikuRunner 
       "--output-format", "json",
       "--json-schema", JSON.stringify(input.jsonSchema),
       "--tools", tools.join(","),
+      "--allowedTools", tools.join(","),
       "--no-session-persistence",
       "--strict-mcp-config",
       "--permission-mode", "dontAsk",
