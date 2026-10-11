@@ -180,29 +180,34 @@ export async function explainBatch(
 ): Promise<Map<string, ExplainText>> {
   const result = new Map<string, ExplainText>();
   if (picks.length === 0) return result;
-  const batch = picks.slice(0, EXPLAIN_MAX_PICKS);
-
-  let parsed = new Map<string, ExplainText>();
-  try {
-    const run = await runner.run({
-      prompt: buildExplainPrompt(digest, batch),
-      jsonSchema: EXPLAIN_JSON_SCHEMA,
-      tools: [],
-    });
-    if (run.ok) parsed = parseItems(run.data);
-  } catch {
-    // fall back to templates below
-  }
-
   const childOk = hasChild(digest);
-  for (const p of picks) {
-    const ai = batch.includes(p) ? parsed.get(p.event.id) : undefined;
-    if (!ai) {
-      result.set(p.event.id, templateExplain(p, digest));
-      continue;
+  let stopped = false;
+
+  for (let i = 0; i < picks.length; i += EXPLAIN_MAX_PICKS) {
+    const batch = picks.slice(i, i + EXPLAIN_MAX_PICKS);
+    let parsed = new Map<string, ExplainText>();
+    if (!stopped) {
+      try {
+        const run = await runner.run({
+          prompt: buildExplainPrompt(digest, batch),
+          jsonSchema: EXPLAIN_JSON_SCHEMA,
+          tools: [],
+        });
+        if (run.ok) parsed = parseItems(run.data);
+        else if (run.reason === "rate-limited" || run.reason === "budget-exhausted") stopped = true;
+      } catch {
+        // fall back to templates for this batch
+      }
     }
-    if (!childOk) delete ai.whyForChildren;
-    result.set(p.event.id, ai);
+    for (const p of batch) {
+      const ai = parsed.get(p.event.id);
+      if (!ai) {
+        result.set(p.event.id, templateExplain(p, digest));
+        continue;
+      }
+      if (!childOk) delete ai.whyForChildren;
+      result.set(p.event.id, ai);
+    }
   }
   return result;
 }

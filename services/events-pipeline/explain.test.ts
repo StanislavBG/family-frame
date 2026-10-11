@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ffEventSchema } from "../../shared/events";
 import type { FfEvent } from "../../shared/events";
 import type { HaikuResult, HaikuRunInput, HaikuRunner } from "./haiku";
-import { explainBatch, templateExplain } from "./explain";
+import { EXPLAIN_MAX_PICKS, explainBatch, templateExplain } from "./explain";
 import type { ExplainDigest, ExplainPick } from "./explain";
 
 function makeEvent(id: string, over: Record<string, unknown> = {}): FfEvent {
@@ -122,6 +122,55 @@ test("no whyForChildren for an adults-only household", async () => {
   assert.equal(out.get("a")!.whyForChildren, undefined);
   assert.equal(out.get("b")!.whyForChildren, undefined);
   assert.ok(templateExplain(pick("b"), family).whyForChildren);
+});
+
+const manyPicks = () => Array.from({ length: EXPLAIN_MAX_PICKS + 3 }, (_, i) => pick(`p${i}`));
+const itemsFor = (prompt: string) => ({
+  items: Array.from(new Set(prompt.match(/"eventId":"[^"]+"/g) ?? [])).map((m) => item(m.slice(11, -1))),
+});
+
+test("more picks than one batch: one run per chunk, every pick gets AI text", async () => {
+  const calls: HaikuRunInput[] = [];
+  const runner: HaikuRunner = {
+    async run(input) {
+      calls.push(input);
+      return { ok: true, data: itemsFor(input.prompt) };
+    },
+  };
+  const picks = manyPicks();
+  const out = await explainBatch(runner, family, picks);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].tools, []);
+  assert.equal(out.size, picks.length);
+  for (const p of picks) assert.equal(out.get(p.event.id)!.whyForHousehold, `Why ${p.event.id}`);
+});
+
+test("a failing second chunk gives templates only for that chunk", async () => {
+  let n = 0;
+  const runner: HaikuRunner = {
+    async run(input) {
+      n++;
+      if (n === 2) return { ok: false, reason: "timeout", detail: "x" };
+      return { ok: true, data: itemsFor(input.prompt) };
+    },
+  };
+  const picks = manyPicks();
+  const out = await explainBatch(runner, family, picks);
+  assert.equal(n, 2);
+  picks.forEach((p, i) => {
+    if (i < EXPLAIN_MAX_PICKS) assert.equal(out.get(p.event.id)!.whyForHousehold, `Why ${p.event.id}`);
+    else assert.deepEqual(out.get(p.event.id), templateExplain(p, family));
+  });
+});
+
+test("budget-exhausted or rate-limited stops further runner calls", async () => {
+  for (const reason of ["budget-exhausted", "rate-limited"] as const) {
+    const { runner, calls } = fake({ ok: false, reason, detail: "x" } as HaikuResult);
+    const picks = manyPicks();
+    const out = await explainBatch(runner, family, picks);
+    assert.equal(calls.length, 1, reason);
+    for (const p of picks) assert.deepEqual(out.get(p.event.id), templateExplain(p, family));
+  }
 });
 
 test("template mentions reasons, category and cost; empty picks skip the run", async () => {
