@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Image, Settings, Play, Pause, SkipForward, Camera, Sparkles, Maximize, Minimize } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useLocation, useSearch } from "wouter";
+import { useSearch } from "wouter";
 import { useAppControls } from "@/components/app-controls";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useFullscreen } from "@/hooks/use-fullscreen";
@@ -43,7 +43,6 @@ interface GooglePhotoDisplayProps {
 }
 
 function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisplayProps) {
-  const [, setLocation] = useLocation();
   const { setAppSettingsOpen } = useAppControls();
   const [photos, setPhotos] = useState(() => shuffleArray(initialPhotos));
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -54,10 +53,17 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
     return shuffled[0]?.baseUrl ? getPhotoSrc(shuffled[0]) : "";
   });
   const refreshingPhotosRef = useRef<Set<string>>(new Set());
-  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({
-    autoEnter: true,
-    onExit: () => setLocation("/"),
-  });
+  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({ autoEnter: true });
+  const openSettings = useCallback(async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        /* ignore */
+      }
+    }
+    setAppSettingsOpen(true);
+  }, [setAppSettingsOpen]);
 
   useEffect(() => {
     const shuffled = shuffleArray(initialPhotos);
@@ -216,8 +222,19 @@ function GooglePhotoDisplay({ photos: initialPhotos, interval }: GooglePhotoDisp
             <Button
               variant="ghost"
               size="icon"
+              onClick={openSettings}
+              className="text-white hover:bg-white/20"
+              aria-label="Photo settings"
+              data-testid="button-photo-settings"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={toggleFullscreen}
               className="text-white hover:bg-white/20"
+              aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
               data-testid="button-fullscreen"
             >
               {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
@@ -252,17 +269,24 @@ interface PixabayPhotoDisplayProps {
 }
 
 function PixabayPhotoDisplay({ interval }: PixabayPhotoDisplayProps) {
-  const [, setLocation] = useLocation();
+  const { setAppSettingsOpen } = useAppControls();
   const [photos, setPhotos] = useState<PixabayPhoto[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [currentTag, setCurrentTag] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
-  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({
-    autoEnter: true,
-    onExit: () => setLocation("/"),
-  });
+  const { isFullscreen, toggleFullscreen, containerRef } = useFullscreen({ autoEnter: true });
+  const openSettings = useCallback(async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        /* ignore */
+      }
+    }
+    setAppSettingsOpen(true);
+  }, [setAppSettingsOpen]);
 
   const fetchPhotos = useCallback(async () => {
     try {
@@ -374,8 +398,19 @@ function PixabayPhotoDisplay({ interval }: PixabayPhotoDisplayProps) {
             <Button
               variant="ghost"
               size="icon"
+              onClick={openSettings}
+              className="text-white hover:bg-white/20"
+              aria-label="Photo settings"
+              data-testid="button-photo-settings"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={toggleFullscreen}
               className="text-white hover:bg-white/20"
+              aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
               data-testid="button-fullscreen"
             >
               {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
