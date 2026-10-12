@@ -59,7 +59,14 @@ export function registerMailRoutes(app: Express, service: MailService = mailServ
     res.json({ count: await service.unreadCount(userId) });
   }));
 
-  app.post("/api/mail/messages/read", mailHandler(async (req, res, userId) => {
+  app.get("/api/mail/kinds", mailHandler(async (req, res, userId) => {
+    res.json(await service.listKinds(userId, {
+      personId: queryString(req.query.personId),
+      label: queryString(req.query.label),
+    }));
+  }));
+
+  app.post("/api/mail/messages/read",mailHandler(async (req, res, userId) => {
     const parsed = markEmailsReadSchema.safeParse(req.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];

@@ -5,6 +5,7 @@
   "POST /api/mail/messages",
   "GET /api/mail/messages",
   "GET /api/mail/unread-count",
+  "GET /api/mail/kinds",
   "POST /api/mail/messages/read",
   "POST /api/mail/messages/rehost",
   "GET /api/mail/messages/:id",

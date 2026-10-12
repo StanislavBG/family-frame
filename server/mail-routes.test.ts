@@ -20,6 +20,7 @@ function setup(overrides: Partial<MailService> = {}) {
     setRead: async (...a: any[]) => (calls.push(["read", ...a]), { updated: 2 }),
     deleteEmail: async () => false,
     unreadCount: async () => 3,
+    listKinds: async (...a: any[]) => (calls.push(["kinds", ...a]), { kinds: [{ kind: "bill", count: 2, unread: 1, tone: "amber" }] }),
     ...overrides,
   };
   const rehoster: any = {
@@ -46,11 +47,12 @@ async function call(routes: Map<string, Handler>, key: string, req: any = {}) {
   return out;
 }
 
-test("registers the seven routes in order", () => {
+test("registers the eight routes in order", () => {
   assert.deepEqual([...setup().routes.keys()], [
     "POST /api/mail/messages",
     "GET /api/mail/messages",
     "GET /api/mail/unread-count",
+    "GET /api/mail/kinds",
     "POST /api/mail/messages/read",
     "POST /api/mail/messages/rehost",
     "GET /api/mail/messages/:id",
@@ -93,6 +95,16 @@ test("success shapes", async () => {
   assert.deepEqual((await call(routes, "GET /api/mail/unread-count")).body, { count: 3 });
   assert.deepEqual((await call(routes, "POST /api/mail/messages/read", { body: { ids: ["a"] } })).body, { updated: 2 });
   assert.deepEqual(calls.find((c) => c[0] === "read")!.slice(1), ["u1", ["a"], true]);
+});
+
+test("kinds forwards personId and label and returns the body", async () => {
+  const { routes, calls } = setup();
+  const out = await call(routes, "GET /api/mail/kinds", { query: { personId: "p1", label: "INBOX" } });
+  assert.equal(out.status, 200);
+  assert.deepEqual(out.body, { kinds: [{ kind: "bill", count: 2, unread: 1, tone: "amber" }] });
+  assert.deepEqual(calls.find((c) => c[0] === "kinds")!.slice(1), ["u1", { personId: "p1", label: "INBOX" }]);
+  await call(routes, "GET /api/mail/kinds");
+  assert.deepEqual(calls.filter((c) => c[0] === "kinds")[1].slice(1), ["u1", { personId: undefined, label: undefined }]);
 });
 
 test("read body validation gives 400", async () => {
