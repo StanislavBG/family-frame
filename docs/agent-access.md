@@ -16,7 +16,7 @@ You can hold at most 10 tokens per account.
 | --- | --- | --- |
 | `calendar:read` | Read calendar | Always included. `GET` on `/api/calendar/*`, `/api/people/list`, and the read-only MCP tools. |
 | `calendar:write` | Create/edit/delete events | Non-`GET` calls on `/api/calendar/*` and the write MCP tools. |
-| `mail:read` | Read mailbox | `GET` on `/api/mail/*` and the `mail_list_emails` / `mail_get_email` MCP tools. |
+| `mail:read` | Read mailbox | `GET` on `/api/mail/*` and the `mail_list_emails` / `mail_list_kinds` / `mail_get_email` MCP tools. |
 | `mail:write` | Write mailbox | Non-`GET` calls on `/api/mail/*` and the mail write tools. Implies `mail:read`. |
 | `data:read` | Read datasets | `GET` on `/api/data/*` and the `data_list_*` / `data_get_*` MCP tools. |
 | `data:write` | Write datasets | Non-`GET` calls on `/api/data/*` and the data write tools. Implies `data:read`. |
@@ -51,6 +51,7 @@ Mailbox tools (`mail:read` or `mail:write` for reads; `mail:write` for writes):
 | --- | --- | --- |
 | `mail_upsert_emails` | `mail:write` | `emails` (1-50 email objects, see Mailbox; each may carry `personIds`). |
 | `mail_list_emails` | `mail:read` | `limit` (1-200), `before`, `label`, `kind`, `unreadOnly`, `q`, `personId`. Summaries only (no `text`). |
+| `mail_list_kinds` | `mail:read` | `personId`, `label`. Counts emails per `kind`, all-time: `{ kinds: [{ kind, count, unread, tone? }] }`, sorted by count descending. |
 | `mail_get_email` | `mail:read` | `id`. Includes full `text`. |
 | `mail_mark_read` | `mail:write` | `ids` (array of up to 200 ids, or `"all"`), `read` (optional, default `true`). |
 | `mail_delete_email` | `mail:write` | `id`. |
@@ -101,6 +102,7 @@ REST routes (`mail:read` for `GET`, `mail:write` otherwise):
 | --- | --- |
 | `POST /api/mail/messages` | Upsert by id. Body `{ "emails": [...] }`. Returns `{ created, updated, ids, pruned }`. |
 | `GET /api/mail/messages` | List summaries, newest first. Query: `limit` (default 50, max 200), `before` (ISO `receivedAt`), `label`, `kind`, `unread=1`, `q`, `personId`. |
+| `GET /api/mail/kinds` | Emails per kind, all-time. Query: `personId`, `label`. Returns `{ kinds: [{ kind, count, unread, tone? }] }`, sorted by count descending. |
 | `GET /api/mail/unread-count` | `{ count }`. |
 | `POST /api/mail/messages/read` | Body `{ "ids": [...] \| "all", "read": true }` (`read` defaults to `true`). |
 | `GET /api/mail/messages/:id` | One email including `text`. |
@@ -122,6 +124,7 @@ Email fields (unknown fields are rejected):
 | `labels` | Optional, max 20 labels of 1-64 chars. |
 | `personIds` | Optional, max 20 person ids of the household (see `docs/person-publishing.md`). |
 | `kind` | Optional, 1-40 chars (free-form category). |
+| `kindTone` | Optional, one of `sun`, `clay`, `leaf`, `sky`, `plum`, `stone`. Display hint for the People inbox category chip; the `tone` on a kind facet is taken from the most recent email of that kind. |
 | `imageUrls` | Optional, max 50 `https://` URLs. |
 | `attachments` | Optional, max 50 of `{ filename, mimeType, size?, url? }`. Metadata only; no binary content is stored. `url` must be `https://`. |
 | `source`, `sourceUrl` | Optional origin tag (max 60) and `https://` link back. |

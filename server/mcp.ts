@@ -273,6 +273,20 @@ export function buildFamilyFrameMcpServer(
   );
 
   server.registerTool(
+    "mail_list_kinds",
+    {
+      description:
+        "Count emails per kind (category), all-time, newest-independent. Filter by personId (person id or name; see list_people) or label. Returns { kinds: [{ kind, count, unread, tone? }] } sorted by count descending.",
+      inputSchema: { personId: z.string().optional(), label: z.string().optional() },
+    },
+    async (args: { personId?: string; label?: string }) =>
+      run(MAIL_READ, async () => {
+        const personId = await resolveOptionalPerson(args.personId);
+        return mail.listKinds(ctx.userId, { personId, label: args.label });
+      })(),
+  );
+
+  server.registerTool(
     "mail_get_email",
     {
       description:

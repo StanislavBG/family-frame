@@ -52,6 +52,10 @@ function makeFakeMail() {
       calls.push({ method: "listEmails", args });
       return { emails: [], nextBefore: null };
     },
+    async listKinds(...args: any[]) {
+      calls.push({ method: "listKinds", args });
+      return { kinds: [{ kind: "school", count: 3, unread: 1, tone: "sun" }] };
+    },
     async getEmail() {
       return null;
     },
@@ -185,6 +189,7 @@ test("lists the 31 tools", async () => {
       "mail_delete_email",
       "mail_get_email",
       "mail_list_emails",
+      "mail_list_kinds",
       "mail_mark_read",
       "mail_rehost_images",
       "mail_upsert_emails",
@@ -495,6 +500,27 @@ test("mail_list_emails resolves personId by name", async () => {
   const r = await client.callTool({ name: "mail_list_emails", arguments: { personId: "SAM" } });
   assert.ok(!r.isError, text(r));
   assert.equal(calls[0].args[1].personId, "p2");
+});
+
+test("mail_list_kinds resolves personId by name and returns counts per kind", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(["mail:read"], service, mail);
+  const r = await client.callTool({ name: "mail_list_kinds", arguments: { personId: "SAM", label: "school" } });
+  assert.ok(!r.isError, text(r));
+  assert.deepEqual(JSON.parse(text(r)), { kinds: [{ kind: "school", count: 3, unread: 1, tone: "sun" }] });
+  assert.equal(calls[0].method, "listKinds");
+  assert.equal(calls[0].args[1].personId, "p2");
+  assert.equal(calls[0].args[1].label, "school");
+});
+
+test("mail_list_kinds without mail scopes errors", async () => {
+  const { service } = makeFakeService();
+  const { mail, calls } = makeFakeMail();
+  const client = await connect(["data:read"], service, mail);
+  const r = await client.callTool({ name: "mail_list_kinds", arguments: {} });
+  assert.equal(r.isError, true);
+  assert.equal(calls.length, 0);
 });
 
 test("unknown person name errors on upsert and list", async () => {
