@@ -4,6 +4,8 @@ import {
   upsertEmailsSchema,
   type EmailMessage,
   type EmailSummary,
+  type MailKindFacet,
+  type MailKindTone,
 } from "@shared/agent-data";
 
 export class MailError extends Error {
@@ -160,6 +162,42 @@ export function createMailService(deps: MailDeps) {
       return { emails: page, nextBefore };
     },
 
+    async listKinds(
+      userId: string,
+      opts: { personId?: string; label?: string } = {},
+    ): Promise<{ kinds: MailKindFacet[] }> {
+      // Whole-index read is bounded by the MAIL_LIMITS.mailboxMax (2000) cap.
+      let emails = await readIndex(userId);
+      if (opts.label) emails = emails.filter((e) => e.labels.includes(opts.label!));
+      if (opts.personId) emails = emails.filter((e) => e.personIds.includes(opts.personId!));
+      const groups = new Map<string, { count: number; unread: number; tone?: MailKindTone; toneAt: number }>();
+      for (const e of emails) {
+        if (!e.kind) continue;
+        let g = groups.get(e.kind);
+        if (!g) {
+          g = { count: 0, unread: 0, toneAt: -Infinity };
+          groups.set(e.kind, g);
+        }
+        g.count++;
+        if (e.readAt === null) g.unread++;
+        if (e.kindTone) {
+          const at = Date.parse(e.receivedAt);
+          if (g.tone === undefined || at > g.toneAt) {
+            g.tone = e.kindTone;
+            g.toneAt = at;
+          }
+        }
+      }
+      const kinds: MailKindFacet[] = Array.from(groups, ([kind, g]) => ({
+        kind,
+        count: g.count,
+        unread: g.unread,
+        ...(g.tone ? { tone: g.tone } : {}),
+      }));
+      kinds.sort((a, b) => b.count - a.count || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
+      return { kinds };
+    },
+
     async getEmail(userId: string, id: string): Promise<EmailMessage | null> {
       const raw = await deps.get(`${root(userId)}/index/${id}`);
       if (!raw) return null;
@@ -223,6 +261,7 @@ function defaultService(): MailService {
 export const mailService: MailService = {
   upsertEmails: (...args) => defaultService().upsertEmails(...args),
   listEmails: (...args) => defaultService().listEmails(...args),
+  listKinds: (...args) => defaultService().listKinds(...args),
   getEmail: (...args) => defaultService().getEmail(...args),
   setRead: (...args) => defaultService().setRead(...args),
   deleteEmail: (...args) => defaultService().deleteEmail(...args),

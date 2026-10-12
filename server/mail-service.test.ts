@@ -225,3 +225,67 @@ test("personId filter alone, with unreadOnly, and multi-person emails", async ()
   assert.deepEqual(await ids({ personId: "nobody" }), []);
   assert.deepEqual(await ids({ personId: "" }), ["c", "b", "a"]);
 });
+
+test("listKinds counts and unread per kind, sorted by count then kind", async () => {
+  const { svc } = makeService();
+  await svc.upsertEmails("u1", {
+    emails: [
+      mail("a", { kind: "Daily" }),
+      mail("b", { kind: "Daily" }),
+      mail("c", { kind: "Photos" }),
+      mail("d", { kind: "Alpha" }),
+      mail("e"),
+    ],
+  });
+  await svc.setRead("u1", ["a"], true);
+  const { kinds } = await svc.listKinds("u1");
+  assert.deepEqual(kinds, [
+    { kind: "Daily", count: 2, unread: 1 },
+    { kind: "Alpha", count: 1, unread: 1 },
+    { kind: "Photos", count: 1, unread: 1 },
+  ]);
+});
+
+test("listKinds scopes by person and label", async () => {
+  const { svc } = makeService();
+  await svc.upsertEmails("u1", {
+    emails: [
+      mail("a", { kind: "Daily", personIds: ["p1"], labels: ["x"] }),
+      mail("b", { kind: "Daily", personIds: ["p2"] }),
+      mail("c", { kind: "Photos", personIds: ["p1"] }),
+    ],
+  });
+  assert.deepEqual((await svc.listKinds("u1", { personId: "p1" })).kinds.map((k) => [k.kind, k.count]), [
+    ["Daily", 1],
+    ["Photos", 1],
+  ]);
+  assert.deepEqual((await svc.listKinds("u1", { label: "x" })).kinds.map((k) => [k.kind, k.count]), [["Daily", 1]]);
+});
+
+test("listKinds on an empty mailbox returns no kinds", async () => {
+  const { svc } = makeService();
+  assert.deepEqual(await svc.listKinds("u1"), { kinds: [] });
+});
+
+test("listKinds tone comes from the latest email that has one", async () => {
+  const { svc } = makeService();
+  await svc.upsertEmails("u1", {
+    emails: [
+      mail("a", { kind: "Daily", kindTone: "sun", receivedAt: "2026-02-01T10:00:00.000Z" }),
+      mail("b", { kind: "Daily", kindTone: "leaf", receivedAt: "2026-02-03T10:00:00.000Z" }),
+      mail("c", { kind: "Daily", receivedAt: "2026-02-05T10:00:00.000Z" }),
+      mail("d", { kind: "Photos" }),
+    ],
+  });
+  const { kinds } = await svc.listKinds("u1");
+  assert.equal(kinds.find((k) => k.kind === "Daily")?.tone, "leaf");
+  assert.equal("tone" in kinds.find((k) => k.kind === "Photos")!, false);
+});
+
+test("kindTone round-trips and an invalid kindTone is rejected", async () => {
+  const { svc } = makeService();
+  await svc.upsertEmails("u1", { emails: [mail("a", { kind: "Daily", kindTone: "plum" })] });
+  assert.equal((await svc.getEmail("u1", "a"))?.kindTone, "plum");
+  assert.equal((await svc.listEmails("u1")).emails[0].kindTone, "plum");
+  await rejects400(svc.upsertEmails("u1", { emails: [mail("b", { kind: "Daily", kindTone: "red" })] }));
+});

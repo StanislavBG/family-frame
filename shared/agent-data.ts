@@ -26,6 +26,16 @@ export const MAIL_LIMITS = {
   listLimitMax: 200,
 } as const;
 
+export const MAIL_KIND_TONES = ["sun", "clay", "leaf", "sky", "plum", "stone"] as const;
+export type MailKindTone = (typeof MAIL_KIND_TONES)[number];
+
+export interface MailKindFacet {
+  kind: string;
+  count: number;
+  unread: number;
+  tone?: MailKindTone;
+}
+
 export const DATA_LIMITS = {
   schemasPerUserMax: 20,
   schemaBytesMax: 65_536,
@@ -84,6 +94,8 @@ export const insertEmailSchema = z
     text: z.string().max(MAIL_LIMITS.textMax),
     labels: z.array(z.string().min(1).max(MAIL_LIMITS.labelMax)).max(MAIL_LIMITS.labelsMax).optional(),
     kind: z.string().min(1).max(MAIL_LIMITS.kindMax).optional(),
+    // Optional display tone for the kind chip; publisher hint.
+    kindTone: z.enum(MAIL_KIND_TONES).optional(),
     imageUrls: z.array(httpsUrlSchema).max(MAIL_LIMITS.imageUrlsMax).optional(),
     attachments: z.array(emailAttachmentSchema).max(MAIL_LIMITS.attachmentsMax).optional(),
     // Loose links to uploaded media (/api/files). Ids are NOT checked for existence:
