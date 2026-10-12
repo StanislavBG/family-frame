@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink, Inbox } from "lucide-react";
 import type { Person } from "@shared/schema";
-import type { EmailSummary } from "@shared/agent-data";
+import type { EmailSummary, MailKindFacet } from "@shared/agent-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,13 +9,75 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
-import { LINE, SERIF, SURFACE } from "./satchel";
+import { CHIP_CYCLE, LINE, SATCHEL_TONES, SERIF, SURFACE, ToneChip, type SatchelTone } from "./satchel";
 import { formatRelativeTime } from "@/lib/format";
-import { mediaUrl, useMailMessage, useMailMessages, useMarkMailRead } from "@/lib/agent-data";
+import {
+  kindChipTone,
+  mediaUrl,
+  showKindChips,
+  useMailKinds,
+  useMailMessage,
+  useMailMessages,
+  useMarkMailRead,
+} from "@/lib/agent-data";
 
 const PAGE_SIZE = 50;
 // markEmailsReadSchema accepts at most 200 ids per request.
 const MARK_CHUNK = 200;
+
+const KIND_CYCLE: SatchelTone[] = [...CHIP_CYCLE, "stone"];
+
+// Publisher tone when it is a known Satchel tone, else a stable hash of the kind.
+function toneFor(kind: string, tone?: string): SatchelTone {
+  if (tone && tone in SATCHEL_TONES) return tone as SatchelTone;
+  return kindChipTone(kind, undefined, KIND_CYCLE) as SatchelTone;
+}
+
+function KindChips({
+  kinds,
+  value,
+  onChange,
+}: {
+  kinds: MailKindFacet[];
+  value: string;
+  onChange: (kind: string) => void;
+}) {
+  const base = "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm font-semibold";
+  return (
+    <div role="group" aria-label="Filter by category" className="flex flex-wrap gap-2" data-testid="mail-kind-chips">
+      <button
+        type="button"
+        onClick={() => onChange("")}
+        aria-pressed={value === ""}
+        data-testid="mail-kind-all"
+        className={cn(
+          base,
+          value === "" ? cn(SATCHEL_TONES.stone.bg, SATCHEL_TONES.stone.fg, "border-transparent") : cn(SURFACE, LINE),
+        )}
+      >
+        All
+      </button>
+      {kinds.map((f, i) => {
+        const t = SATCHEL_TONES[toneFor(f.kind, f.tone)];
+        const selected = value === f.kind;
+        return (
+          <button
+            key={f.kind}
+            type="button"
+            onClick={() => onChange(f.kind)}
+            aria-pressed={selected}
+            data-testid={`mail-kind-chip-${i}`}
+            className={cn(base, selected ? cn(t.bg, t.fg, "border-transparent") : cn(SURFACE, LINE))}
+          >
+            <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", t.solid)} aria-hidden />
+            <span>{f.kind}</span>
+            <span className="tabular-nums opacity-80">{f.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function senderLabel(from: EmailSummary["from"]): string {
   return from.name?.trim() || from.email;
@@ -24,10 +86,12 @@ function senderLabel(from: EmailSummary["from"]): string {
 function MailRow({
   email,
   selected,
+  tone,
   onSelect,
 }: {
   email: EmailSummary;
   selected: boolean;
+  tone: SatchelTone | undefined;
   onSelect: () => void;
 }) {
   const unread = !email.readAt;
@@ -53,6 +117,9 @@ function MailRow({
             {email.subject}
           </span>
           <span className="block truncate text-sm text-muted-foreground">
+            {email.kind && (
+              <span className={cn("font-semibold", SATCHEL_TONES[tone ?? toneFor(email.kind)].fg)}>{email.kind} · </span>
+            )}
             {senderLabel(email.from)} · {formatRelativeTime(email.receivedAt)}
           </span>
         </span>
@@ -75,6 +142,8 @@ interface MailPageProps {
   personId: string;
   q: string;
   unreadOnly: boolean;
+  kind: string;
+  tones: Map<string, SatchelTone>;
   before: string | undefined;
   isLast: boolean;
   selectedId: string;
@@ -88,6 +157,8 @@ function MailPage({
   personId,
   q,
   unreadOnly,
+  kind,
+  tones,
   before,
   isLast,
   selectedId,
@@ -101,6 +172,7 @@ function MailPage({
     before,
     q: q || undefined,
     unreadOnly,
+    kind: kind || undefined,
   });
   const key = before ?? "";
   const emails = data?.emails;
@@ -121,7 +193,7 @@ function MailPage({
         icon={Inbox}
         title="No messages"
         description={
-          q || unreadOnly ? "No messages match your filters." : "Nothing in this inbox yet."
+          q || unreadOnly || kind ? "No messages match your filters." : "Nothing in this inbox yet."
         }
       />
     );
@@ -135,6 +207,7 @@ function MailPage({
             key={email.id}
             email={email}
             selected={email.id === selectedId}
+            tone={email.kind ? tones.get(email.kind) : undefined}
             onSelect={() => onSelect(email.id)}
           />
         ))}
@@ -150,7 +223,7 @@ function MailPage({
   );
 }
 
-function MailDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function MailDetail({ id, tones, onBack }: { id: string; tones: Map<string, SatchelTone>; onBack: () => void }) {
   const { data: email, isLoading, isError } = useMailMessage(id);
   const markRead = useMarkMailRead();
   const marked = useRef(new Set<string>());
@@ -183,6 +256,11 @@ function MailDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {email && (
           <article className="space-y-4">
             <header className="space-y-1">
+              {email.kind && (
+                <ToneChip tone={tones.get(email.kind) ?? toneFor(email.kind, email.kindTone)} data-testid="mail-detail-kind">
+                  {email.kind}
+                </ToneChip>
+              )}
               <h2 className={cn(SERIF, "break-words text-3xl font-bold leading-tight")}>{email.subject}</h2>
               <p className="text-sm text-muted-foreground">
                 From {senderLabel(email.from)}
@@ -228,12 +306,21 @@ function MailDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
 export default function PersonInbox({ person }: { person: Person }) {
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [kind, setKind] = useState("");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [cursors, setCursors] = useState<string[]>([]);
   const [loaded, setLoaded] = useState<Record<string, EmailSummary[]>>({});
   const markAll = useMarkMailRead();
+  const { data: kindsData } = useMailKinds({ personId: person.id });
+  const kinds = useMemo(() => kindsData?.kinds ?? [], [kindsData]);
+  const tones = useMemo(() => new Map(kinds.map((f) => [f.kind, toneFor(f.kind, f.tone)])), [kinds]);
+
+  // A selected kind that disappears from the facets falls back to All.
+  useEffect(() => {
+    if (kind && kindsData && !kinds.some((f) => f.kind === kind)) setKind("");
+  }, [kind, kindsData, kinds]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 300);
@@ -245,7 +332,7 @@ export default function PersonInbox({ person }: { person: Person }) {
     setCursors([]);
     setLoaded({});
     setSelectedId("");
-  }, [person.id, q, unreadOnly]);
+  }, [person.id, q, unreadOnly, kind]);
 
   const onLoaded = (key: string, emails: EmailSummary[]) =>
     setLoaded((prev) => (prev[key] === emails ? prev : { ...prev, [key]: emails }));
@@ -288,6 +375,7 @@ export default function PersonInbox({ person }: { person: Person }) {
               aria-label="Search mail"
               data-testid="mail-search"
             />
+            {showKindChips(kinds) && <KindChips kinds={kinds} value={kind} onChange={setKind} />}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Switch id="mail-unread-only" checked={unreadOnly} onCheckedChange={setUnreadOnly} />
@@ -311,6 +399,8 @@ export default function PersonInbox({ person }: { person: Person }) {
                 personId={person.id}
                 q={q}
                 unreadOnly={unreadOnly}
+                kind={kind}
+                tones={tones}
                 before={before}
                 isLast={i === pages.length - 1}
                 selectedId={selectedId}
@@ -330,7 +420,7 @@ export default function PersonInbox({ person }: { person: Person }) {
           )}
         >
           {selectedId ? (
-            <MailDetail key={selectedId} id={selectedId} onBack={() => setSelectedId("")} />
+            <MailDetail key={selectedId} id={selectedId} tones={tones} onBack={() => setSelectedId("")} />
           ) : (
             <div className="flex h-full items-center justify-center p-8 text-muted-foreground">
               Select a message to read it.

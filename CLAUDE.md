@@ -242,7 +242,8 @@ The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day
 - Dashboard fits one wall screen by uniform scaling, not by dropping sections: `useFitScale()` (`client/src/hooks/use-fit-scale.ts`, math in `client/src/lib/fit-scale.ts`) lays the page out at width/scale and scales it down to fit the height (>= 1024px wide only, floor 0.6, below that it scrolls)
 - "Today" comes from `useToday()` (`client/src/hooks/use-today.ts`), never `new Date()` at render, so wall displays roll over at midnight
 - Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
-- Not built (no data source yet): the design's Ask bar, "Needs you" card, email category filters and photo favourite/hide/review states.
+- Inbox category chips come from `GET /api/mail/kinds` (per person, all-time counts); tone = publisher `kindTone` else a stable hash (`kindChipTone` in `client/src/lib/agent-data.ts`); never hard-code kind names.
+- Not built (no data source yet): the design's Ask bar, "Needs you" card and photo favourite/hide/review states.
 
 ### Time-series (metrics) and Utilities
 Agents publish named series of timestamped numbers (bills, readings); tags decide which display shows them. Guide: `docs/time-series.md`.
