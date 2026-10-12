@@ -33,6 +33,7 @@ export const queryKeys = {
     list: (params: object = {}) => ["/api/mail/messages", params] as const,
     detail: (id: string) => ["/api/mail/messages", id] as const,
     unreadCount: () => ["/api/mail/unread-count"] as const,
+    kinds: (params: object = {}) => ["/api/mail/kinds", params] as const,
   },
 
   // Agent-registered data schemas and records

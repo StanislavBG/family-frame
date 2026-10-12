@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildDataRecordsUrl, buildMailListUrl, buildMediaListUrl, mediaUrl } from "@/lib/agent-data";
+import {
+  buildDataRecordsUrl,
+  buildMailKindsUrl,
+  buildMailListUrl,
+  buildMediaListUrl,
+  kindChipTone,
+  mediaUrl,
+  showKindChips,
+} from "@/lib/agent-data";
 
 describe("buildMailListUrl", () => {
   it("returns the bare path when no params are set", () => {
@@ -70,5 +78,44 @@ describe("personId param", () => {
     expect(buildMediaListUrl({ personId: undefined })).toBe("/api/files");
     expect(buildDataRecordsUrl("s", { personId: "" })).toBe("/api/data/records/s");
     expect(buildDataRecordsUrl("s", { personId: undefined })).toBe("/api/data/records/s");
+  });
+});
+
+describe("buildMailKindsUrl", () => {
+  it("returns the bare path without params", () => {
+    expect(buildMailKindsUrl({})).toBe("/api/mail/kinds");
+    expect(buildMailKindsUrl({ personId: "", label: undefined })).toBe("/api/mail/kinds");
+  });
+
+  it("includes personId and label when set", () => {
+    expect(buildMailKindsUrl({ personId: "p1", label: "inbox/x" })).toBe(
+      "/api/mail/kinds?label=inbox%2Fx&personId=p1",
+    );
+  });
+});
+
+describe("kindChipTone", () => {
+  const cycle = ["a", "b", "c", "d"] as const;
+
+  it("prefers the publisher tone", () => {
+    expect(kindChipTone("school", "rose", cycle)).toBe("rose");
+  });
+
+  it("is deterministic and stays inside the cycle", () => {
+    for (let i = 0; i < 200; i++) {
+      const kind = `kind-${i}`;
+      const t = kindChipTone(kind, undefined, cycle);
+      expect(cycle).toContain(t);
+      expect(kindChipTone(kind, undefined, cycle)).toBe(t);
+    }
+  });
+});
+
+describe("showKindChips", () => {
+  const k = (kind: string) => ({ kind, count: 1, unread: 0 }) as never;
+  it("needs at least two kinds", () => {
+    expect(showKindChips([])).toBe(false);
+    expect(showKindChips([k("a")])).toBe(false);
+    expect(showKindChips([k("a"), k("b")])).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { DataRecord, DataSchema, EmailMessage, EmailSummary } from "@shared/agent-data";
+import type { DataRecord, DataSchema, EmailMessage, EmailSummary, MailKindFacet } from "@shared/agent-data";
 import type { PersonDay, PersonWeek } from "@shared/person-views";
 import { PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID } from "@shared/person-views";
 import { apiRequest, queryClient } from "./queryClient";
@@ -13,6 +13,11 @@ export interface MailListParams {
   unreadOnly?: boolean;
   q?: string;
   personId?: string;
+}
+
+export interface MailKindsParams {
+  personId?: string;
+  label?: string;
 }
 
 export interface DataRecordsParams {
@@ -87,6 +92,32 @@ export function buildMailListUrl(params: MailListParams = {}): string {
   ]);
 }
 
+export function buildMailKindsUrl(params: MailKindsParams = {}): string {
+  return withQuery("/api/mail/kinds", [
+    ["label", params.label || undefined],
+    ["personId", params.personId || undefined],
+  ]);
+}
+
+// Tone for a kind chip: publisher hint, else a stable hash so a kind keeps its colour.
+export function kindChipTone<T extends string>(
+  kind: string,
+  tone: string | undefined,
+  cycle: readonly T[],
+): T | string {
+  if (tone) return tone;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < kind.length; i++) {
+    h ^= kind.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return cycle[h % cycle.length];
+}
+
+export function showKindChips(kinds: MailKindFacet[]): boolean {
+  return kinds.length >= 2;
+}
+
 export function buildDataRecordsUrl(schemaId: string, params: DataRecordsParams = {}): string {
   return withQuery(`/api/data/records/${encodeURIComponent(schemaId)}`, [
     ["emailId", params.emailId],
@@ -121,6 +152,13 @@ export function useMailMessages(params: MailListParams = {}) {
   });
 }
 
+export function useMailKinds(params: MailKindsParams = {}) {
+  return useQuery({
+    queryKey: queryKeys.mail.kinds(params),
+    queryFn: () => get<{ kinds: MailKindFacet[] }>(buildMailKindsUrl(params)),
+  });
+}
+
 export function useMailMessage(id: string) {
   return useQuery({
     queryKey: queryKeys.mail.detail(id),
@@ -144,6 +182,7 @@ export function useMarkMailRead() {
       // The list/detail prefix covers every list and detail key.
       queryClient.invalidateQueries({ queryKey: ["/api/mail/messages"] });
       queryClient.invalidateQueries({ queryKey: queryKeys.mail.unreadCount() });
+      queryClient.invalidateQueries({ queryKey: ["/api/mail/kinds"] });
     },
   });
 }
