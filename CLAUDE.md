@@ -367,7 +367,16 @@ app.get("/api/resource", asyncHandler(async (req, res) => {
 - **Port**: 5000
 - **Build**: `npm run build`
 - **Run**: `node ./dist/index.cjs`
-- **Release**: push to GitHub `main`, then in Replit pull from the Git pane and click Publish. Secrets live only in Replit.
+- **Release**: see `## Release` below; then in Replit pull from the Git pane and click Publish. Secrets live only in Replit.
+
+## Release
+
+Publishing means GitHub `main` contains all good-to-go work. Every session (architect, claude) does it the same way: run `npm run release` from the main checkout (`--dry-run` first; `--include <branch>` for a non-Epic branch the human named).
+
+- Run it when a plan's validator has VERIFIED every PRD, or when the human asks to publish.
+- The HOT KEYS macro "Publish to GitHub" does the same, via the `builder` agent (`.claude/agents/builder.md`).
+- Branches with uncommitted worktree changes, open PRDs, REFUTED validation or a merge conflict are held and reported, never forced.
+- Replit deploys only after a human pulls in the Git pane and clicks Publish.
 
 ## Design Philosophy
 
