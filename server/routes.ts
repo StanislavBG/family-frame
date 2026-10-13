@@ -19,6 +19,7 @@ import { registerMailRoutes } from "./mail-routes";
 import { registerDataRoutes } from "./data-routes";
 import { registerMetricsRoutes } from "./metrics-routes";
 import { registerHouseholdRoutes } from "./household-routes";
+import { registerHouseholdInboxRoutes } from "./household-inbox-routes";
 import { registerMediaRoutes } from "./media-routes";
 import { FETCH_TIMEOUT_MS, PUBLIC_CACHE_TTL_MS, memoTTL, discardBody } from "./route-helpers";
 import { createServer, type Server } from "http";
@@ -215,6 +216,7 @@ export async function registerRoutes(
   }));
 
   registerHouseholdRoutes(app);
+  registerHouseholdInboxRoutes(app);
 
   registerTokenRoutes(app);
 

@@ -443,3 +443,29 @@ async function runMw(req: FakeReq, mw: ReturnType<typeof createSessionHeaderMidd
   });
   return n;
 }
+
+test("valid service token reaches /api/service/inbox/deliver (any case)", async () => {
+  for (const path of ["/api/service/inbox/deliver", "/API/Service/Inbox/deliver"]) {
+    const req: FakeReq = { headers: { authorization: SVC, ...SPOOFED }, path, method: "POST" };
+    const r = await runWithRes(req, svcDeps(true));
+    assert.equal(r.next, 1, path);
+    assert.equal(req.headers["x-ff-auth"], "service", path);
+    assert.equal(req.headers["x-clerk-user-id"], undefined, path);
+  }
+});
+
+test("PAT on /api/service/inbox/deliver is forbidden", async () => {
+  const req: FakeReq = { headers: { authorization: PAT }, path: "/api/service/inbox/deliver", method: "POST" };
+  const r = await runWithRes(req, patDeps(["calendar:write", "mail:write", "data:write", "media:write"]));
+  assert.equal(r.status, 403);
+  assert.equal(r.next, 0);
+});
+
+test("service token is still refused on /api/household/inbox and /api/service/inboxx", async () => {
+  for (const path of ["/api/household/inbox", "/api/service/inboxx"]) {
+    const req: FakeReq = { headers: { authorization: SVC }, path, method: "GET" };
+    const r = await runWithRes(req, svcDeps(true));
+    assert.equal(r.status, 403, path);
+    assert.equal(r.next, 0, path);
+  }
+});
