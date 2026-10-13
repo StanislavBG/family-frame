@@ -1,0 +1,23 @@
+{
+  "tagline": "The window between homes: a shared family screen for photos, calendar, messages and weather.",
+  "tags": ["PWA", "Family", "Free"],
+  "listing": {
+    "detail": "Turns a tablet or smart screen into a family window: clock, weather, photo frame, shared calendar, messages, shopping lists and chores, with a grandma-friendly design. Connect households to see each other's homes.",
+    "audience": "Families who want one shared screen at home, across generations and across households.",
+    "talkingPoints": [
+      "Turns a tablet or smart screen into a shared family display.",
+      "Clock, weather, photo frame, shared calendar, messages and shopping lists in one app.",
+      "Built for every generation: large type and a simple layout for grandparents.",
+      "Connected households can see each other's local weather."
+    ],
+    "offering": "saas",
+    "pricing": "free",
+    "callToAction": "Open Family Frame and set up your family's screen.",
+    "avoidClaims": [
+      "Family Frame is a hardware device. It is a web app (PWA) that runs on screens you already own.",
+      "Family Frame is made or endorsed by Google, Clerk or Replit.",
+      "Family Frame has a paid tier or subscription.",
+      "Family Frame offers end-to-end encryption."
+    ]
+  }
+}
