@@ -8,6 +8,10 @@ import {
   type HouseholdInboxService,
 } from "./household-inbox-service";
 import { buildInboxAddress, personSlug } from "@shared/household-inbox";
+import { applyOrganized, type OrganizeDeps } from "./household-inbox-organize";
+import { mailService } from "./mail-service";
+import { timeSeriesService } from "./time-series-service";
+import { datasetService } from "./dataset-service";
 
 interface InboxRouteDeps {
   inboxAddress(): string | undefined;
@@ -17,6 +21,13 @@ interface InboxRouteDeps {
 const defaultDeps: InboxRouteDeps = {
   inboxAddress: () => process.env.HOUSEHOLD_INBOX_ADDRESS,
   getPeople: async (uid) => (await getUserData(uid))?.people ?? [],
+};
+
+const defaultOrganizeDeps: OrganizeDeps = {
+  mail: mailService,
+  series: timeSeriesService,
+  datasets: datasetService,
+  getPeople: defaultDeps.getPeople,
 };
 
 const enabledSchema = z.object({ enabled: z.boolean() });
@@ -67,6 +78,7 @@ export function registerHouseholdInboxRoutes(
   app: Express,
   service: HouseholdInboxService = householdInboxService,
   deps: InboxRouteDeps = defaultDeps,
+  organizeDeps: OrganizeDeps = defaultOrganizeDeps,
 ): void {
   async function payload(userId: string) {
     const base = deps.inboxAddress();
@@ -122,6 +134,24 @@ export function registerHouseholdInboxRoutes(
     }
     try {
       res.json(await service.deliver(req.body));
+    } catch (error) {
+      if (!handleError(res, error)) throw error;
+    }
+  }));
+
+  app.post("/api/service/inbox/households/:householdId/organized", asyncHandler(async (req, res) => {
+    if (req.headers["x-ff-auth"] !== "service") {
+      res.status(403).json({ error: "Service token required" });
+      return;
+    }
+    try {
+      const householdId = String(req.params.householdId);
+      const state = await service.getState(householdId);
+      if (!state.enabled || !state.organize.enabled) {
+        res.status(404).json({ error: "Household not found" });
+        return;
+      }
+      res.json(await applyOrganized(householdId, req.body, organizeDeps));
     } catch (error) {
       if (!handleError(res, error)) throw error;
     }

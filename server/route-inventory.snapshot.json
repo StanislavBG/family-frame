@@ -46,6 +46,7 @@
   "PUT /api/household/inbox/sources",
   "PUT /api/household/inbox/organize",
   "POST /api/service/inbox/deliver",
+  "POST /api/service/inbox/households/:householdId/organized",
   "GET /api/tokens",
   "POST /api/tokens/new",
   "PATCH /api/tokens/:id",

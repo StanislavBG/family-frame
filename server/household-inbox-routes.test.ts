@@ -13,7 +13,7 @@ const PEOPLE = [
   { id: "p2", name: "!!!" },
 ];
 
-function setup(overrides: Record<string, any> = {}, base: string | null = BASE, state: any = STATE) {
+function setup(overrides: Record<string, any> = {}, base: string | null = BASE, state: any = STATE, organizeDeps: any = {}) {
   const routes = new Map<string, Handler>();
   const app: any = {};
   for (const m of ["get", "post", "put", "delete"]) {
@@ -33,7 +33,7 @@ function setup(overrides: Record<string, any> = {}, base: string | null = BASE, 
   registerHouseholdInboxRoutes(app as Express, service, {
     inboxAddress: () => base ?? undefined,
     getPeople: async () => PEOPLE,
-  });
+  }, organizeDeps);
   return { routes, calls };
 }
 
@@ -160,4 +160,48 @@ test("deliver: 200 with the service result, unknown included", async () => {
   assert.equal(out.status, 200);
   assert.deepEqual(out.body, { status: "unknown" });
   assert.deepEqual(calls[0], ["deliver", body]);
+});
+
+const ORGANIZED = "POST /api/service/inbox/households/:householdId/organized";
+const ORG_STATE = { ...STATE, organize: { enabled: true } };
+
+test("organized: 403 unless service", async () => {
+  const { routes, calls } = setup({}, BASE, ORG_STATE);
+  assert.equal((await call(routes, ORGANIZED, { params: { householdId: "h1" } }, "session")).status, 403);
+  assert.equal(calls.length, 0);
+});
+
+test("organized: 404 when organize is off or the inbox is disabled", async () => {
+  for (const state of [STATE, { ...ORG_STATE, enabled: false }]) {
+    const { routes } = setup({}, BASE, state);
+    const out = await call(routes, ORGANIZED, { params: { householdId: "h1" } }, "service");
+    assert.equal(out.status, 404);
+    assert.deepEqual(out.body, { error: "Household not found" });
+  }
+});
+
+test("organized: 200 passes householdId and body to applyOrganized", async () => {
+  const mailCalls: any[] = [];
+  const organizeDeps = {
+    mail: {
+      getEmail: async (...a: any[]) => (mailCalls.push(["getEmail", ...a]), { id: "hh-1" }),
+      upsertEmails: async () => ({}),
+    },
+    series: {},
+    datasets: {},
+    getPeople: async () => PEOPLE,
+  };
+  const { routes, calls } = setup({}, BASE, ORG_STATE, organizeDeps);
+  const body = { mailId: "hh-1", kind: "other" };
+  const out = await call(routes, ORGANIZED, { params: { householdId: "h1" }, body }, "service");
+  assert.deepEqual(calls[0], ["getState", "h1"]);
+  assert.equal(out.status, 200);
+  assert.deepEqual(out.body, { applied: "none" });
+  assert.deepEqual(mailCalls[0], ["getEmail", "h1", "hh-1"]);
+});
+
+test("organized: 400 on a bad body", async () => {
+  const { routes } = setup({}, BASE, ORG_STATE);
+  const out = await call(routes, ORGANIZED, { params: { householdId: "h1" }, body: { nope: 1 } }, "service");
+  assert.equal(out.status, 400);
 });
