@@ -1,7 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRoute } from "wouter";
-import { ArrowLeft, CalendarDays, Database, Image, Mail, Moon, Sun, UserRound } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  Baby,
+  BookOpen,
+  CalendarDays,
+  Database,
+  GraduationCap,
+  Heart,
+  House,
+  Image,
+  Leaf,
+  Mail,
+  Moon,
+  Music,
+  Sparkles,
+  Star,
+  Sun,
+  Trophy,
+  UserRound,
+  Utensils,
+  type LucideIcon,
+} from "lucide-react";
+import { PERSON_VIEW_SCHEMA_ID, RESERVED_SCHEMA_PREFIX } from "@shared/person-views";
 import type { Person } from "@shared/schema";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
@@ -11,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/lib/api";
 import {
   buildDataRecordsUrl,
+  useDataRecords,
   useDataSchemas,
   useMailMessages,
   useMediaList,
@@ -39,6 +63,8 @@ import PersonInbox from "@/components/person/person-inbox";
 import PersonPhotos from "@/components/person/person-photos";
 import PersonSheets from "@/components/person/person-sheets";
 import PersonMore from "@/components/person/person-more";
+import { PersonViewSection } from "@/components/person/person-view-section";
+import { parseViewRecord, sortViews, viewTabId, type ParsedView } from "@/lib/person-view";
 
 // Order and colours follow the Satchel design's left nav.
 const TABS = [
@@ -52,8 +78,30 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+/** Lucide icon per `ff-person-view` icon name; unknown or missing falls back to Sparkles. */
+const VIEW_ICONS: Record<string, LucideIcon> = {
+  star: Star,
+  heart: Heart,
+  book: BookOpen,
+  music: Music,
+  trophy: Trophy,
+  leaf: Leaf,
+  sun: Sun,
+  moon: Moon,
+  activity: Activity,
+  utensils: Utensils,
+  "graduation-cap": GraduationCap,
+  baby: Baby,
+  home: House,
+  sparkles: Sparkles,
+};
+
+const VIEW_RECORD_LIMIT = 20;
+
 interface PersonNavInfo {
   tabs: TabId[];
+  /** Valid custom views for this person, in nav order. */
+  views: ParsedView[];
   /** All visibility queries have settled, so `tabs` is final. */
   ready: boolean;
   counts: Partial<Record<TabId, string>>;
@@ -71,9 +119,10 @@ function usePersonTabs(personId: string): PersonNavInfo {
   const days = usePersonDays(personId, { limit: 1 });
   const weeks = usePersonWeeks(personId, { limit: 1 });
   const { data: schemas } = useDataSchemas();
+  const viewRecords = useDataRecords(PERSON_VIEW_SCHEMA_ID, { personId, limit: VIEW_RECORD_LIMIT });
 
   const customSchemaIds = useMemo(
-    () => (schemas ?? []).map((s) => s.id).filter((id) => !id.startsWith("ff-")),
+    () => (schemas ?? []).map((s) => s.id).filter((id) => !id.startsWith(RESERVED_SCHEMA_PREFIX)),
     [schemas],
   );
   const customRecords = useQueries({
@@ -86,6 +135,16 @@ function usePersonTabs(personId: string): PersonNavInfo {
       };
     }),
   });
+
+  const views = useMemo(
+    () =>
+      sortViews(
+        (viewRecords.data?.records ?? [])
+          .map((r) => parseViewRecord(r))
+          .filter((v): v is ParsedView => v !== null),
+      ),
+    [viewRecords.data],
+  );
 
   const tabs: TabId[] = ["dashboard", "calendar"];
   if ((mail.data?.emails.length ?? 0) > 0) tabs.push("inbox");
@@ -108,10 +167,12 @@ function usePersonTabs(personId: string): PersonNavInfo {
     !media.isLoading &&
     !days.isLoading &&
     !weeks.isLoading &&
+    !viewRecords.isLoading &&
     schemas !== undefined &&
     customRecords.every((q) => !q.isLoading);
   return {
     tabs,
+    views,
     ready,
     counts,
     source: latestDay?.data?.source,
@@ -136,6 +197,14 @@ function PersonCard({ person }: { person: Person }) {
       </Card>
     </Link>
   );
+}
+
+interface NavEntry {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  tone: SatchelTone;
+  count?: string;
 }
 
 function NavRow({
@@ -181,15 +250,34 @@ function NavRow({
 /** Second-level left menu in the Satchel style: identity card, sections, other people, sync footer. */
 function PersonView({ person, people, tab }: { person: Person; people: Person[]; tab?: string }) {
   const nav = usePersonTabs(person.id);
-  const active = TABS.find((t) => t.id === tab) ?? TABS[0];
-  const visibleTabs = TABS.filter((t) => nav.tabs.includes(t.id) || t.id === active.id);
-  const Active = active.Component;
+  const activeViewTab = tab?.startsWith("v-") ? tab : undefined;
+  const activeView = activeViewTab ? nav.views.find((v) => viewTabId(v.id) === activeViewTab) : undefined;
+  const staticActive = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const active = activeViewTab
+    ? { id: activeViewTab, label: activeView?.title ?? "" }
+    : { id: staticActive.id, label: staticActive.label };
+  const visibleTabs = TABS.filter((t) => nav.tabs.includes(t.id) || (!activeViewTab && t.id === staticActive.id));
+  const navEntries: NavEntry[] = [
+    ...visibleTabs
+      .filter((t) => t.id !== "more")
+      .map((t) => ({ id: t.id, label: t.label, icon: t.icon, tone: t.tone as SatchelTone, count: nav.counts[t.id] })),
+    ...nav.views.map((v) => ({
+      id: viewTabId(v.id),
+      label: v.title,
+      icon: VIEW_ICONS[v.icon ?? ""] ?? Sparkles,
+      tone: (v.tone ?? "stone") as SatchelTone,
+      count: undefined,
+    })),
+    ...visibleTabs
+      .filter((t) => t.id === "more")
+      .map((t) => ({ id: t.id, label: t.label, icon: t.icon, tone: t.tone as SatchelTone, count: nav.counts[t.id] })),
+  ];
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [, setLocation] = useLocation();
   const personBase = (p: Person) => `/${encodeURIComponent(p.id)}`;
 
   // A section with no data for this person (e.g. after switching person) falls back to Dashboard.
-  const hidden = nav.ready && !nav.tabs.includes(active.id);
+  const hidden = nav.ready && (activeViewTab ? !activeView : !nav.tabs.includes(staticActive.id));
   useEffect(() => {
     if (hidden) setLocation(`${personBase(person)}/dashboard`, { replace: true });
   }, [hidden, person.id]);
@@ -199,14 +287,14 @@ function PersonView({ person, people, tab }: { person: Person; people: Person[];
   const menu = (
     <>
       <nav className="flex flex-col gap-1" aria-label={`${person.name} sections`}>
-        {visibleTabs.map((t) => (
+        {navEntries.map((t) => (
           <NavRow
             key={t.id}
             href={`${personBase(person)}/${t.id}`}
             label={t.label}
             icon={t.icon}
             tone={t.tone}
-            count={nav.counts[t.id]}
+            count={t.count}
             active={t.id === active.id}
             onClick={close}
             testId={`tab-person-${t.id}`}
@@ -309,7 +397,11 @@ function PersonView({ person, people, tab }: { person: Person; people: Person[];
       {/* Right Content Panel */}
       <div className="flex-1 min-h-0 min-w-0 overflow-auto" role="region" aria-label={`${person.name} ${active.label}`}>
         {/* Keyed by person so every section starts with fresh per-person state. */}
-        <Active key={person.id} person={person} />
+        {activeViewTab ? (
+          activeView && <PersonViewSection key={person.id + activeView.id} person={person} view={activeView} />
+        ) : (
+          <staticActive.Component key={person.id} person={person} />
+        )}
       </div>
     </div>
   );
