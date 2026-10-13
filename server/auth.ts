@@ -36,7 +36,8 @@ function isServicePath(path: string): boolean {
 }
 
 function isServiceTokenPathAllowed(path: string): boolean {
-  return path.toLowerCase().startsWith("/api/service/events/");
+  const p = path.toLowerCase();
+  return p.startsWith("/api/service/events/") || p.startsWith("/api/service/inbox/");
 }
 
 function isPatPathAllowed(path: string): boolean {
@@ -90,7 +91,7 @@ export function patScopeAllows(path: string, method: string, scopes: string[]): 
  * token. Routes trust these headers, so they must never pass through from the
  * client. PAT requests are confined to the calendar, mail, data, files, metrics and people-list APIs and /mcp.
  * A verified service token (ff_svc_, no user identity) sets only
- * x-ff-auth=service and is confined to /api/service/events/; every other kind
+ * x-ff-auth=service and is confined to /api/service/events/ and /api/service/inbox/; every other kind
  * of request gets 403 on any /api/service path.
  */
 export function createSessionHeaderMiddleware(
