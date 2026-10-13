@@ -21,6 +21,7 @@ import {
   Settings,
   Home,
   MapPin,
+  Mail,
   Users,
   Check,
   X,
@@ -41,6 +42,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
+import { HouseholdEmailSettings } from "@/components/household-email-settings";
 import { AgentAccessSettings } from "@/components/agent-access-settings";
 import { parseLocalDate } from "@/lib/format";
 import type { UserSettings, ConnectedUser, Person, ConnectionRequest } from "@shared/schema";
@@ -202,7 +204,7 @@ function PersonCard({ person, onRemove, onEdit }: PersonCardProps) {
   );
 }
 
-type NavSection = "household" | "location" | "people" | "connections" | "apps" | "agents";
+type NavSection = "household" | "location" | "people" | "email" | "connections" | "apps" | "agents";
 
 interface NavItem {
   id: NavSection;
@@ -213,6 +215,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: "household", label: "Household Identity", icon: Home },
   { id: "location", label: "Location", icon: MapPin },
+  { id: "email", label: "Household email", icon: Mail },
   { id: "people", label: "People", icon: Users },
   { id: "connections", label: "Connections", icon: LinkIcon },
   { id: "apps", label: "App Picker", icon: LayoutGrid },
@@ -224,7 +227,7 @@ export default function SettingsPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const sectionFromUrl = urlParams.get("section");
-  const validSections: NavSection[] = ["household", "location", "people", "connections", "apps", "agents"];
+  const validSections: NavSection[] = ["household", "location", "email", "people", "connections", "apps", "agents"];
   const initialSection = sectionFromUrl && validSections.includes(sectionFromUrl as NavSection) 
     ? sectionFromUrl as NavSection 
     : "household";
@@ -764,6 +767,17 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+          </div>
+        );
+
+      case "email":
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold mb-1">Household email</h2>
+              <p className="text-muted-foreground">Forward bills and school mail from Gmail to your household</p>
+            </div>
+            <HouseholdEmailSettings />
           </div>
         );
 
