@@ -1,24 +1,28 @@
 {
-  "tagline": "The window between homes: a shared family screen for photos, calendar, messages and weather.",
-  "tags": ["PWA", "Family", "Free"],
+  "tagline": "A passion project: one warm family screen with 15+ small apps, from photos and calendar to radio and household bills.",
+  "tags": ["Passion project", "PWA", "Family"],
   "listing": {
     "icon": "/projects/family-frame/icon.png",
     "shareImage": "/projects/family-frame/og.png",
-    "detail": "Turns a tablet or smart screen into a family window: clock, weather, photo frame, shared calendar, messages, shopping lists and chores, with a grandma-friendly design. Connect households to see each other's homes.",
-    "audience": "Families who want one shared screen at home, across generations and across households.",
+    "detail": "A personal passion project: one family screen with 15+ small apps: clock, weather, photo frame, shared calendar, local events, messages, chores, recipes, shopping lists, Bulgarian radio and TV, nursery songs, stocks and household bills. Built grandma-friendly for wall displays. Almost ready for others to try.",
+    "metric": "15+ apps",
+    "metricLabel": "on one family screen",
+    "audience": "Families who like the idea of one shared screen at home, across generations and across households, and are happy to try something early.",
     "talkingPoints": [
-      "Turns a tablet or smart screen into a shared family display.",
-      "Clock, weather, photo frame, shared calendar, messages and shopping lists in one app.",
-      "Built for every generation: large type and a simple layout for grandparents.",
-      "Connected households can see each other's local weather."
+      "A personal passion project, built for a real family's wall screen.",
+      "More than 15 small apps on one screen: clock, weather, photo frame, calendar, messages, chores, recipes, shopping lists and more.",
+      "Grandma-friendly design: large type and a simple layout for every generation.",
+      "Connected households can see each other's local weather.",
+      "Almost ready for others to try; early testers are welcome."
     ],
-    "offering": "saas",
+    "offering": "showcase",
     "pricing": "free",
-    "callToAction": "Open Family Frame and set up your family's screen.",
+    "callToAction": "Take a look at Family Frame; early testers are welcome.",
     "avoidClaims": [
-      "Family Frame is a hardware device. It is a web app (PWA) that runs on screens you already own.",
-      "Family Frame is made or endorsed by Google, Clerk or Replit.",
+      "Family Frame is a finished commercial product or SaaS with support or an SLA. It is a personal passion project, still being tested.",
       "Family Frame has a paid tier or subscription.",
+      "Family Frame is a hardware device. It is a web app (PWA) for screens you already own.",
+      "Family Frame is made or endorsed by Google, Clerk or Replit.",
       "Family Frame offers end-to-end encryption."
     ]
   }
