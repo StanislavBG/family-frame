@@ -38,6 +38,13 @@ The a11y gate needs a bypass only if its scan follows the redirect off-site. If 
 
 Host limits: tagline <= 160 chars, <= 6 tags (each <= 24), detail <= 400, audience <= 200, <= 5 talking points (each <= 200), callToAction <= 120, <= 5 avoidClaims (each <= 200), file < 16 KB.
 
-## 5. Visibility
+## 5. Share image
+
+- `npm run bilko:og` regenerates `bilko/og.png` (1200x630).
+- The card icon comes from `client/public/favicon.png`.
+- `npm run bilko:build` copies both into `bilko-dist/` as `og.png` and `icon.png`; `bilko.listing.json` declares them as `listing.shareImage` and `listing.icon`.
+- The card unfurls on X and LinkedIn via https://bilko.run/og/family-frame.png.
+
+## 6. Visibility
 
 Making the card public on `/projects` is the Bilko owner's decision, not part of publishing.

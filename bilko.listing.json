@@ -2,6 +2,8 @@
   "tagline": "The window between homes: a shared family screen for photos, calendar, messages and weather.",
   "tags": ["PWA", "Family", "Free"],
   "listing": {
+    "icon": "/projects/family-frame/icon.png",
+    "shareImage": "/projects/family-frame/og.png",
     "detail": "Turns a tablet or smart screen into a family window: clock, weather, photo frame, shared calendar, messages, shopping lists and chores, with a grandma-friendly design. Connect households to see each other's homes.",
     "audience": "Families who want one shared screen at home, across generations and across households.",
     "talkingPoints": [

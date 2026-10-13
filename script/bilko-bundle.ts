@@ -1,11 +1,24 @@
 import { execFileSync } from "child_process";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { gzipSync } from "zlib";
 import { getAppBaseUrl } from "../server/config";
 
 export const BILKO_SLUG = "family-frame";
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const OG_SOURCE = path.join(REPO_ROOT, "bilko", "og.png");
+const ICON_SOURCE = path.join(REPO_ROOT, "client", "public", "favicon.png");
+
+export function pngSize(buf: Buffer): { width: number; height: number } {
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+function readSource(file: string): Buffer {
+  if (!existsSync(file)) throw new Error(`bilko-bundle: missing ${file}`);
+  return readFileSync(file);
+}
 
 export interface ManifestInput {
   version: string;
@@ -77,13 +90,19 @@ function git(args: string[]): string {
 
 export function buildBilkoBundle(outDir: string, targetUrl: string = getAppBaseUrl() + "/") {
   const html = renderRedirectPage(targetUrl);
+  const og = readSource(OG_SOURCE);
+  const icon = readSource(ICON_SOURCE);
   const pkg = JSON.parse(readFileSync(path.resolve("package.json"), "utf8")) as { version?: string };
   const manifest = buildManifest({
     version: pkg.version ?? "0.0.0",
     builtAt: new Date().toISOString(),
     gitSha: git(["rev-parse", "--short", "HEAD"]),
     gitBranch: git(["rev-parse", "--abbrev-ref", "HEAD"]),
-    files: [{ name: "index.html", content: html }],
+    files: [
+      { name: "index.html", content: html },
+      { name: "og.png", content: og },
+      { name: "icon.png", content: icon },
+    ],
   });
   const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
   if (Buffer.byteLength(manifestJson) >= 16 * 1024) throw new Error("bilko-bundle: manifest exceeds 16 KB");
@@ -91,6 +110,8 @@ export function buildBilkoBundle(outDir: string, targetUrl: string = getAppBaseU
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   writeFileSync(path.join(outDir, "index.html"), html);
+  writeFileSync(path.join(outDir, "og.png"), og);
+  writeFileSync(path.join(outDir, "icon.png"), icon);
   writeFileSync(path.join(outDir, "manifest.json"), manifestJson);
   return { manifest, targetUrl, files: readdirSync(outDir).sort() };
 }
