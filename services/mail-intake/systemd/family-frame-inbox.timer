@@ -1,0 +1,10 @@
+[Unit]
+Description=Every 5 minutes: Family Frame household email intake
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=20
+Persistent=true
+
+[Install]
+WantedBy=timers.target

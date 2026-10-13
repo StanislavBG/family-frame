@@ -88,6 +88,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── apps/                   # Per-app route modules (apps/<id>.ts; events.ts = /api/events/*)
 │   ├── media-proxy.ts          # Media proxy, radio and TV routes
 │   ├── household-*.ts          # Household address + events-sharing consent (profile service, /api/household/* routes)
+│   ├── household-inbox-*.ts    # Household email: service (routing key, sources), routes (/api/household/inbox/*, /api/service/inbox/deliver)
 │   ├── events-service.ts       # Events recommendations, feedback, calendar linking (events-service-routes.ts: /api/service/events/*)
 │   ├── service-token.ts        # ff_svc_ service token verification (EVENTS_SERVICE_TOKEN_SHA256)
 │   ├── route-inventory.test.ts # Guards the route inventory
@@ -119,7 +120,8 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │   ├── events-preferences.ts   # Feedback -> preference weights (pure)
 │   └── schema.ts               # Zod schemas for validation
 ├── services/
-│   └── events-pipeline/        # Local Events pipeline (cron, Node 22 only; see docs/events.md)
+│   ├── events-pipeline/        # Local Events pipeline (cron, Node 22 only; see docs/events.md)
+│   └── mail-intake/            # Local Gmail intake for household email (5-minute timer; see docs/household-email.md)
 └── script/
     └── build.ts                # Build script (esbuild + Vite)
 ```
@@ -150,6 +152,7 @@ SESSION_SECRET                # OAuth state signing secret
 GOOGLE_CLIENT_ID              # Google Photos OAuth client ID
 GOOGLE_CLIENT_SECRET          # Google Photos OAuth client secret
 PIXABAY_API_KEY               # Pixabay photo source
+HOUSEHOLD_INBOX_ADDRESS       # Operator Gmail inbox for household email; unset = feature shows "not set up"
 EVENTS_SERVICE_TOKEN_SHA256   # SHA-256 hex of the ff_svc_ pipeline token; unset disables the service API
 PUBLISHABLE_KEY_PROD          # Server-side Clerk key override (prod)
 PUBLISHABLE_KEY_DEV           # Server-side Clerk key override (dev)
@@ -243,6 +246,7 @@ The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day
 - "Today" comes from `useToday()` (`client/src/hooks/use-today.ts`), never `new Date()` at render, so wall displays roll over at midnight
 - Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
 - Inbox category chips come from `GET /api/mail/kinds` (per person, all-time counts); tone = publisher `kindTone` else a stable hash (`kindChipTone` in `client/src/lib/agent-data.ts`); never hard-code kind names.
+- Custom sections come from `ff-person-view` records (`shared/person-views.ts`, `client/src/lib/person-view.ts`, `client/src/components/person/person-view-section.tsx`), validated with MCP `person_view_validate`; see `docs/person-publishing.md`.
 - Not built (no data source yet): the design's Ask bar, "Needs you" card and photo favourite/hide/review states.
 
 ### Time-series (metrics) and Utilities
@@ -268,6 +272,14 @@ Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`,
 - The pipeline runs daily; its watch mode (`services/events-pipeline/watch.ts`, every 5 minutes) starts a household's first discovery within minutes of opting in or changing its address.
 - `events:run -- report` profiles recent runs and recommendations (Markdown, no address); the timers send desktop notices on failures and per-household results, off with `EVENTS_NOTIFY=off` (`services/events-pipeline/notify.ts`, `report.ts`).
 - Preference weights come from the append-only feedback log via `shared/events-preferences.ts`; calendar linking rules live in `server/events-service.ts`.
+
+### Household email
+Operator guide: `docs/household-email.md`. One operator Gmail inbox; households forward to `<base>+<key>[-<person>]`; `services/mail-intake/` (local 5-minute timer) delivers through `POST /api/service/inbox/deliver`.
+- Server: `server/household-inbox-service.ts` and `server/household-inbox-routes.ts`; UI: `client/src/components/household-email-settings.tsx` (Settings > Household email).
+- The routing key is secret and rotatable; rotating retires the old address.
+- Unknown or unauthenticated sources are held until the household approves them.
+- The `ff_svc_` service token reaches only `/api/service/events/` and `/api/service/inbox/`.
+- `services/mail-intake` is outside the root `npm test` / `npm run check`; use `npm run inbox:test` / `inbox:check`.
 
 ### App Registry (framework vs apps)
 - `shared/apps.ts` is the single list of apps: `APP_IDS`, `APP_MANIFESTS`, `defaultEnabled`.
