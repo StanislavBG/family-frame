@@ -279,6 +279,10 @@ Operator guide: `docs/household-email.md`. One operator Gmail inbox; households 
 - The routing key is secret and rotatable; rotating retires the old address.
 - Unknown or unauthenticated sources are held until the household approves them.
 - The `ff_svc_` service token reaches only `/api/service/events/` and `/api/service/inbox/`.
+- Organize (bills -> utilities series `mail-<vendor>-<category>`, daily reports -> `ff-person-day`) is opt-in and re-checked on every service call. `INBOX_ORGANIZE=off` disables it; max 20 Haiku calls per run.
+- Mail-intake prompts are the documented exception to the Events no-names rule: email content only (subject and text), no profile data, no tools.
+- Every `claude -p` call pins `--model` via `services/events-pipeline/haiku.ts`.
+- Attachments (PDF bills, daycare photos) are not handled yet.
 - `services/mail-intake` is outside the root `npm test` / `npm run check`; use `npm run inbox:test` / `inbox:check`.
 
 ### App Registry (framework vs apps)

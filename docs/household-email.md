@@ -59,6 +59,27 @@ The service is outside the root `npm test` and `npm run check`. Use `npm run inb
 6. Use a person's address when the mail is about one person. It goes to that person's views.
 7. To retire an address, use **Rotate address**. Update your Gmail forwarding and filters to the new address.
 
-## 4. Agents
+## 4. Organize (opt-in)
+
+Organize turns forwarded mail into data the apps can show. It is off until a household turns it on.
+
+- The household turns it on with **Let Family Frame organize forwarded mail** in **Settings > Household email**.
+- A bill becomes a point on a utilities series named `mail-<vendor>-<category>`. The point carries the amount, the bill date and the `dueDate`. A series that already exists is never overwritten. Only a new point is added.
+- A daily report sent to a person address becomes an `ff-person-day` record for that person. The record id is `mail-<mailId>`.
+- The email gets a kind chip in the Inbox: `bill` or `daily-report`.
+- The operator can switch the step off for every household with `INBOX_ORGANIZE=off` in the env file.
+- A run makes at most 20 Haiku calls. Mail past the cap is delivered but not organized.
+- The cost runs on the operator's Claude subscription. Every `claude -p` call pins the Haiku model (`services/events-pipeline/haiku.ts`).
+
+Privacy:
+
+- The email subject and text are sent to Haiku only for households that turned organize on.
+- No Family Frame profile data (street address, names, birthdays) is added to the prompt.
+- Haiku runs with no tools.
+- The server re-checks the household's consent on every service call. Turning organize off stops it at once.
+
+Not handled yet: attachments. PDF bills and daycare photos are not read or stored by this step.
+
+## 5. Agents
 
 Agents publish with `mail_upsert_emails` as before. Household email is an extra way in, not a replacement.
