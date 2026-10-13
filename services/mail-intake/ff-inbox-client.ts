@@ -9,6 +9,7 @@ export interface InboxFfClientOptions {
 
 export interface InboxFfClient {
   deliver(body: unknown): Promise<DeliverOutcome>;
+  organized(householdId: string, body: unknown): Promise<DeliverOutcome>;
 }
 
 function normalizeBaseUrl(raw: string): string {
@@ -41,34 +42,38 @@ export function createInboxFfClient(options: InboxFfClientOptions): InboxFfClien
   const doFetch = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? 20000;
 
-  return {
-    async deliver(body) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+  async function post(path: string, body: unknown): Promise<DeliverOutcome> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await doFetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${options.token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      if (!res.ok) return { ok: false, status: res.status, error: errorMessage(text, res.status) };
       try {
-        const res = await doFetch(`${baseUrl}/api/service/inbox/deliver`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${options.token}`,
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-        const text = await res.text();
-        if (!res.ok) return { ok: false, status: res.status, error: errorMessage(text, res.status) };
-        try {
-          return { ok: true, result: JSON.parse(text) };
-        } catch {
-          return { ok: false, status: 502, error: "Family Frame returned invalid JSON" };
-        }
-      } catch (error) {
-        const reason = controller.signal.aborted ? "timeout" : error instanceof Error ? error.name : "unknown";
-        return { ok: false, status: 0, error: `Family Frame request failed (${reason})` };
-      } finally {
-        clearTimeout(timer);
+        return { ok: true, result: JSON.parse(text) };
+      } catch {
+        return { ok: false, status: 502, error: "Family Frame returned invalid JSON" };
       }
-    },
+    } catch (error) {
+      const reason = controller.signal.aborted ? "timeout" : error instanceof Error ? error.name : "unknown";
+      return { ok: false, status: 0, error: `Family Frame request failed (${reason})` };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return {
+    deliver: (body) => post("/api/service/inbox/deliver", body),
+    organized: (householdId, body) =>
+      post(`/api/service/inbox/households/${encodeURIComponent(householdId)}/organized`, body),
   };
 }

@@ -1,5 +1,8 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createHaikuRunner, type HaikuRunner } from "../events-pipeline/haiku";
 import { runAuth } from "./auth";
 import { createInboxFfClient } from "./ff-inbox-client";
 import { createGmailClient, GmailAuthError } from "./gmail";
@@ -20,6 +23,7 @@ export interface CliDeps {
   readFile?: (path: string) => string;
   out?: (line: string) => void;
   err?: (line: string) => void;
+  makeRunner?: (opts: { maxSessions: number; cwd: string }) => HaikuRunner;
 }
 
 const REQUIRED = [
@@ -106,15 +110,26 @@ async function runCommand(deps: CliDeps, out: (s: string) => void, err: (s: stri
     return 2;
   }
 
+  const scratch = env.INBOX_ORGANIZE?.trim().toLowerCase() === "off" ? undefined : mkdtempSync(join(tmpdir(), "ff-inbox-"));
   try {
     const ff = createInboxFfClient({ baseUrl: cfg.baseUrl, token: cfg.token });
     const gmail = createGmailClient({ clientId: cfg.clientId, clientSecret: cfg.clientSecret, refreshToken });
-    const summary = await runOnce({ gmail, ff, base: cfg.inboxAddress, log: err });
+    const summary = await runOnce({
+      gmail,
+      ff,
+      base: cfg.inboxAddress,
+      log: err,
+      organize: scratch
+        ? { runner: (deps.makeRunner ?? ((o) => createHaikuRunner(o)))({ maxSessions: 1, cwd: scratch }) }
+        : undefined,
+    });
     out(JSON.stringify(summary));
     return 0;
   } catch (e) {
     err(e instanceof GmailAuthError ? e.message : `mail-intake failed: ${e instanceof Error ? e.message : String(e)}`);
     return 1;
+  } finally {
+    if (scratch) rmSync(scratch, { recursive: true, force: true });
   }
 }
 

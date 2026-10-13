@@ -39,11 +39,17 @@ function fakeGmail(messages: GmailMessage[], opts: { listError?: Error } = {}) {
   return { gmail, added, calls };
 }
 
-function fakeFf(outcomes: DeliverOutcome[]) {
+function fakeFf(outcomes: DeliverOutcome[], organizedOutcome: DeliverOutcome = { ok: true, result: {} }) {
   const bodies: unknown[] = [];
+  const organizedCalls: { householdId: string; body: unknown }[] = [];
   return {
     bodies,
+    organizedCalls,
     ff: {
+      async organized(householdId: string, body: unknown) {
+        organizedCalls.push({ householdId, body });
+        return organizedOutcome;
+      },
       async deliver(body: unknown) {
         bodies.push(body);
         return outcomes[bodies.length - 1] ?? { ok: true as const, result: { status: "delivered" } };
@@ -84,6 +90,8 @@ describe("runOnce", () => {
       unknown: 1,
       skipped: 1,
       failed: 0,
+      organized: 0,
+      organizeFailed: 0,
       stoppedEarly: false,
     });
     assert.ok(g.added.every((a) => a.labels.length === 1 && a.labels[0] === "L-ff-routed"));
@@ -127,6 +135,91 @@ describe("runOnce", () => {
   });
 });
 
+const orgOk = (): DeliverOutcome => ({
+  ok: true,
+  result: { status: "delivered", organize: true, householdId: "h1", mailId: "hh-1" },
+});
+const runnerOther = () => {
+  const calls: unknown[] = [];
+  return {
+    calls,
+    runner: {
+      async run(input: unknown) {
+        calls.push(input);
+        return { ok: true as const, data: { kind: "other" } };
+      },
+    },
+  };
+};
+
+describe("runOnce organize", () => {
+  it("organizes only delivered results with organize true", async () => {
+    const g = fakeGmail([msg("1"), msg("2"), msg("3")]);
+    const f = fakeFf([
+      orgOk(),
+      { ok: true, result: { status: "delivered", organize: false, householdId: "h1", mailId: "hh-2" } },
+      { ok: true, result: { status: "held" } },
+    ]);
+    const r = runnerOther();
+    const s = await runOnce({ gmail: g.gmail, ff: f.ff, base: BASE, log: () => {}, organize: { runner: r.runner } });
+    assert.equal(r.calls.length, 1);
+    assert.equal(f.organizedCalls.length, 1);
+    assert.equal(f.organizedCalls[0].householdId, "h1");
+    assert.deepEqual(f.organizedCalls[0].body, { mailId: "hh-1", kind: "other" });
+    assert.equal(s.organized, 1);
+    assert.equal(s.organizeFailed, 0);
+  });
+
+  it("does nothing without deps.organize", async () => {
+    const g = fakeGmail([msg("1")]);
+    const f = fakeFf([orgOk()]);
+    const s = await runOnce({ gmail: g.gmail, ff: f.ff, base: BASE, log: () => {} });
+    assert.equal(f.organizedCalls.length, 0);
+    assert.equal(s.organized, 0);
+  });
+
+  it("stops organizing after maxPerRun but still delivers", async () => {
+    const g = fakeGmail([msg("1"), msg("2"), msg("3")]);
+    const f = fakeFf([orgOk(), orgOk(), orgOk()]);
+    const r = runnerOther();
+    const s = await runOnce({
+      gmail: g.gmail,
+      ff: f.ff,
+      base: BASE,
+      log: () => {},
+      organize: { runner: r.runner, maxPerRun: 2 },
+    });
+    assert.equal(r.calls.length, 2);
+    assert.equal(s.delivered, 3);
+    assert.equal(s.organized, 2);
+    assert.equal(g.added.length, 3);
+  });
+
+  it("still labels ff-routed when organize fails", async () => {
+    const g = fakeGmail([msg("1")]);
+    const lines: string[] = [];
+    const nullRunner = { async run() { return { ok: false as const, reason: "x" } as never; } };
+    const throwing = { async run(): Promise<never> { throw new Error("boom"); } };
+    const f1 = fakeFf([orgOk()]);
+    const s1 = await runOnce({ gmail: g.gmail, ff: f1.ff, base: BASE, log: (l) => lines.push(l), organize: { runner: nullRunner } });
+    assert.equal(s1.organizeFailed, 1);
+    assert.equal(f1.organizedCalls.length, 0);
+
+    const f2 = fakeFf([orgOk()], { ok: false, status: 500, error: "down" });
+    const s2 = await runOnce({ gmail: g.gmail, ff: f2.ff, base: BASE, log: (l) => lines.push(l), organize: { runner: runnerOther().runner } });
+    assert.equal(s2.organizeFailed, 1);
+    assert.equal(s2.stoppedEarly, false);
+
+    const f3 = fakeFf([orgOk()]);
+    const s3 = await runOnce({ gmail: g.gmail, ff: f3.ff, base: BASE, log: (l) => lines.push(l), organize: { runner: throwing } });
+    assert.equal(s3.organizeFailed, 1);
+    assert.equal(s3.delivered, 1);
+    assert.equal(g.added.length, 3);
+    assert.ok(g.added.every((a) => a.labels[0] === "L-ff-routed"));
+    assert.ok(lines.some((l) => l.includes("down")));
+  });
+});
+
 describe("createInboxFfClient", () => {
   it("rejects non-https base URLs except localhost and 127.0.0.1", () => {
     assert.throws(() => createInboxFfClient({ baseUrl: "http://example.com", token: "t" }), /https/);
@@ -150,6 +243,20 @@ describe("createInboxFfClient", () => {
     assert.deepEqual(res, { ok: true, result: { status: "held" } });
     assert.equal(seen?.url, "https://ff.example.com/api/service/inbox/deliver");
     assert.equal((seen?.init.headers as Record<string, string>).Authorization, "Bearer ff_svc_x");
+  });
+
+  it("posts organized results to the household path", async () => {
+    let url = "";
+    const client = createInboxFfClient({
+      baseUrl: "https://ff.example.com",
+      token: "t",
+      fetch: (async (u: string) => {
+        url = u;
+        return new Response("{}", { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    assert.deepEqual(await client.organized("h 1", {}), { ok: true, result: {} });
+    assert.equal(url, "https://ff.example.com/api/service/inbox/households/h%201/organized");
   });
 
   it("maps HTTP errors, using the JSON error message when present", async () => {
