@@ -13,7 +13,10 @@
     "test": "vitest run && tsx --test server/*.test.ts script/*.test.ts",
     "events:check": "tsc -p services/events-pipeline/tsconfig.json",
     "events:test": "tsx --test services/events-pipeline/*.test.ts",
-    "events:run": "tsx services/events-pipeline/cli.ts"
+    "events:run": "tsx services/events-pipeline/cli.ts",
+    "inbox:check": "tsc -p services/mail-intake/tsconfig.json",
+    "inbox:test": "tsx --test services/mail-intake/*.test.ts",
+    "inbox:run": "tsx services/mail-intake/cli.ts"
   },
   "dependencies": {
     "@clerk/express": "^2.1.77",
