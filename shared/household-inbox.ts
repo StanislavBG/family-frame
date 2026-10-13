@@ -137,3 +137,71 @@ export const deliverRequestSchema = z
   });
 
 export type DeliverRequest = z.infer<typeof deliverRequestSchema>;
+
+// "Organize forwarded mail": the structured result of reading one inbox email.
+export const BILL_CATEGORIES = [
+  "electricity",
+  "gas",
+  "water",
+  "internet",
+  "garbage",
+  "phone",
+  "insurance",
+  "other",
+] as const;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const clockTime = z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/);
+
+export const organizedBillSchema = z
+  .object({
+    vendor: z.string().trim().min(1).max(80),
+    category: z.enum(BILL_CATEGORIES),
+    amount: z.number().finite().min(0).max(1e6),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    billDate: isoDate,
+    dueDate: isoDate.optional(),
+  })
+  .strict();
+
+export const organizedDaySchema = z
+  .object({
+    personId: z.string().min(1).max(128),
+    date: isoDate,
+    title: z.string().trim().min(1).max(120),
+    summary: z.string().max(2000).optional(),
+    metrics: z
+      .array(
+        z
+          .object({
+            label: z.string().min(1).max(40),
+            value: z.string().min(1).max(40),
+            tone: z.enum(["neutral", "good", "warn", "info"]).optional(),
+          })
+          .strict(),
+      )
+      .max(12)
+      .optional(),
+    highlights: z.array(z.object({ text: z.string().min(1).max(500) }).strict()).max(20).optional(),
+    napSpans: z.array(z.object({ start: clockTime, end: clockTime }).strict()).max(6).optional(),
+  })
+  .strict();
+
+export const organizedRequestSchema = z
+  .object({
+    mailId: z.string().startsWith("hh-").max(128),
+    kind: z.enum(["bill", "daily-report", "other"]),
+    bill: organizedBillSchema.optional(),
+    day: organizedDaySchema.optional(),
+  })
+  .strict()
+  .refine((v) => (v.kind === "bill") === (v.bill !== undefined), {
+    message: "bill is required when kind is bill, and only then",
+    path: ["bill"],
+  })
+  .refine((v) => (v.kind === "daily-report") === (v.day !== undefined), {
+    message: "day is required when kind is daily-report, and only then",
+    path: ["day"],
+  });
+
+export type OrganizedRequest = z.infer<typeof organizedRequestSchema>;
