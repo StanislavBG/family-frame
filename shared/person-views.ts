@@ -3,6 +3,7 @@
 
 export const PERSON_DAY_SCHEMA_ID = "ff-person-day";
 export const PERSON_WEEK_SCHEMA_ID = "ff-person-week";
+export const PERSON_VIEW_SCHEMA_ID = "ff-person-view";
 export const RESERVED_SCHEMA_PREFIX = "ff-";
 
 const TIME = { type: "string", pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" } as const;
@@ -138,6 +139,161 @@ export const PERSON_DAY_DESCRIPTION =
 export const PERSON_WEEK_TITLE = "Person week";
 export const PERSON_WEEK_DESCRIPTION =
   "One person's week summary. Suggested record id <personId>-<weekStart>.";
+
+export const FIELD_PATH_PATTERN = "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+){0,5}$";
+export const PERSON_VIEW_BLOCK_TYPES = ["metrics", "list", "chart", "photos", "text"] as const;
+const PERSON_VIEW_ICONS = ["star", "heart", "book", "music", "trophy", "leaf", "sun", "moon", "activity", "utensils", "graduation-cap", "baby", "home", "sparkles"] as const;
+const PERSON_VIEW_TONES = ["clay", "sun", "leaf", "sky", "plum", "stone"] as const;
+
+const FIELD_PATH = { type: "string", pattern: FIELD_PATH_PATTERN, maxLength: 100 } as const;
+const REF_ID = { type: "string", minLength: 1, maxLength: 128, pattern: "^[a-z0-9][a-z0-9-]*$" } as const;
+const VIEW_TONE = { enum: PERSON_VIEW_TONES } as const;
+const BLOCK_TITLE = { type: "string", minLength: 1, maxLength: 60 } as const;
+const UNIT = { type: "string", minLength: 1, maxLength: 12 } as const;
+
+export const PERSON_VIEW_JSON_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  properties: {
+    title: { type: "string", minLength: 1, maxLength: 40 },
+    icon: { enum: PERSON_VIEW_ICONS },
+    tone: VIEW_TONE,
+    order: { type: "integer", minimum: 0, maximum: 99 },
+    blocks: {
+      type: "array",
+      minItems: 1,
+      maxItems: 12,
+      items: {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              type: { const: "metrics" },
+              title: BLOCK_TITLE,
+              source: { type: "object", properties: { schemaId: REF_ID }, required: ["schemaId"], additionalProperties: false },
+              fields: {
+                type: "array",
+                minItems: 1,
+                maxItems: 8,
+                items: {
+                  type: "object",
+                  properties: {
+                    field: FIELD_PATH,
+                    label: { type: "string", minLength: 1, maxLength: 30 },
+                    unit: UNIT,
+                    tone: VIEW_TONE,
+                  },
+                  required: ["field", "label"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["type", "source", "fields"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              type: { const: "list" },
+              title: BLOCK_TITLE,
+              source: { type: "object", properties: { schemaId: REF_ID }, required: ["schemaId"], additionalProperties: false },
+              titleField: FIELD_PATH,
+              subtitleField: FIELD_PATH,
+              dateField: FIELD_PATH,
+              limit: { type: "integer", minimum: 1, maximum: 50 },
+            },
+            required: ["type", "source", "titleField"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              type: { const: "chart" },
+              title: BLOCK_TITLE,
+              source: {
+                oneOf: [
+                  {
+                    type: "object",
+                    properties: { schemaId: REF_ID, xField: FIELD_PATH, yField: FIELD_PATH },
+                    required: ["schemaId", "xField", "yField"],
+                    additionalProperties: false,
+                  },
+                  {
+                    type: "object",
+                    properties: { seriesId: REF_ID },
+                    required: ["seriesId"],
+                    additionalProperties: false,
+                  },
+                ],
+              },
+              unit: UNIT,
+              limit: { type: "integer", minimum: 2, maximum: 365 },
+            },
+            required: ["type", "source"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              type: { const: "photos" },
+              title: BLOCK_TITLE,
+              tag: { type: "string", minLength: 1, maxLength: 64 },
+              limit: { type: "integer", minimum: 1, maximum: 24 },
+            },
+            required: ["type"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              type: { const: "text" },
+              title: BLOCK_TITLE,
+              text: { type: "string", minLength: 1, maxLength: 2000 },
+            },
+            required: ["type", "text"],
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
+  },
+  required: ["title", "blocks"],
+  additionalProperties: false,
+} as const;
+
+export const PERSON_VIEW_TITLE = "Person view";
+export const PERSON_VIEW_DESCRIPTION =
+  "A custom People section: blocks bound to your own datasets and series; personIds pick whose People page shows it.";
+
+export type PersonViewTone = (typeof PERSON_VIEW_TONES)[number];
+export type PersonViewIcon = (typeof PERSON_VIEW_ICONS)[number];
+
+export type PersonViewBlock =
+  | { type: "metrics"; title?: string; source: { schemaId: string }; fields: { field: string; label: string; unit?: string; tone?: PersonViewTone }[] }
+  | { type: "list"; title?: string; source: { schemaId: string }; titleField: string; subtitleField?: string; dateField?: string; limit?: number }
+  | { type: "chart"; title?: string; source: { schemaId: string; xField: string; yField: string } | { seriesId: string }; unit?: string; limit?: number }
+  | { type: "photos"; title?: string; tag?: string; limit?: number }
+  | { type: "text"; title?: string; text: string };
+
+export interface PersonView {
+  title: string;
+  icon?: PersonViewIcon;
+  tone?: PersonViewTone;
+  order?: number;
+  blocks: PersonViewBlock[];
+}
+
+/** Walk a dotted path through plain objects; undefined on any miss. Never throws. */
+export function getFieldPath(data: unknown, path: string): unknown {
+  if (typeof path !== "string" || path === "") return undefined;
+  let cur: unknown = data;
+  for (const key of path.split(".")) {
+    if (key === "" || cur === null || typeof cur !== "object" || Array.isArray(cur)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(cur, key)) return undefined;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return cur;
+}
 
 export type PersonTone = "neutral" | "good" | "warn" | "info";
 

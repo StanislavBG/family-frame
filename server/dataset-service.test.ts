@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDatasetService, DatasetError } from "./dataset-service";
 import { DATA_LIMITS } from "@shared/agent-data";
-import { PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID } from "@shared/person-views";
+import { PERSON_DAY_SCHEMA_ID, PERSON_VIEW_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID } from "@shared/person-views";
 
 // Map-backed fake: nested object tree addressed by slash paths, like RTDB.
 function makeDeps() {
@@ -65,7 +65,7 @@ test("putSchema creates v1, increments, stores jsonSchemaJson string", async () 
   assert.equal(typeof root.appData.u1.schemas.people.jsonSchemaJson, "string");
   assert.equal(root.appData.u1.schemas.people.jsonSchema, undefined);
   assert.deepEqual((await svc.getSchema("u1", "people")).jsonSchema, jsonSchema);
-  assert.equal((await svc.listSchemas("u1")).length, 3); // 2 built-ins + people
+  assert.equal((await svc.listSchemas("u1")).length, 4); // 3 built-ins + people
 });
 
 test("putSchema rejects bad id, bad input, oversize, uncompilable, remote ref", async () => {
@@ -183,7 +183,7 @@ test("users are isolated", async () => {
   await rejects(svc.listRecords("u2", "s"), 404);
   await rejects(svc.getRecord("u2", "s", "a"), 404);
   await rejects(svc.putRecords("u2", "s", { records: [{ id: "a", data: 1 }] }), 404);
-  assert.deepEqual((await svc.listSchemas("u2")).map((x) => x.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID]);
+  assert.deepEqual((await svc.listSchemas("u2")).map((x) => x.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID, PERSON_VIEW_SCHEMA_ID]);
   assert.equal(root.users, undefined);
 });
 
@@ -250,10 +250,10 @@ test("built-in person schemas are listed first for a fresh user without RTDB wri
   const svc = createDatasetService(deps);
   await svc.putSchema("u1", "aaa", sch);
   const list = await svc.listSchemas("u1");
-  assert.deepEqual(list.map((s) => s.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID, "aaa"]);
+  assert.deepEqual(list.map((s) => s.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID, PERSON_VIEW_SCHEMA_ID, "aaa"]);
   assert.equal(list[0].version, 1);
   assert.equal((await svc.getSchema("u2", PERSON_WEEK_SCHEMA_ID)).version, 1);
-  assert.deepEqual((await svc.listSchemas("u2")).map((s) => s.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID]);
+  assert.deepEqual((await svc.listSchemas("u2")).map((s) => s.id), [PERSON_DAY_SCHEMA_ID, PERSON_WEEK_SCHEMA_ID, PERSON_VIEW_SCHEMA_ID]);
   assert.equal(root.appData.u1.schemas[PERSON_DAY_SCHEMA_ID], undefined);
 });
 
@@ -314,4 +314,35 @@ test("reserved ff- prefix: put/delete rejected with 403, built-ins not counted i
   await rejects(svc.deleteSchema("u1", "ff-custom"), 403, /ff-/);
   for (let i = 0; i < DATA_LIMITS.schemasPerUserMax; i++) await svc.putSchema("u1", `s${i}`, sch);
   await rejects(svc.putSchema("u1", "extra", sch), 409);
+});
+
+const allBlocks = [
+  { type: "metrics", source: { schemaId: "growth" }, fields: [{ field: "weight.kg", label: "Weight", unit: "kg", tone: "leaf" }] },
+  { type: "list", source: { schemaId: "books" }, titleField: "title", subtitleField: "author", dateField: "read", limit: 5 },
+  { type: "chart", source: { schemaId: "growth", xField: "date", yField: "weight" }, unit: "kg", limit: 30 },
+  { type: "chart", source: { seriesId: "steps" } },
+  { type: "photos", tag: "soccer", limit: 6 },
+  { type: "text", title: "Note", text: "Hello" },
+];
+
+test("ff-person-view is listed and refuses putSchema", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  assert.ok((await svc.listSchemas("u1")).some((s) => s.id === PERSON_VIEW_SCHEMA_ID));
+  await rejects(svc.putSchema("u1", PERSON_VIEW_SCHEMA_ID, sch), 403);
+});
+
+test("ff-person-view accepts one block of each type", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  await svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, {
+    records: [{ id: "v1", data: { title: "Soccer", icon: "trophy", tone: "leaf", order: 3, blocks: allBlocks }, personIds: ["p1"] }],
+  });
+  assert.equal((await svc.getRecord("u1", PERSON_VIEW_SCHEMA_ID, "v1")).data.title, "Soccer");
+});
+
+test("ff-person-view rejects unknown block type, spaced field path, and >12 blocks", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  const put = (data: any) => svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, { records: [{ id: "bad", data }] });
+  await rejects(put({ title: "T", blocks: [{ type: "video", text: "x" }] }), 400);
+  await rejects(put({ title: "T", blocks: [{ type: "list", source: { schemaId: "books" }, titleField: "my title" }] }), 400);
+  await rejects(put({ title: "T", blocks: Array.from({ length: 13 }, () => ({ type: "text", text: "x" })) }), 400);
 });
