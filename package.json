@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "release": "tsx script/release.ts",
+    "bilko:build": "tsx script/bilko-bundle.ts",
     "validate:baby-songs": "tsx script/validate-baby-songs.ts",
     "test": "vitest run && tsx --test server/*.test.ts script/*.test.ts",
     "events:check": "tsc -p services/events-pipeline/tsconfig.json",
