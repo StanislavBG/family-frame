@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { runAuth } from "./auth";
 import { createInboxFfClient } from "./ff-inbox-client";
 import { createGmailClient, GmailAuthError } from "./gmail";
 import { runOnce } from "./run";
@@ -49,10 +50,30 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
   switch (command) {
     case "run":
       return runCommand(deps, out, err);
+    case "auth":
+      return authCommand(deps, out, err);
     default:
-      err(`unknown command: ${command}\nusage: cli.ts [run]`);
+      err(`unknown command: ${command}\nusage: cli.ts [run|auth]`);
       return 2;
   }
+}
+
+async function authCommand(deps: CliDeps, out: (s: string) => void, err: (s: string) => void): Promise<number> {
+  const env = deps.env ?? process.env;
+  const clientId = env.INBOX_GMAIL_CLIENT_ID?.trim() ?? "";
+  const clientSecret = env.INBOX_GMAIL_CLIENT_SECRET?.trim() ?? "";
+  const tokenFile = env.INBOX_GMAIL_TOKEN_FILE?.trim() ?? "";
+  for (const [name, value] of [
+    ["INBOX_GMAIL_CLIENT_ID", clientId],
+    ["INBOX_GMAIL_CLIENT_SECRET", clientSecret],
+    ["INBOX_GMAIL_TOKEN_FILE", tokenFile],
+  ]) {
+    if (!value) {
+      err(`missing config: ${name}`);
+      return 2;
+    }
+  }
+  return runAuth({ clientId, clientSecret, tokenFile, out, err });
 }
 
 async function runCommand(deps: CliDeps, out: (s: string) => void, err: (s: string) => void): Promise<number> {
