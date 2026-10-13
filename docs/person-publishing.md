@@ -225,3 +225,50 @@ All of this data is private per account. It is never shared through household co
 ## 7. Unknown datasets: the More tab
 
 A record in any dataset you registered yourself (`data_put_schema`) that carries `personIds` shows up under that person's **More** tab, so you can publish extra per-person data without a new view. Use a schema id without the reserved `ff-` prefix.
+
+## 8. Custom views (ff-person-view)
+
+Besides the built-in day and week sheets, a household can publish its own People sections. A record in the reserved `ff-person-view` schema describes a view: a `title`, optional `icon`, `tone` and `order`, and 1-12 `blocks` bound to datasets and series you already publish. The view appears as a section in the left nav of every person listed in the record's `personIds`; `personIds` decides whose People page shows the view (no `personIds` = not shown for anyone).
+
+Block types, one example each:
+
+```json
+{ "type": "metrics", "title": "This week", "source": { "schemaId": "practice" },
+  "fields": [{ "field": "minutes", "label": "Minutes", "unit": "min", "tone": "leaf" }] }
+```
+
+```json
+{ "type": "list", "title": "Recent pieces", "source": { "schemaId": "practice" },
+  "titleField": "piece", "subtitleField": "teacher.note", "dateField": "date", "limit": 10 }
+```
+
+```json
+{ "type": "chart", "title": "Minutes per day", "source": { "schemaId": "practice", "xField": "date", "yField": "minutes" }, "unit": "min", "limit": 30 }
+```
+
+A chart can instead read a time-series: `"source": { "seriesId": "piano-minutes" }`.
+
+```json
+{ "type": "photos", "title": "Recital", "tag": "piano", "limit": 8 }
+```
+
+```json
+{ "type": "text", "title": "Note", "text": "Practice before dinner." }
+```
+
+Field paths are dotted keys into the record's `data` (for example `teacher.note`).
+
+Validate first with `person_view_validate` (`{ view, person }`, needs `data:read`). It returns `{ valid: false, errors: [{ path, message }] }` for schema problems; otherwise `{ valid: true, blocks: [{ index, type, records, missingFields }] }`, where `records` is the record count (dataset sources) or point count (series; `0` if the series does not exist) and `missingFields` lists the configured paths absent from the person's newest record. Photos and text blocks report `records: null`.
+
+Then publish with `data_put_records`, `schemaId` `ff-person-view`:
+
+```json
+{
+  "schemaId": "ff-person-view",
+  "records": [{
+    "id": "p_ev1-piano",
+    "personIds": ["p_ev1"],
+    "data": { "title": "Piano", "icon": "music", "tone": "plum", "blocks": [{ "type": "text", "text": "Practice before dinner." }] }
+  }]
+}
+```

@@ -1,5 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
+import Ajv2020 from "ajv/dist/2020";
+import addFormats from "ajv-formats";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { calendarService, CalendarError, type CalendarService } from "./calendar-service";
@@ -11,6 +13,7 @@ import { mediaImporter, type MediaImporter } from "./media-import";
 import { mailRehoster, type MailRehoster } from "./mail-rehost";
 import { API_TOKEN_SCOPES } from "./api-tokens";
 import { insertDataRecordSchema, insertEmailSchema, DATA_LIMITS, MAIL_LIMITS, SCHEMA_ID_PATTERN, PERSON_IDS_MAX } from "@shared/agent-data";
+import { PERSON_VIEW_JSON_SCHEMA, getFieldPath, type PersonView } from "@shared/person-views";
 import { EventType, type EventTypeValue, type InsertCalendarEvent } from "@shared/schema";
 
 export interface McpContext {
@@ -54,6 +57,15 @@ const MEDIA_WRITE = ["media:write"];
 
 const TS_READ = ["metrics:read", "metrics:write"];
 const TS_WRITE = ["metrics:write"];
+
+// CJS/ESM interop under tsx/esbuild vs the bundled build (same Ajv options as dataset-service).
+const Ajv: typeof Ajv2020 = (Ajv2020 as any).default ?? Ajv2020;
+const applyFormats: typeof addFormats = (addFormats as any).default ?? addFormats;
+const validatePersonView = (() => {
+  const ajv = new Ajv({ strict: true, allErrors: false, allowUnionTypes: true });
+  applyFormats(ajv);
+  return ajv.compile(PERSON_VIEW_JSON_SCHEMA as unknown as Record<string, unknown>);
+})();
 
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -150,6 +162,55 @@ export function buildFamilyFrameMcpServer(
     "list_people",
     { description: "List the household members (id and name) that can be attached to calendar events, and used as personIds/personId when publishing or filtering mail, media and dataset records." },
     run(null, () => service.listPeople(ctx.userId, ctx.username)),
+  );
+
+  server.registerTool(
+    "person_view_validate",
+    {
+      description:
+        "Check a custom People view (the data of an ff-person-view record) before publishing: validates it against the ff-person-view schema, then reports per block how many records or points exist for the person and which configured field paths are missing from the newest record. person is a person id or name (see list_people).",
+      inputSchema: { view: z.record(z.unknown()), person: z.string().min(1) },
+    },
+    async ({ view, person }: { view: Record<string, unknown>; person: string }) =>
+      run(DATA_READ, async () => {
+        const [personId] = await resolvePeople([person]);
+        if (!validatePersonView(view)) {
+          return {
+            valid: false,
+            errors: (validatePersonView.errors ?? []).map((e) => ({ path: e.instancePath || "/", message: e.message ?? "invalid" })),
+          };
+        }
+        const blocks = await Promise.all(
+          (view as unknown as PersonView).blocks.map(async (block, index) => {
+            const base = { index, type: block.type };
+            if (block.type === "photos" || block.type === "text") return { ...base, records: null, missingFields: [] as string[] };
+            if (block.type === "chart" && "seriesId" in block.source) {
+              try {
+                const series = await timeSeries.getSeries(ctx.userId, block.source.seriesId);
+                return { ...base, records: series.pointCount, missingFields: [] as string[] };
+              } catch (err) {
+                if (err instanceof TimeSeriesError && err.status === 404) return { ...base, records: 0, missingFields: [] as string[] };
+                throw err;
+              }
+            }
+            const source = block.source as { schemaId: string; xField?: string; yField?: string };
+            const paths =
+              block.type === "metrics"
+                ? block.fields.map((f) => f.field)
+                : block.type === "list"
+                  ? [block.titleField, block.subtitleField, block.dateField].filter((f): f is string => !!f)
+                  : [source.xField, source.yField].filter((f): f is string => !!f);
+            const { records, total } = await data.listRecords(ctx.userId, source.schemaId, { personId, limit: 1 });
+            const newest = records[0];
+            return {
+              ...base,
+              records: total,
+              missingFields: newest ? paths.filter((p) => getFieldPath(newest.data, p) === undefined) : paths,
+            };
+          }),
+        );
+        return { valid: true, blocks };
+      })(),
   );
 
   server.registerTool(

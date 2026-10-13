@@ -167,7 +167,7 @@ async function connect(
 const text = (r: any) => (r.content as any[])[0].text as string;
 const RW = ["calendar:read", "calendar:write"];
 
-test("lists the 31 tools", async () => {
+test("lists the 32 tools", async () => {
   const { service } = makeFakeService();
   const client = await connect(RW, service);
   const { tools } = await client.listTools();
@@ -205,6 +205,7 @@ test("lists the 31 tools", async () => {
       "metrics_list_series",
       "metrics_list_tags",
       "metrics_put_series",
+      "person_view_validate",
       "update_event",
     ],
   );
@@ -669,4 +670,59 @@ test("metrics_list_series filters by tag", async () => {
   assert.deepEqual(util.map((s: any) => s.id), ["power"]);
   const tags = JSON.parse(text(await client.callTool({ name: "metrics_list_tags", arguments: {} })));
   assert.equal(tags.length, 2);
+});
+
+const validView = {
+  title: "Piano",
+  blocks: [
+    { type: "metrics", source: { schemaId: "practice" }, fields: [{ field: "minutes", label: "Minutes" }, { field: "stats.streak", label: "Streak" }] },
+    { type: "chart", source: { seriesId: "no-such-series" } },
+    { type: "text", text: "Hello" },
+  ],
+};
+
+function makeViewData() {
+  const { data } = makeFakeData();
+  (data as any).listRecords = async (_u: string, _s: string, opts: any) => ({
+    records: [{ id: "r1", data: { minutes: 20 }, personIds: ["p1"] }],
+    total: 3,
+    opts,
+  });
+  return data;
+}
+
+test("person_view_validate returns schema errors for an invalid view", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["data:read"], service, undefined, makeViewData(), undefined, { timeSeries: makeMemoryTimeSeries() });
+  const r = await client.callTool({ name: "person_view_validate", arguments: { view: { title: "x", blocks: [] }, person: "Grandma" } });
+  assert.ok(!r.isError, text(r));
+  const body = JSON.parse(text(r));
+  assert.equal(body.valid, false);
+  assert.ok(body.errors.length > 0);
+  assert.equal(typeof body.errors[0].path, "string");
+});
+
+test("person_view_validate reports record counts and missing fields", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["data:read"], service, undefined, makeViewData(), undefined, { timeSeries: makeMemoryTimeSeries() });
+  const r = await client.callTool({ name: "person_view_validate", arguments: { view: validView, person: "Grandma" } });
+  assert.ok(!r.isError, text(r));
+  assert.deepEqual(JSON.parse(text(r)), {
+    valid: true,
+    blocks: [
+      { index: 0, type: "metrics", records: 3, missingFields: ["stats.streak"] },
+      { index: 1, type: "chart", records: 0, missingFields: [] },
+      { index: 2, type: "text", records: null, missingFields: [] },
+    ],
+  });
+  const unknown = await client.callTool({ name: "person_view_validate", arguments: { view: validView, person: "Nobody" } });
+  assert.equal(unknown.isError, true);
+});
+
+test("person_view_validate is refused without data:read", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["mail:read"], service, undefined, makeViewData());
+  const r = await client.callTool({ name: "person_view_validate", arguments: { view: validView, person: "Grandma" } });
+  assert.equal(r.isError, true);
+  assert.match(text(r), /data:read/);
 });
