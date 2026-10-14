@@ -173,7 +173,7 @@ export function CalendarGrid({ currentDate, events, onDateClick, selectedDate, p
   const totalRows = Math.ceil(days.length / 7);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full min-h-0 flex flex-col">
       <div className="grid grid-cols-7 gap-1 relative flex-shrink-0">
         {weekStartsMonday && (
           <div 
@@ -192,8 +192,8 @@ export function CalendarGrid({ currentDate, events, onDateClick, selectedDate, p
         ))}
       </div>
       <div 
-        className="flex-1 grid grid-cols-7 gap-1 relative"
-        style={{ gridTemplateRows: `repeat(${totalRows}, 1fr)` }}
+        className="flex-1 min-h-0 overflow-hidden grid grid-cols-7 gap-1 relative"
+        style={{ gridTemplateRows: `repeat(${totalRows}, minmax(0, 1fr))` }}
       >
         {weekStartsMonday && (
           <div 
@@ -278,6 +278,101 @@ function formatDateDisplay(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}/${month}/${day}`;
+}
+
+export function UpcomingEventsStrip({
+  events,
+  people,
+  timeFormat,
+  onSelect,
+}: {
+  events: CalendarEvent[];
+  people: Person[];
+  timeFormat: "12h" | "24h";
+  onSelect: (event: CalendarEvent) => void;
+}) {
+  return (
+    <>
+        {events.length > 0 ? (
+          <div className="flex flex-nowrap gap-2 items-stretch overflow-x-auto snap-x">
+            {events.map((event) => {
+              const startDate = parseLocalDate(event.startDate);
+              const endDate = parseLocalDate(event.endDate);
+              const isMultiDay = startDate.toDateString() !== endDate.toDateString();
+              const todayRef = new Date();
+              todayRef.setHours(0, 0, 0, 0);
+              const diffDays = Math.ceil((startDate.getTime() - todayRef.getTime()) / (1000 * 60 * 60 * 24));
+              const dateLabel = diffDays === 0 ? "Today" : diffDays === 1 ? "Tomorrow" : startDate.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+              const eventPeople = people.filter((p) => (event.people || []).includes(p.id));
+
+              return (
+                <div
+                  key={event.id}
+                  className={cn(
+                    "flex flex-col gap-0.5 px-3 py-2 rounded-md bg-muted/50 cursor-pointer hover-elevate w-[220px] flex-shrink-0 snap-start",
+                    event.type === EventType.SHARED ? "border-l-2 border-l-cyan-500" : "border-l-2 border-l-violet-500"
+                  )}
+                  onClick={() => onSelect(event)}
+                  data-testid={`upcoming-event-${event.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn("text-sm font-medium truncate", event.cancelled && "line-through")}>{event.title}</span>
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
+                    >
+                      {event.type}
+                    </Badge>
+                    {event.cancelled && (
+                      <Badge
+                        variant="destructive"
+                        className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
+                        data-testid={`badge-cancelled-${event.id}`}
+                      >
+                        Cancelled
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>{dateLabel}</span>
+                    {isMultiDay && (
+                      <span>- {endDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                    )}
+                  </div>
+                  {event.startTime && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-event-time-${event.id}`}>
+                      <Clock className="h-3 w-3" />
+                      <span>
+                        {formatEventTime(event.startTime, timeFormat)}
+                        {event.endTime && ` - ${formatEventTime(event.endTime, timeFormat)}`}
+                      </span>
+                    </div>
+                  )}
+                  {event.location && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <MapPin className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate">{event.location}</span>
+                    </div>
+                  )}
+                  {eventPeople.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Users className="h-3 w-3" />
+                      <span className="truncate">{eventPeople.map(p => p.name).join(", ")}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 py-1">
+            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">No upcoming events</span>
+          </div>
+        )}
+    </>
+  );
 }
 
 export default function CalendarPage() {
@@ -488,7 +583,7 @@ export default function CalendarPage() {
   return (
     <div className="h-full p-4 md:p-6 flex flex-col bg-background overflow-hidden">
       <div className="flex-1 flex flex-col gap-3 min-h-0">
-        <Card className="flex-1 flex flex-col min-h-0">
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <CardHeader className="flex-row items-center justify-between py-2 px-4 flex-shrink-0">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" onClick={previousMonth} data-testid="button-prev-month">
@@ -915,84 +1010,7 @@ export default function CalendarPage() {
 
         <Card className="flex-shrink-0">
           <CardContent className="py-2 px-4">
-            {upcomingEvents.length > 0 ? (
-              <div className="flex flex-wrap gap-2 items-stretch">
-                {upcomingEvents.map((event) => {
-                  const startDate = parseLocalDate(event.startDate);
-                  const endDate = parseLocalDate(event.endDate);
-                  const isMultiDay = startDate.toDateString() !== endDate.toDateString();
-                  const todayRef = new Date();
-                  todayRef.setHours(0, 0, 0, 0);
-                  const diffDays = Math.ceil((startDate.getTime() - todayRef.getTime()) / (1000 * 60 * 60 * 24));
-                  const dateLabel = diffDays === 0 ? "Today" : diffDays === 1 ? "Tomorrow" : startDate.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-                  const eventPeople = (people || []).filter((p) => (event.people || []).includes(p.id));
-
-                  return (
-                    <div
-                      key={event.id}
-                      className={cn(
-                        "flex flex-col gap-0.5 px-3 py-2 rounded-md bg-muted/50 cursor-pointer hover-elevate min-w-[180px] flex-1 max-w-[300px]",
-                        event.type === EventType.SHARED ? "border-l-2 border-l-cyan-500" : "border-l-2 border-l-violet-500"
-                      )}
-                      onClick={() => handleEditEvent(event)}
-                      data-testid={`upcoming-event-${event.id}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={cn("text-sm font-medium truncate", event.cancelled && "line-through")}>{event.title}</span>
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
-                        >
-                          {event.type}
-                        </Badge>
-                        {event.cancelled && (
-                          <Badge
-                            variant="destructive"
-                            className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
-                            data-testid={`badge-cancelled-${event.id}`}
-                          >
-                            Cancelled
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        <span>{dateLabel}</span>
-                        {isMultiDay && (
-                          <span>- {endDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                        )}
-                      </div>
-                      {event.startTime && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-event-time-${event.id}`}>
-                          <Clock className="h-3 w-3" />
-                          <span>
-                            {formatEventTime(event.startTime, timeFormat)}
-                            {event.endTime && ` - ${formatEventTime(event.endTime, timeFormat)}`}
-                          </span>
-                        </div>
-                      )}
-                      {event.location && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="h-3 w-3 flex-shrink-0" />
-                          <span className="truncate">{event.location}</span>
-                        </div>
-                      )}
-                      {eventPeople.length > 0 && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users className="h-3 w-3" />
-                          <span className="truncate">{eventPeople.map(p => p.name).join(", ")}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 py-1">
-                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">No upcoming events</span>
-              </div>
-            )}
+            <UpcomingEventsStrip events={upcomingEvents} people={people || []} timeFormat={timeFormat} onSelect={handleEditEvent} />
           </CardContent>
         </Card>
       </div>
