@@ -1,50 +1,29 @@
 # bilko.run project card
 
-How to rebuild and publish the Family Frame card on bilko.run. The card is a redirect to the hosted app; it does not host Family Frame itself.
+How the Family Frame card on bilko.run works and how to edit it. The card links to the hosted app; bilko.run does not host Family Frame.
 
 ## 1. What the card is
 
-- Slug `family-frame` is a static-path entry bound to `/home/bilko/Projects/family-frame`.
-- The bundle is a redirect to `https://family-frame.replit.app/`, built by `npm run bilko:build` into `bilko-dist/` (git-ignored).
-- Card copy (tagline, tags, listing details) lives in `bilko.listing.json` at the repo root and is synced into the bilko.run registry on every publish.
+- Slug `family-frame` is an `external-url` entry in the Bilko registry, bound to `/home/bilko/Projects/family-frame`.
+- Its `url` is `https://family-frame.replit.app`. The card on https://bilko.run/projects opens it directly.
+- There is no bundle to build. Do not call `publish_static_project` for `family-frame`; Bilko refuses it for external-url slugs.
+- Card copy (tagline, tags, listing details) lives in `bilko.listing.json` at the repo root.
 
-## 2. Rebuild
+## 2. Editing the card
 
-```bash
-npm run bilko:build
-```
-
-## 3. Publish
-
-Publish only from the main checkout, after `npm run release` has put the work on `main`. Run `npm install` there after the release pull: the golden gate runs `tests/golden.spec.ts` via `pnpm exec playwright test` in the main checkout, so `@playwright/test` must be installed.
-
-Call the bilko-host MCP tool `publish_static_project`:
+Edit `bilko.listing.json`, then call the bilko-host MCP tool `update_project_listing`:
 
 | Argument | Value |
 | --- | --- |
 | `slug` | `family-frame` |
-| `distPath` | `/home/bilko/Projects/family-frame/bilko-dist` |
-| `sourceRepoPath` | `/home/bilko/Projects/family-frame` |
-| bypass | `audit` |
+| `callerRepoPath` | `/home/bilko/Projects/family-frame` |
+| `patch` | the changed fields from `bilko.listing.json` |
 
-Bypass reason for `audit`: "Family Frame is an npm project (no pnpm-lock.yaml), so pnpm audit cannot run; the redirect bundle ships no dependencies".
-
-The a11y gate needs a bypass only if its scan follows the redirect off-site. If you bypass it, record the reason in the publish call.
-
-## 4. Editing the card
-
-- Edit `bilko.listing.json` and publish again (synced on publish), or
-- call `update_project_listing` for a change without republishing.
+- Changing the card's `url` works the same way (`patch: { "url": "https://..." }`).
+- `bilko.listing.json` has no `icon` or `shareImage`: both must be PNGs inside a published bundle, which an external-url entry does not have. bilko.run generates the share card (https://bilko.run/og/family-frame.png).
 
 Host limits: tagline <= 160 chars, <= 6 tags (each <= 24), detail <= 400, audience <= 200, <= 5 talking points (each <= 200), callToAction <= 120, <= 5 avoidClaims (each <= 200), file < 16 KB.
 
-## 5. Share image
+## 3. Visibility
 
-- `npm run bilko:og` regenerates `bilko/og.png` (1200x630).
-- The card icon comes from `client/public/favicon.png`.
-- `npm run bilko:build` copies both into `bilko-dist/` as `og.png` and `icon.png`; `bilko.listing.json` declares them as `listing.shareImage` and `listing.icon`.
-- The card unfurls on X and LinkedIn via https://bilko.run/og/family-frame.png.
-
-## 6. Visibility
-
-Making the card public on `/projects` is the Bilko owner's decision, not part of publishing.
+Whether the card is public on `/projects` is the Bilko owner's decision, not this repo's.

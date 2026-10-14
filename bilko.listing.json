@@ -2,8 +2,6 @@
   "tagline": "A passion project: one warm family screen with 15+ small apps, from photos and calendar to radio and household bills.",
   "tags": ["Passion project", "PWA", "Family"],
   "listing": {
-    "icon": "/projects/family-frame/icon.png",
-    "shareImage": "/projects/family-frame/og.png",
     "detail": "A personal passion project: one family screen with 15+ small apps: clock, weather, photo frame, shared calendar, local events, messages, chores, recipes, shopping lists, Bulgarian radio and TV, nursery songs, stocks and household bills. Built grandma-friendly for wall displays. Almost ready for others to try.",
     "metric": "15+ apps",
     "metricLabel": "on one family screen",

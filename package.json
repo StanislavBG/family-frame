@@ -9,8 +9,6 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "release": "tsx script/release.ts",
-    "bilko:build": "tsx script/bilko-bundle.ts",
-    "bilko:og": "tsx script/bilko-og.ts",
     "validate:baby-songs": "tsx script/validate-baby-songs.ts",
     "test": "vitest run && tsx --test server/*.test.ts script/*.test.ts",
     "events:check": "tsc -p services/events-pipeline/tsconfig.json",
@@ -75,7 +73,6 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

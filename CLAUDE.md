@@ -122,10 +122,9 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 ├── services/
 │   ├── events-pipeline/        # Local Events pipeline (cron, Node 22 only; see docs/events.md)
 │   └── mail-intake/            # Local Gmail intake for household email (5-minute timer; see docs/household-email.md)
-├── bilko.listing.json           # bilko.run project card copy (synced on publish; see docs/bilko-run.md)
+├── bilko.listing.json           # bilko.run card copy (applied with update_project_listing; see docs/bilko-run.md)
 └── script/
-    ├── build.ts                # Build script (esbuild + Vite)
-    └── bilko-bundle.ts         # Builds the bilko.run redirect bundle (npm run bilko:build)
+    └── build.ts                # Build script (esbuild + Vite)
 ```
 
 ## Development Commands
@@ -387,7 +386,7 @@ app.get("/api/resource", asyncHandler(async (req, res) => {
 - **Build**: `npm run build`
 - **Run**: `node ./dist/index.cjs`
 - **Release**: see `## Release` below; then in Replit pull from the Git pane and click Publish. Secrets live only in Replit.
-- **bilko.run card**: redirect card to the hosted app; see `docs/bilko-run.md`.
+- **bilko.run card**: external-url card that opens the hosted app; see `docs/bilko-run.md`.
 
 ## Release
 
