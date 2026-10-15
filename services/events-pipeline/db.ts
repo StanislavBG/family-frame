@@ -283,6 +283,43 @@ export function deleteHousehold(db: EventsDb, householdId: string): void {
   }
 }
 
+export interface PruneCounts {
+  events: number;
+  recommendations: number;
+  searchLog: number;
+  runs: number;
+}
+
+/**
+ * Retention pass: drop events that ended more than `eventDays` ago (with their recommendation rows),
+ * search_log rows older than `searchLogDays` and runs older than `runDays`, in one transaction.
+ * Households and the geocode cache are never touched.
+ */
+export function pruneLocalState(
+  db: EventsDb,
+  nowIso: string,
+  opts: { eventDays?: number; searchLogDays?: number; runDays?: number } = {},
+): PruneCounts {
+  const { eventDays = 30, searchLogDays = 30, runDays = 90 } = opts;
+  const nowMs = Date.parse(nowIso);
+  if (Number.isNaN(nowMs)) throw new Error(`pruneLocalState: invalid nowIso ${nowIso}`);
+  const cutoff = (days: number): string => new Date(nowMs - days * 86_400_000).toISOString();
+  const eventCutoff = cutoff(eventDays).slice(0, 10);
+  const staleEvents = "SELECT id FROM events WHERE substr(COALESCE(end_at, start_at), 1, 10) < ?";
+  db.exec("BEGIN");
+  try {
+    const recommendations = Number(db.prepare(`DELETE FROM recommendations WHERE event_id IN (${staleEvents})`).run(eventCutoff).changes);
+    const events = Number(db.prepare("DELETE FROM events WHERE substr(COALESCE(end_at, start_at), 1, 10) < ?").run(eventCutoff).changes);
+    const searchLog = Number(db.prepare("DELETE FROM search_log WHERE ran_at < ?").run(cutoff(searchLogDays)).changes);
+    const runs = Number(db.prepare("DELETE FROM runs WHERE started_at < ?").run(cutoff(runDays)).changes);
+    db.exec("COMMIT");
+    return { events, recommendations, searchLog, runs };
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
 // ---- recommendations ----
 
 export interface RecommendationRecord {

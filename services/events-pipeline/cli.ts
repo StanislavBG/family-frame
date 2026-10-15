@@ -3,7 +3,7 @@ import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, statSync, unlinkSy
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { finishRun, listDueForRecheck, openEventsDb, startRun, type EventsDb } from "./db";
+import { finishRun, listDueForRecheck, openEventsDb, pruneLocalState, startRun, type EventsDb, type PruneCounts } from "./db";
 import { runDiscover, type DiscoverStats } from "./discover";
 import { runDispatch, type DispatchStats } from "./dispatch";
 import { createFfClient, type FfClient } from "./ff-client";
@@ -368,7 +368,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
 
     const runner = buildRunner();
     const geocoder = buildGeocoder();
-    const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; haiku?: HaikuUsage; ms?: number } = {
+    const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; haiku?: HaikuUsage; ms?: number; pruned?: PruneCounts } = {
       mode: args.mode,
       dryRun: args.dryRun,
     };
@@ -406,6 +406,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
         }
       }
     }
+    if (args.mode === "all" && !args.dryRun) stats.pruned = pruneLocalState(db, now().toISOString());
     stats.haiku = runner.usage?.();
     stats.ms = Date.now() - t0;
     if (!args.dryRun) {

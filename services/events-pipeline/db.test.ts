@@ -18,6 +18,7 @@ import {
   listRecommendationsForHousehold,
   logSearch,
   openEventsDb,
+  pruneLocalState,
   putGeocode,
   recordRecommendation,
   startRun,
@@ -163,4 +164,38 @@ test("opening a v3 database rewrites area keys to the canonical form once", () =
   const third = openEventsDb(path);
   assert.equal(third.prepare("SELECT area_key FROM events WHERE id = 'e0'").get()?.area_key, "x|y");
   third.close();
+});
+
+test("pruneLocalState drops stale rows, keeps live ones and households", () => {
+  const db = openEventsDb(":memory:");
+  const now = "2026-10-15T12:00:00.000Z";
+  const next = "2026-10-20T00:00:00.000Z";
+  upsertHousehold(db, household("h1"));
+  const put = (id: string, startAt: string, endAt: string | null) => {
+    upsertEvent(db, ev(id), "portland", next);
+    db.prepare("UPDATE events SET start_at = ?, end_at = ? WHERE id = ?").run(startAt, endAt ?? null, id);
+    recordRecommendation(db, { householdId: "h1", eventId: id, publishedAt: "t", publishedHash: "x" });
+  };
+  put("old", "2026-08-01T10:00:00", "2026-08-01T12:00:00");
+  put("recent", "2026-09-25T10:00:00", "2026-09-25T12:00:00");
+  put("multi", "2026-08-16T10:00:00", "2026-11-01T12:00:00");
+  put("dateOnlyOld", "2026-09-01", "2026-09-10");
+  put("dateOnlyKept", "2026-09-01", "2026-09-16");
+  logSearch(db, { areaKey: "p", windowKey: "2w", categoryKey: "c", query: "q", ranAt: "2026-09-01T00:00:00.000Z", results: 1 });
+  logSearch(db, { areaKey: "p", windowKey: "2w", categoryKey: "c", query: "q", ranAt: "2026-10-10T00:00:00.000Z", results: 1 });
+  finishRun(db, startRun(db, "discover", "2026-07-01T00:00:00.000Z"), "t1", {});
+  finishRun(db, startRun(db, "discover", "2026-09-01T00:00:00.000Z"), "t1", {});
+  putGeocode(db, { queryHash: "q1", query: "q", lat: 1, lon: 2, provider: "t", createdAt: "2020-01-01" });
+
+  const counts = pruneLocalState(db, now);
+  assert.deepEqual(counts, { events: 2, recommendations: 2, searchLog: 1, runs: 1 });
+  const ids = (db.prepare("SELECT id FROM events ORDER BY id").all() as { id: string }[]).map((r) => r.id);
+  assert.deepEqual(ids, ["dateOnlyKept", "multi", "recent"]);
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM recommendations").get() as { n: number }).n, 3);
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM search_log").get() as { n: number }).n, 1);
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM runs").get() as { n: number }).n, 1);
+  assert.equal(listHouseholds(db).length, 1);
+  assert.ok(getGeocode(db, "q1"));
+  assert.deepEqual(pruneLocalState(db, now), { events: 0, recommendations: 0, searchLog: 0, runs: 0 });
+  db.close();
 });
