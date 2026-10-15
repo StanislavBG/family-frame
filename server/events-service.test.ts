@@ -527,6 +527,23 @@ test("default visit for a 09:00-19:00 multi-day event is 10:00-12:30", async () 
   assert.deepEqual(item.plan?.visit, { start: "2026-10-20T10:00:00", end: "2026-10-20T12:30:00" });
 });
 
+test("default visit for an all-day multi-day event is 10:00-12:30 on the first day", async () => {
+  const { svc, events } = await setup();
+  const allDay = withEvent(EID, (e) => {
+    e.schedule.allDay = true;
+    e.schedule.start = "2026-10-15";
+    e.schedule.end = "2026-11-01";
+    e.schedule.occurrences = [];
+  });
+  await svc.upsertRecommendations("u1", { runId: "r0", recommendations: [allDay] });
+  const item = await svc.respond("u1", "n", EID, { response: "going" });
+  assert.equal(events[0].startDate, "2026-10-15");
+  assert.equal(events[0].endDate, events[0].startDate);
+  assert.equal(events[0].startTime, "10:00");
+  assert.equal(events[0].endTime, "12:30");
+  assert.deepEqual(item.plan?.visit, { start: "2026-10-15T10:00:00", end: "2026-10-15T12:30:00" });
+});
+
 test("a short event keeps its own times and stores no visit", async () => {
   const { svc, events } = await setup();
   await svc.upsertRecommendations("u1", { runId: "r0", recommendations: [shortEvent()] });

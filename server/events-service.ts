@@ -584,7 +584,7 @@ export function createEventsService(deps: EventsDeps) {
       const ensureVisit = async () => {
         if (plan.visit) return;
         const day = chooseDay(event, plan.occurrenceStart);
-        if (!day || !day.hoursKnown) return;
+        if (!day) return;
         const prefs = await service.getPreferences(userId);
         const visitPrefs: VisitPrefs = {
           visitBlockMinutes: prefs.visitBlockMinutes ?? DEFAULT_VISIT_PREFS.visitBlockMinutes,
