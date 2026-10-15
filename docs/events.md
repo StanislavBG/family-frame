@@ -63,6 +63,10 @@ Erase: `DELETE /api/events/data` removes `eventRecs`, `eventFeedback`, `eventPre
 
 Per-household wrapper (`recommendationInputSchema`): `event`, `whyForHousehold`, `whyForChildren?`, `highlights[]`, `tips[]`, `matchScore` 0-1, `matchReasons[]`, `distanceKm?`, `travelMinutes?`. Batches of up to 50 per PUT. Household response states: `new`, `interested`, `going`, `maybe`, `not-interested`, `dismissed`. `SAMPLE_EVENT` in `shared/events.ts` is a full example. Unchanged re-publishes are no-ops; `new` and `dismissed` recommendations are pruned 30 days after the event ended.
 
+Planned visit (`plan.visit`, `visitPlanSchema`): `{start, end}` as local wall-clock times without an offset (`YYYY-MM-DDTHH:MM:SS`), on the same date, end after start, at most 12 hours. It is the part of the day the household intends to go. The server also rejects a visit on a day the event does not run or outside that day's known opening hours (400).
+
+Visit preferences (in `eventPrefs`, `PUT /api/events/preferences`): `visitBlockMinutes` (60-240, default 150), `visitEarliest` (`HH:MM`, default `10:00`) and `visitLatestEnd` (`HH:MM`, default `18:00`). They shape the suggested block (section 6).
+
 ## 4. Household API (`/api/events/*`)
 
 Signed-in session (Clerk headers), implemented in `server/apps/events.ts` over `server/events-service.ts`. Address and consent routes live in `server/household-routes.ts` and are session-only (403 for PATs and the service token): `GET /api/household/profile`, `PUT /api/household/address`, `PUT /api/household/events-sharing`.
@@ -75,9 +79,9 @@ Signed-in session (Clerk headers), implemented in `server/apps/events.ts` over `
 | `DELETE /api/events/data` | erase all events data (204) |
 | `GET /api/events/items?from&to&include=all` | recommendations; hidden (not-interested, dismissed, withdrawn) only with `include=all` |
 | `GET /api/events/items/:eventId` | one recommendation |
-| `POST .../response` | `response`, optional `addToCalendar`, `visibility`, `people`, `reason` |
+| `POST .../response` | `response`, optional `addToCalendar`, `visibility`, `people`, `reason`, `visit` (`{start, end}`, see `plan.visit` in section 3) |
 | `POST .../feedback` | `signal`, optional `reason` (max 280) |
-| `PATCH .../plan` | `occurrenceStart`, `notes`, `people`, `visibility` (at least one) |
+| `PATCH .../plan` | `occurrenceStart`, `notes`, `people`, `visibility`, `visit` (at least one) |
 | `POST .../seen` | clears the unseen-change flag (204) |
 
 ## 5. Service API (`/api/service/events/*`)
@@ -109,7 +113,14 @@ Implemented in `server/events-service.ts` using `calendar-service.ts`.
 - Visibility is `Private` unless the household picks `Shared`; changing it later (response or plan) updates the entry's `type`.
 - `not-interested` and `dismissed` delete the linked entry.
 - `plan.occurrenceStart` picks which occurrence of a recurring event the entry uses; `plan.notes` and `people` flow into the entry.
-- Pipeline changes sync to the entry: cancelled sets it cancelled (reinstated clears it); a schedule change moves the dates unless the household chose a specific occurrence.
+- The entry uses `plan.visit` (its date, start and end time) when set; otherwise the chosen occurrence, otherwise the event's main schedule. Setting `visit` through the response or plan route updates a linked entry. Choosing another occurrence through `PATCH .../plan` drops a visit planned for a different day.
+- When a response creates an entry and no visit was sent, the server suggests one for long day windows (`dayWindows` and `suggestVisit` in `shared/events-visit.ts`, shared with the client):
+  - The window is the chosen occurrence's day, else the next upcoming day, else the first. Days with no known hours count as 09:00-17:00.
+  - If the window is no longer than `visitBlockMinutes` + 30 minutes, no visit is set and the whole window is used.
+  - Otherwise the block is `visitBlockMinutes` long, kept between `visitEarliest` and `visitLatestEnd` (if that range is under 60 minutes, the window's own hours are used).
+  - It starts at `visitEarliest` (rounded up to 30 minutes); only afternoon as a preferred time starts at 14:00, only evening ends at the latest end.
+  - The block is moved back so it ends inside the range.
+- Pipeline changes sync to the entry: cancelled sets it cancelled (reinstated clears it); a schedule change moves the dates unless the household chose a specific occurrence or a visit. A schedule change never moves a visit.
 - If the household deletes the entry, the link is dropped and never silently recreated; only an explicit `addToCalendar: true` recreates it.
 - Erasing events data and revoking consent leave calendar entries alone.
 
@@ -153,7 +164,9 @@ Search and ranking:
 - Events without coordinates are geocoded in `discover.ts` from the event's own public location (venue, address, city, region, country) only, never the household address. A miss or error keeps the event unchanged (`geocodeHits` / `geocodeMisses` in the run stats).
 - Explanations run in consecutive Haiku batches of 12 picks, with a template fallback per failed batch.
 
-Cost caps: `--max-sessions` caps Haiku sessions per run, shared across discover and refresh in `all`; default 45 for `discover`/`refresh`/`all`, 20 for `watch`. Every `claude -p` call pins `--model claude-haiku-4-5-20251001` with read-only web tools; rate-limit or budget errors stop the run. A lock file `<EVENTS_DB_PATH>.lock` prevents overlap (stale after 2 hours).
+Cost caps: `--max-sessions` caps Haiku sessions per run, shared across discover and refresh in `all`; default 45 for `discover`/`refresh`/`all`, 20 for `watch`. Every `claude -p` call pins `--model claude-haiku-4-5-20251001` with read-only web tools; rate-limit or budget errors stop the run. A lock file `<EVENTS_DB_PATH>.lock` prevents overlap (stale after 2 hours). `discover`, `refresh` and `all` wait for the lock up to 20 minutes (40 tries, 30 seconds apart) so the daily run does not lose to a long watch run. If another run held it the whole time, the run prints `{"skipped":"locked","waitedMs":...}`, sends a critical notice and exits 1. `watch` does not wait.
+
+Area key: households are grouped for shared searches by `city|countryCode` (`areaKey` in `geo.ts`; city and country are canonicalised, region is dropped on purpose). On open, the local DB converts older `city|region|country` keys to this form once.
 
 Config (env file, mode 0600, via `EVENTS_ENV_FILE`): `FF_BASE_URL`, `FF_SERVICE_TOKEN`, optional `EVENTS_DB_PATH`, `CLAUDE_BIN`, `NOMINATIM_USER_AGENT`. Missing config exits 2.
 
@@ -161,6 +174,8 @@ Cron: `services/events-pipeline/crontab.example` installs two jobs by hand (`cro
 
 - Watch, every 5 minutes (`events:run -- watch`): one HTTPS request lists the households; a household-only discovery starts for each one that is new (no local row), re-shared, changed its address, or was never discovered. A household is skipped for 30 minutes after it was last triggered, and at most 3 households run per tick (the rest wait for a later tick). An idle tick makes no Claude session. Watch caps Haiku sessions at 20 per household run by default.
 - Daily at 05:30 America/Los_Angeles (`events:run -- all`): discover plus re-check of known events for every household.
+
+The systemd timers in `services/events-pipeline/systemd/` are the alternative to cron: `family-frame-events-watch.timer` every 5 minutes and `family-frame-events-daily.timer` daily at 05:32 (it catches up after the machine was off or asleep).
 
 Dry run: add `--dry-run` to search and rank without publishing (`refresh --dry-run` only counts due events). `status` prints household and upcoming-event counts and recent runs, with no addresses or tokens. Always dry-run one household before enabling cron.
 
@@ -172,6 +187,10 @@ Dry run: add `--dry-run` to search and rank without publishing (`refresh --dry-r
 
 The report contains no address, coordinates, profile or tokens.
 
-Run stats (`runs.stats_json`, also the printed JSON line) carry: `haiku` (`sessions`, `costUsd`), `normalizeRejected` (+ `normalizeRejectReasons`), `searchFailures` and `skippedByReason` (counts by reason), `ranked`, and `phaseMs` (`prepare`, `search`, `rank`, `explain`, `publish`, in milliseconds).
+Run stats (`runs.stats_json`, also the printed JSON line) carry: `haiku` (`sessions`, `costUsd`), `normalizeRejected` (+ `normalizeRejectReasons`), `searchFailures` and `skippedByReason` (counts by reason), `ranked`, and `phaseMs` (`prepare`, `search`, `rank`, `explain`, `publish`, in milliseconds). A non-dry `all` run also carries `pruned`: counts of local rows removed by `pruneLocalState` (`events`, `recommendations`, `searchLog`, `runs`).
+
+Local retention (`pruneLocalState` in `db.ts`, once per daily `all` run): events and their recommendations are deleted 30 days after the event ended (or started, when it has no end), the search log after 30 days and run history after 90 days.
+
+Data volume: Firebase keeps a household's active recommendations (cap 400) plus unanswered ones (`new`, `dismissed`) until 30 days after the event ends; answered ones (interested, going, maybe, not-interested) stay as history. The local SQLite DB is pruned daily as above, so neither side grows without bound.
 
 Notifications: `watch`, `discover`, `refresh` and `all` send desktop notices through `notify-send` (rules in `notify.ts`). Per household: a normal notice with published/candidates (and cost) after a successful run, a critical one when that household's run failed. Per job: a critical `failed` notice on the first failure or when the error text changes; the same unchanged failure repeats as `still failing` at most once per 24 hours; the first success after failures sends `recovered`. `all` also sends a low-urgency daily summary (published, candidates, errors, cost). Failure state is kept per job in the local DB (`notify_state`). Notices hold only ids, counts, costs and clipped error text. Set `EVENTS_NOTIFY=off` to disable them; a missing `notify-send` or desktop session is ignored and never fails a run.
