@@ -415,7 +415,7 @@ test("respond going creates a Private calendar entry in event-local time with a 
   assert.equal(events[0].title, "Riverside Family Pumpkin Festival");
   assert.equal(events[0].startDate, "2026-10-24");
   assert.equal(events[0].startTime, "10:00");
-  assert.equal(events[0].endTime, "16:00");
+  assert.equal(events[0].endTime, "12:30"); // 6h session -> default 2.5h block
   assert.equal(events[0].location, "Riverside Farm, Portland");
   assert.equal(events[0].type, "Private");
   assert.deepEqual(item.calendar, { calendarEventId: events[0].id, visibility: "Private" });
@@ -488,8 +488,91 @@ test("updatePlan validates occurrenceStart and updates the linked entry", async 
   assert.equal(root.eventRecs.u1[EID].calendar.visibility, "Shared");
 });
 
+const shortEvent = () =>
+  withEvent(EID, (e) => {
+    e.schedule.start = "2026-10-24T10:00:00-07:00";
+    e.schedule.end = "2026-10-24T12:00:00-07:00";
+    e.schedule.occurrences = [
+      { start: "2026-10-24T10:00:00-07:00", end: "2026-10-24T12:00:00-07:00" },
+      { start: "2026-10-25T10:00:00-07:00", end: "2026-10-25T12:00:00-07:00" },
+    ];
+  });
+
+const longWindowEvent = () =>
+  withEvent(EID, (e) => {
+    e.schedule.start = "2026-10-20T09:00:00-07:00";
+    e.schedule.end = "2026-10-31T19:00:00-07:00";
+    e.schedule.occurrences = [];
+  });
+
+test("respond with a visit stores it, sets the entry times and the occurrence", async () => {
+  const { svc, events, root } = await setup();
+  const visit = { start: "2026-10-25T13:00:00", end: "2026-10-25T15:00:00" };
+  const item = await svc.respond("u1", "n", EID, { response: "going", visit });
+  assert.equal(events[0].startDate, "2026-10-25");
+  assert.equal(events[0].startTime, "13:00");
+  assert.equal(events[0].endTime, "15:00");
+  assert.deepEqual(item.plan?.visit, visit);
+  assert.equal(root.eventRecs.u1[EID].plan.occurrenceStart, "2026-10-25T10:00:00-07:00");
+});
+
+test("default visit for a 09:00-19:00 multi-day event is 10:00-12:30", async () => {
+  const { svc, events } = await setup();
+  await svc.upsertRecommendations("u1", { runId: "r0", recommendations: [longWindowEvent()] });
+  const item = await svc.respond("u1", "n", EID, { response: "going" });
+  assert.equal(events[0].startDate, "2026-10-20");
+  assert.equal(events[0].endDate, "2026-10-20");
+  assert.equal(events[0].startTime, "10:00");
+  assert.equal(events[0].endTime, "12:30");
+  assert.deepEqual(item.plan?.visit, { start: "2026-10-20T10:00:00", end: "2026-10-20T12:30:00" });
+});
+
+test("a short event keeps its own times and stores no visit", async () => {
+  const { svc, events } = await setup();
+  await svc.upsertRecommendations("u1", { runId: "r0", recommendations: [shortEvent()] });
+  const item = await svc.respond("u1", "n", EID, { response: "going" });
+  assert.equal(events[0].startTime, "10:00");
+  assert.equal(events[0].endTime, "12:00");
+  assert.equal(item.plan?.visit, undefined);
+});
+
+test("invalid visit date or out-of-hours visit is rejected with 400", async () => {
+  const { svc } = await setup();
+  await rejects(svc.respond("u1", "n", EID, { response: "going", visit: { start: "2026-11-05T10:00:00", end: "2026-11-05T12:00:00" } }), 400);
+  await rejects(svc.respond("u1", "n", EID, { response: "going", visit: { start: "2026-10-25T08:00:00", end: "2026-10-25T10:30:00" } }), 400);
+  await rejects(svc.updatePlan("u1", "n", EID, { visit: { start: "2026-10-26T10:00:00", end: "2026-10-26T12:00:00" } }), 400);
+  await rejects(svc.updatePlan("u1", "n", EID, { visit: { start: "2026-10-25T15:00:00", end: "2026-10-25T17:00:00" } }), 400);
+});
+
+test("updatePlan visit patches the entry; occurrenceStart alone clears the visit", async () => {
+  const { svc, events } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  const item = await svc.updatePlan("u1", "n", EID, { visit: { start: "2026-10-24T11:00:00", end: "2026-10-24T13:30:00" } });
+  assert.equal(events[0].startTime, "11:00");
+  assert.equal(events[0].endTime, "13:30");
+  assert.equal(item.plan?.occurrenceStart, "2026-10-24T10:00:00-07:00");
+  const cleared = await svc.updatePlan("u1", "n", EID, { occurrenceStart: "2026-10-25T10:00:00-07:00" });
+  assert.equal(cleared.plan?.visit, undefined);
+  assert.equal(events[0].startDate, "2026-10-25");
+  assert.equal(events[0].endTime, "16:00");
+});
+
+test("a pipeline schedule change does not move an entry that has a visit", async () => {
+  const { svc, events } = await setup();
+  await svc.respond("u1", "n", EID, { response: "going" });
+  const moved = withEvent(EID, (e) => {
+    e.schedule.start = "2026-11-07T10:00:00-08:00";
+    e.schedule.end = "2026-11-07T16:00:00-08:00";
+    e.schedule.occurrences = [];
+  });
+  await svc.upsertRecommendations("u1", { runId: "r2", recommendations: [moved] });
+  assert.equal(events[0].startDate, "2026-10-24");
+  assert.equal(events[0].endTime, "12:30");
+});
+
 test("pipeline cancellation and reschedule flow into the linked entry", async () => {
   const { svc, events } = await setup();
+  await svc.upsertRecommendations("u1", { runId: "r0", recommendations: [shortEvent()] });
   await svc.respond("u1", "n", EID, { response: "going" });
   const moved = withEvent(EID, (e) => {
     e.schedule.start = "2026-10-31T11:00:00-07:00";
@@ -513,6 +596,7 @@ test("pipeline cancellation and reschedule flow into the linked entry", async ()
 
 test("a plan occurrence override stops schedule moves; a vanished entry clears the link without recreating", async () => {
   const { svc, root, events, calls } = await setup();
+  await svc.upsertRecommendations("u1", { runId: "r0", recommendations: [shortEvent()] });
   await svc.respond("u1", "n", EID, { response: "going" });
   await svc.updatePlan("u1", "n", EID, { occurrenceStart: "2026-10-25T10:00:00-07:00" });
   const moved = withEvent(EID, (e) => {
