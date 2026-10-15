@@ -274,7 +274,7 @@ Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`,
 - `events:run -- report` profiles recent runs and recommendations (Markdown, no address); the timers send desktop notices on failures and per-household results, off with `EVENTS_NOTIFY=off` (`services/events-pipeline/notify.ts`, `report.ts`).
 - Preference weights come from the append-only feedback log via `shared/events-preferences.ts`; calendar linking rules live in `server/events-service.ts`.
 - `shared/events-visit.ts` - day windows and visit-block suggestion (`dayWindows`, `suggestVisit`), used by both the server and the client; keep that logic there.
-- Month view day panel: `client/src/components/events/events-day-panel.tsx` (`EventsDayPanel`), the full list for a selected day in `events-month.tsx`.
+- Month view day panel: `client/src/components/events/events-day-panel.tsx` (`EventsDayPanel`), the full list for the day selected in the month view, rendered by `pages/events.tsx`.
 
 ### Household email
 Operator guide: `docs/household-email.md`. One operator Gmail inbox; households forward to `<base>+<key>[-<person>]`; `services/mail-intake/` (local 5-minute timer) delivers through `POST /api/service/inbox/deliver`.
