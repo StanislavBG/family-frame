@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openEventsDb } from "./db";
-import { areaKey, createGeocoder, geocodeHousehold, haversineKm } from "./geo";
+import { areaKey, canonicalAreaKeyFromLegacy, createGeocoder, geocodeHousehold, haversineKm } from "./geo";
 
 type Handler = (url: string) => unknown[] | Error;
 
@@ -79,6 +79,23 @@ test("haversine Sofia to Plovdiv is about 132 km", () => {
 });
 
 test("areaKey lowercases and strips accents", () => {
-  assert.equal(areaKey({ city: "  São  Paulo ", region: "SP", country: "Brasil" }), "sao paulo|sp|brasil");
-  assert.equal(areaKey({ city: "Plovdiv", country: "Bulgaria" }), "plovdiv||bulgaria");
+  assert.equal(areaKey({ city: "  São  Paulo ", region: "SP", country: "Brasil" }), "sao paulo|brasil");
+  assert.equal(areaKey({ city: "Plovdiv", country: "Bulgaria" }), "plovdiv|bg");
+});
+
+test("areaKey is canonical across spellings of one city", () => {
+  assert.equal(areaKey({ city: "Santa Clara, CA", region: "CA", country: "USA" }), "santa clara|us");
+  assert.equal(areaKey({ city: "Santa Clara", region: "", country: "US" }), "santa clara|us");
+  assert.equal(areaKey({ city: "Santa Clara", region: "California", country: "United States" }), "santa clara|us");
+  assert.equal(areaKey({ city: "Santa Clara, California", region: "", country: "U.S.A." }), "santa clara|us");
+  assert.equal(areaKey({ city: "Woodinville", region: "Washington", country: "US" }), "woodinville|us");
+  assert.equal(areaKey({ city: "London", region: "", country: "England" }), "london|gb");
+});
+
+test("canonicalAreaKeyFromLegacy converts legacy and canonical keys", () => {
+  assert.equal(canonicalAreaKeyFromLegacy("santa clara, ca|ca|usa"), "santa clara|us");
+  assert.equal(canonicalAreaKeyFromLegacy("santa clara|ca|usa"), "santa clara|us");
+  assert.equal(canonicalAreaKeyFromLegacy("santa clara||us"), "santa clara|us");
+  assert.equal(canonicalAreaKeyFromLegacy("santa clara|us"), "santa clara|us");
+  assert.equal(canonicalAreaKeyFromLegacy("plovdiv||bulgaria"), "plovdiv|bg");
 });

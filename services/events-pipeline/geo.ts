@@ -120,7 +120,51 @@ function norm(s: string | undefined): string {
   return (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-/** Groups households for shared searches: lowercase, accent-stripped 'city|region|country'. */
+const US_STATES = new Set([
+  "alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut", "delaware",
+  "district of columbia", "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa",
+  "kansas", "kentucky", "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota",
+  "mississippi", "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+  "new mexico", "new york", "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
+  "pennsylvania", "rhode island", "south carolina", "south dakota", "tennessee", "texas", "utah",
+  "vermont", "virginia", "washington", "west virginia", "wisconsin", "wyoming",
+]);
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  us: "us", usa: "us", "u.s.": "us", "u.s.a.": "us", "united states": "us", "united states of america": "us",
+  uk: "gb", gb: "gb", "united kingdom": "gb", "great britain": "gb", england: "gb",
+  bulgaria: "bg",
+};
+
+function canonicalCountry(country: string): string {
+  const c = norm(country);
+  return COUNTRY_ALIASES[c] ?? c;
+}
+
+/** Drops a trailing ", <region>" / ", <2-3 letter code>" / ", <US state name>" from a normalised city. */
+function canonicalCity(city: string, region: string): string {
+  const n = norm(city);
+  const comma = n.lastIndexOf(",");
+  if (comma < 0) return n;
+  const suffix = n.slice(comma + 1).trim();
+  const r = norm(region);
+  if ((r && suffix === r) || /^[a-z]{2,3}$/.test(suffix) || US_STATES.has(suffix)) {
+    return n.slice(0, comma).trim();
+  }
+  return n;
+}
+
+/** Groups households for shared searches: canonical '<city>|<country>' (region is dropped on purpose). */
 export function areaKey(address: Pick<HouseholdAddress, "city" | "region" | "country">): string {
-  return `${norm(address.city)}|${norm(address.region)}|${norm(address.country)}`;
+  return `${canonicalCity(address.city ?? "", address.region ?? "")}|${canonicalCountry(address.country ?? "")}`;
+}
+
+/** Converts a legacy 'city|region|country' key (or an already canonical 'city|country' key) to the canonical key. */
+export function canonicalAreaKeyFromLegacy(oldKey: string): string {
+  const parts = oldKey.split("|");
+  if (parts.length >= 3) {
+    return areaKey({ city: parts[0], region: parts[1], country: parts.slice(2).join("|") });
+  }
+  if (parts.length === 2) return areaKey({ city: parts[0], region: "", country: parts[1] });
+  return areaKey({ city: oldKey, region: "", country: "" });
 }

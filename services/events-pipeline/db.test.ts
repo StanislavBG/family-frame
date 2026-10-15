@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SAMPLE_EVENT, type FfEvent } from "../../shared/events";
@@ -46,7 +50,7 @@ test("schema creation is idempotent and sets user_version", () => {
   for (const t of ["events", "households", "recommendations", "search_log", "geocode_cache", "runs"]) {
     assert.ok(before.includes(t), t);
   }
-  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 3);
+  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 4);
   db.close();
 });
 
@@ -126,4 +130,37 @@ test("geocode cache and run log round-trip", () => {
   assert.equal(row?.finished_at, "t1");
   assert.equal(row?.stats_json, '{"found":2}');
   db.close();
+});
+
+test("opening a v3 database rewrites area keys to the canonical form once", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ff-areakey-"));
+  const path = join(dir, "events.db");
+  const db = openEventsDb(path);
+  const addrs = [
+    { city: "Santa Clara, CA", region: "CA", country: "USA" },
+    { city: "Santa Clara", region: "", country: "US" },
+    { city: "Santa Clara", region: "California", country: "United States" },
+  ];
+  const legacy = ["santa clara, ca|ca|usa", "santa clara|ca|usa", "santa clara||us"];
+  addrs.forEach((a, i) => {
+    db.prepare("INSERT INTO households (id, address_json, area_key) VALUES (?, ?, ?)").run(`h${i}`, JSON.stringify(a), legacy[i]);
+    db.prepare("INSERT INTO events (id, fingerprint, area_key) VALUES (?, ?, ?)").run(`e${i}`, `fp${i}`, legacy[i]);
+    db.prepare("INSERT INTO search_log (area_key, window_key, category_key) VALUES (?, 'w', 'c')").run(legacy[i]);
+  });
+  db.exec("PRAGMA user_version = 3");
+  db.close();
+
+  const keys = (d: DatabaseSync) =>
+    ["households", "events", "search_log"].map((t) =>
+      d.prepare(`SELECT DISTINCT area_key FROM ${t}`).all().map((r) => r.area_key),
+    );
+  const again = openEventsDb(path);
+  assert.deepEqual(keys(again), [["santa clara|us"], ["santa clara|us"], ["santa clara|us"]]);
+  assert.equal(again.prepare("PRAGMA user_version").get()?.user_version, 4);
+  // A row edited after migration must survive a second open untouched.
+  again.prepare("UPDATE events SET area_key = 'x|y' WHERE id = 'e0'").run();
+  again.close();
+  const third = openEventsDb(path);
+  assert.equal(third.prepare("SELECT area_key FROM events WHERE id = 'e0'").get()?.area_key, "x|y");
+  third.close();
 });

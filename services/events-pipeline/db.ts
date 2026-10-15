@@ -1,10 +1,11 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { areaKey as areaKeyOf, canonicalAreaKeyFromLegacy } from "./geo";
 import { ffEventSchema, type FfEvent, type HouseholdResponse, type RecommendationInput } from "../../shared/events";
 
 export type EventsDb = DatabaseSync;
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS events (
@@ -73,6 +74,7 @@ CREATE TABLE IF NOT EXISTS runs (
 /** Open (and create if needed) the pipeline database. ':memory:' is allowed. */
 export function openEventsDb(path: string): EventsDb {
   const db = new DatabaseSync(path);
+  const priorVersion = Number(db.prepare("PRAGMA user_version").get()?.user_version ?? 0);
   db.exec(SCHEMA_SQL);
   // v2: last published RecommendationInput, so the dispatcher can re-push text.
   const cols = db.prepare("PRAGMA table_info(recommendations)").all();
@@ -84,8 +86,39 @@ export function openEventsDb(path: string): EventsDb {
   for (const col of ["last_discovered_at", "last_triggered_at"]) {
     if (!hCols.some((c) => c.name === col)) db.exec(`ALTER TABLE households ADD COLUMN ${col} TEXT`);
   }
+  // v4: canonical '<city>|<country>' area keys, so one city shares a single search cache.
+  if (priorVersion < 4) migrateAreaKeys(db);
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   return db;
+}
+
+function migrateAreaKeys(db: EventsDb): void {
+  db.exec("BEGIN");
+  try {
+    const setHousehold = db.prepare("UPDATE households SET area_key = ? WHERE id = ?");
+    for (const r of db.prepare("SELECT id, address_json, area_key FROM households").all()) {
+      let key: string | null = null;
+      try {
+        const a = JSON.parse(str(r.address_json));
+        if (a && typeof a === "object") key = areaKeyOf(a);
+      } catch {
+        // fall back to the stored legacy key
+      }
+      setHousehold.run(key ?? canonicalAreaKeyFromLegacy(strOrNull(r.area_key) ?? ""), str(r.id));
+    }
+    for (const table of ["events", "search_log"]) {
+      const update = db.prepare(`UPDATE ${table} SET area_key = ? WHERE area_key = ?`);
+      for (const r of db.prepare(`SELECT DISTINCT area_key FROM ${table} WHERE area_key IS NOT NULL`).all()) {
+        const old = str(r.area_key);
+        const next = canonicalAreaKeyFromLegacy(old);
+        if (next !== old) update.run(next, old);
+      }
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 function str(v: unknown): string {
