@@ -14,7 +14,9 @@ import {
   type FeedbackSignal,
   type FfEvent,
   type HouseholdResponse,
+  type VisitPlan,
 } from "@shared/events";
+import { dayWindows, suggestVisit, toMinutes, visitToPlan, DEFAULT_VISIT_PREFS, type DayWindow, type VisitPrefs } from "@shared/events-visit";
 
 export class EventsError extends Error {
   constructor(message: string, public status: number) {
@@ -66,6 +68,7 @@ export interface EventCalendarLink {
 
 export interface EventPlan {
   occurrenceStart?: string;
+  visit?: VisitPlan;
   notes?: string;
   people?: string[];
 }
@@ -243,6 +246,28 @@ function calendarDates(event: FfEvent, occurrenceStart?: string): DateFields {
   return out;
 }
 
+// Calendar fields for a planned visit block (local date and times).
+function visitDates(visit: VisitPlan): DateFields {
+  const date = visit.start.slice(0, 10);
+  return { startDate: date, endDate: date, startTime: visit.start.slice(11, 16), endTime: visit.end.slice(11, 16) };
+}
+
+// A plan's visit wins over its occurrence, which wins over the main schedule.
+const planDates = (event: FfEvent, plan?: EventPlan): DateFields =>
+  plan?.visit ? visitDates(plan.visit) : calendarDates(event, plan?.occurrenceStart);
+
+// Throws 400 unless the visit lies on a day the event runs and inside that day's known hours; returns the matching window.
+function assertVisitFits(event: FfEvent, visit: VisitPlan): DayWindow {
+  const date = visit.start.slice(0, 10);
+  const onDay = dayWindows(event, { maxDays: 400 }).filter((w) => w.date === date);
+  if (onDay.length === 0) throw new EventsError("visit date is not a day this event runs", 400);
+  const start = toMinutes(visit.start.slice(11, 16));
+  const end = toMinutes(visit.end.slice(11, 16));
+  const fit = onDay.find((w) => !w.hoursKnown || (start >= toMinutes(w.open) && end <= toMinutes(w.close)));
+  if (!fit) throw new EventsError("visit must fall within the event's opening hours", 400);
+  return fit;
+}
+
 const scheduleKey = (e: FfEvent) => JSON.stringify([e.schedule.timezone, e.schedule.start, e.schedule.end, e.schedule.allDay, e.schedule.occurrences]);
 
 const eventLocation = (e: FfEvent) => [e.location.venueName, e.location.city].filter(Boolean).join(", ");
@@ -315,7 +340,7 @@ export function createEventsService(deps: EventsDeps) {
     const patch: Parameters<ReturnType<typeof calendar>["setLinkedFields"]>[3] = {};
     if (next.status === "cancelled" && prevEvent.status !== "cancelled") patch.cancelled = true;
     else if (prevEvent.status === "cancelled" && next.status !== "cancelled") patch.cancelled = false;
-    if (scheduleKey(prevEvent) !== scheduleKey(next) && !prev.plan?.occurrenceStart) {
+    if (scheduleKey(prevEvent) !== scheduleKey(next) && !prev.plan?.occurrenceStart && !prev.plan?.visit) {
       Object.assign(patch, calendarDates(next));
       // Explicit empty strings clear stale times (all-day or end removed).
       patch.startTime = patch.startTime ?? "";
@@ -329,6 +354,22 @@ export function createEventsService(deps: EventsDeps) {
       if (isMissingEntry(err)) return null;
       throw err;
     }
+  }
+
+  // The window a default visit is planned on: the chosen occurrence's day, else the next upcoming day, else the first.
+  function chooseDay(event: FfEvent, occurrenceStart?: string): DayWindow | undefined {
+    const windows = dayWindows(event, { maxDays: 400 });
+    const tz = event.schedule.timezone;
+    if (occurrenceStart) {
+      const t = Date.parse(occurrenceStart);
+      const exact = windows.find((w) => w.occurrenceStart !== undefined && Date.parse(w.occurrenceStart) === t);
+      if (exact) return exact;
+      const date = localParts(occurrenceStart, tz).date;
+      const sameDay = windows.find((w) => w.date === date);
+      if (sameDay) return sameDay;
+    }
+    const today = localParts(now(), tz).date;
+    return windows.find((w) => w.date >= today) ?? windows[0];
   }
 
   const service = {
@@ -522,25 +563,52 @@ export function createEventsService(deps: EventsDeps) {
       if (!parsed.success) {
         throw new EventsError(`Invalid response: ${parsed.error.issues[0]?.message ?? "invalid"}`, 400);
       }
-      const { response, reason, visibility, people } = parsed.data;
+      const { response, reason, visibility, people, visit } = parsed.data;
       const raw = await loadOne(userId, eventId);
       const event = parseJson<FfEvent>(raw.eventJson, "eventJson", eventId);
       if (!event) throw new EventsError("Event not found", 404);
 
       await service.appendResponseFeedback(userId, eventId, response, reason);
 
+      const plan: EventPlan = { ...(raw.plan ?? {}) };
+      let planChanged = false;
+      if (visit) {
+        const window = assertVisitFits(event, visit);
+        plan.visit = visit;
+        if (window.kind === "session" && window.occurrenceStart) plan.occurrenceStart = window.occurrenceStart;
+        planChanged = true;
+      }
+
       const resolvedPeople = people ?? raw.plan?.people;
+      // Long windows get a default 2-3h block (from the household's preferences) instead of the whole span.
+      const ensureVisit = async () => {
+        if (plan.visit) return;
+        const day = chooseDay(event, plan.occurrenceStart);
+        if (!day || !day.hoursKnown) return;
+        const prefs = await service.getPreferences(userId);
+        const visitPrefs: VisitPrefs = {
+          visitBlockMinutes: prefs.visitBlockMinutes ?? DEFAULT_VISIT_PREFS.visitBlockMinutes,
+          visitEarliest: prefs.visitEarliest ?? DEFAULT_VISIT_PREFS.visitEarliest,
+          visitLatestEnd: prefs.visitLatestEnd ?? DEFAULT_VISIT_PREFS.visitLatestEnd,
+          preferredTimes: prefs.preferredTimes,
+        };
+        if (toMinutes(day.close) - toMinutes(day.open) <= visitPrefs.visitBlockMinutes + 30) return;
+        plan.visit = visitToPlan(suggestVisit(day, visitPrefs));
+        if (day.kind === "session" && day.occurrenceStart) plan.occurrenceStart = day.occurrenceStart;
+        planChanged = true;
+      };
       const createLinked = async (): Promise<EventCalendarLink> => {
         const vis = visibility ?? "Private";
+        await ensureVisit();
         const input: Parameters<ReturnType<typeof calendar>["createEvent"]>[2] = {
           title: event!.title,
-          ...calendarDates(event!, raw.plan?.occurrenceStart),
+          ...planDates(event!, plan),
           type: vis,
           people: resolvedPeople ?? [],
         };
         const loc = eventLocation(event!);
         if (loc) input.location = loc;
-        if (raw.plan?.notes) input.notes = raw.plan.notes;
+        if (plan.notes) input.notes = plan.notes;
         const created: CalendarEvent = await calendar().createEvent(userId, username, input, { source: { app: "events", refId: eventId } });
         if (event!.status === "cancelled") {
           await calendar().setLinkedFields(userId, username, created.id, { cancelled: true }).catch(() => undefined);
@@ -564,6 +632,7 @@ export function createEventsService(deps: EventsDeps) {
           try {
             const patch: Parameters<ReturnType<typeof calendar>["setLinkedFields"]>[3] = { type: visibility ?? link.visibility };
             if (resolvedPeople) patch.people = resolvedPeople;
+            if (visit) Object.assign(patch, visitDates(visit));
             await calendar().setLinkedFields(userId, username, link.calendarEventId, patch);
             link = { calendarEventId: link.calendarEventId, visibility: visibility ?? link.visibility };
           } catch (err) {
@@ -577,7 +646,9 @@ export function createEventsService(deps: EventsDeps) {
         }
       }
 
-      await deps.update(recPath(userId, eventId), { response, respondedAt: now(), calendar: link });
+      const writes: Record<string, any> = { response, respondedAt: now(), calendar: link };
+      if (planChanged) writes.plan = plan;
+      await deps.update(recPath(userId, eventId), writes);
       return service.getRecommendation(userId, eventId);
     },
 
@@ -586,7 +657,7 @@ export function createEventsService(deps: EventsDeps) {
       if (!parsed.success) {
         throw new EventsError(`Invalid plan: ${parsed.error.issues[0]?.message ?? "invalid"}`, 400);
       }
-      const { occurrenceStart, notes, people, visibility } = parsed.data;
+      const { occurrenceStart, notes, people, visibility, visit } = parsed.data;
       const raw = await loadOne(userId, eventId);
       const event = parseJson<FfEvent>(raw.eventJson, "eventJson", eventId);
       if (!event) throw new EventsError("Event not found", 404);
@@ -598,7 +669,15 @@ export function createEventsService(deps: EventsDeps) {
       }
 
       const plan: EventPlan = { ...(raw.plan ?? {}) };
-      if (occurrenceStart !== undefined) plan.occurrenceStart = occurrenceStart;
+      if (visit) {
+        const window = assertVisitFits(event, visit);
+        plan.visit = visit;
+        if (window.kind === "session" && window.occurrenceStart) plan.occurrenceStart = window.occurrenceStart;
+      } else if (occurrenceStart !== undefined) {
+        // Picking another occurrence drops a visit planned for a different day.
+        delete plan.visit;
+      }
+      if (occurrenceStart !== undefined && !(visit && plan.occurrenceStart)) plan.occurrenceStart = occurrenceStart;
       if (notes !== undefined) plan.notes = notes;
       if (people !== undefined) plan.people = people;
 
@@ -606,7 +685,7 @@ export function createEventsService(deps: EventsDeps) {
       const link = raw.calendar;
       if (link) {
         const patch: Parameters<ReturnType<typeof calendar>["setLinkedFields"]>[3] = {};
-        if (occurrenceStart !== undefined) Object.assign(patch, calendarDates(event, occurrenceStart));
+        if (visit || occurrenceStart !== undefined) Object.assign(patch, planDates(event, plan));
         if (notes !== undefined) patch.notes = notes;
         if (people !== undefined) patch.people = people;
         if (visibility !== undefined) patch.type = visibility;
