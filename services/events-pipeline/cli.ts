@@ -128,6 +128,22 @@ export function acquireLock(path: string, now: number = Date.now()): (() => void
   return null;
 }
 
+/** Retry `acquireLock` up to `attempts` times, sleeping `intervalMs` between tries (no sleep after the last). */
+export async function acquireLockWithWait(
+  path: string,
+  opts: { attempts: number; intervalMs: number; sleep: (ms: number) => Promise<void>; now: () => number },
+): Promise<(() => void) | null> {
+  for (let i = 0; i < opts.attempts; i++) {
+    const release = acquireLock(path, opts.now());
+    if (release) return release;
+    if (i < opts.attempts - 1) await opts.sleep(opts.intervalMs);
+  }
+  return null;
+}
+
+const LOCK_WAIT_ATTEMPTS = 40;
+const LOCK_WAIT_INTERVAL_MS = 30_000;
+
 /** Usage accrued since `before` (the runner's meter is cumulative across discover and refresh in `all` mode). */
 export function usageSince(now: HaikuUsage, before?: HaikuUsage): HaikuUsage {
   if (!before) return now;
@@ -204,6 +220,7 @@ export interface CliDeps {
   runWatch?: typeof runWatch;
   notify?: (n: Notice) => void;
   tmpRoot?: string;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** Run the CLI; resolves to the process exit code (0 ok, 1 error, 2 bad usage or config). */
@@ -265,14 +282,39 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
     }
   }
 
-  const release = acquireLock(`${cfg.dbPath}.lock`, now().getTime());
-  if (!release) {
-    out(JSON.stringify({ skipped: "locked" }));
-    return 0;
+  const lockPath = `${cfg.dbPath}.lock`;
+  const notify = deps.notify ?? sendNotice;
+  let release: (() => void) | null;
+  if (args.mode === "watch") {
+    release = acquireLock(lockPath, now().getTime());
+    if (!release) {
+      out(JSON.stringify({ skipped: "locked" }));
+      return 0;
+    }
+  } else {
+    const waitStart = Date.now();
+    release = await acquireLockWithWait(lockPath, {
+      attempts: LOCK_WAIT_ATTEMPTS,
+      intervalMs: LOCK_WAIT_INTERVAL_MS,
+      sleep: deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+      now: () => now().getTime(),
+    });
+    if (!release) {
+      out(JSON.stringify({ skipped: "locked", waitedMs: Date.now() - waitStart }));
+      try {
+        notify({
+          title: "Family Frame events: run skipped",
+          body: `The ${args.mode} run gave up after waiting for the lock: another run held the lock the whole time, so nothing ran.`,
+          urgency: "critical",
+        });
+      } catch {
+        // a failing notice must not mask the exit code
+      }
+      return 1;
+    }
   }
   const scratch = mkdtempSync(join(deps.tmpRoot ?? tmpdir(), "ff-events-"));
   let db: EventsDb | undefined;
-  const notify = deps.notify ?? sendNotice;
   const t0 = Date.now();
   try {
     db = open(cfg.dbPath);

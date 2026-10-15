@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireLock, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
+import { acquireLock, acquireLockWithWait, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
 import { openEventsDb, startRun, finishRun } from "./db";
 import type { FfClient } from "./ff-client";
 import type { Notice } from "./notify";
@@ -76,10 +76,69 @@ test("lock contention exits 0 without running", async () => {
   assert.equal(await main(["status"], h.deps), 0); // creates the data dir
   writeFileSync(`${dbPath}.lock`, "1\n");
   h.lines.length = 0;
-  assert.equal(await main(["discover"], h.deps), 0);
+  h.deps.sleep = async () => {};
+  h.deps.notify = () => {};
+  assert.equal(await main(["discover"], h.deps), 1);
   assert.equal(called, false);
   assert.match(h.lines[0], /locked/);
   assert.ok(existsSync(`${dbPath}.lock`), "foreign lock left in place");
+});
+
+test("acquireLockWithWait proceeds once the lock is freed after 2 tries", async () => {
+  const p = join(mkdtempSync(join(tmpdir(), "cli-lock-")), "x.lock");
+  writeFileSync(p, "1\n");
+  let sleeps = 0;
+  const release = await acquireLockWithWait(p, {
+    attempts: 40,
+    intervalMs: 30000,
+    sleep: async () => {
+      sleeps++;
+      if (sleeps === 2) unlinkSync(p);
+    },
+    now: Date.now,
+  });
+  assert.ok(release);
+  assert.equal(sleeps, 2);
+  release();
+});
+
+test("discover waits for a lock freed after 2 tries, then runs", async () => {
+  const h = harness(WATCH_ENV);
+  const dbPath = h.deps.env!.EVENTS_DB_PATH!;
+  assert.equal(await main(["status"], h.deps), 0);
+  writeFileSync(`${dbPath}.lock`, "1\n");
+  let sleeps = 0;
+  h.deps.sleep = async () => {
+    if (++sleeps === 2) unlinkSync(`${dbPath}.lock`);
+  };
+  h.lines.length = 0;
+  assert.equal(await main(["discover", "--dry-run"], h.deps), 0);
+  assert.equal(sleeps, 2);
+  assert.equal(JSON.parse(h.lines[0]).skipped, undefined);
+  assert.equal(JSON.parse(h.lines[0]).mode, "discover");
+});
+
+test("a lock never freed: exit 1, one critical notice, 39 sleeps", async () => {
+  const h = harness(WATCH_ENV);
+  const notices: Notice[] = [];
+  h.deps.notify = (n) => notices.push(n);
+  const dbPath = h.deps.env!.EVENTS_DB_PATH!;
+  assert.equal(await main(["status"], h.deps), 0);
+  writeFileSync(`${dbPath}.lock`, "1\n");
+  let sleeps = 0;
+  h.deps.sleep = async () => {
+    sleeps++;
+  };
+  h.lines.length = 0;
+  assert.equal(await main(["all"], h.deps), 1);
+  assert.equal(sleeps, 39);
+  const line = JSON.parse(h.lines[0]);
+  assert.equal(line.skipped, "locked");
+  assert.equal(typeof line.waitedMs, "number");
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].urgency, "critical");
+  assert.match(notices[0].body, /all/);
+  assert.match(notices[0].body, /another run held the lock/);
 });
 
 test("stale lock is replaced", () => {
@@ -137,8 +196,13 @@ test("watch skips with exit 0 when the lock is held", async () => {
   assert.equal(await main(["status"], h.deps), 0);
   writeFileSync(`${dbPath}.lock`, "1\n");
   h.lines.length = 0;
+  let slept = false;
+  h.deps.sleep = async () => {
+    slept = true;
+  };
   assert.equal(await main(["watch"], h.deps), 0);
   assert.equal(called, false);
+  assert.equal(slept, false);
   assert.deepEqual(JSON.parse(h.lines[0]), { skipped: "locked" });
 });
 
