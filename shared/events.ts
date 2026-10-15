@@ -103,6 +103,25 @@ const isoDateTime = z
   .max(40)
   .refine((s) => !Number.isNaN(Date.parse(s)), "Must be an ISO date or date-time");
 
+const localDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/, "Must be a local date-time without offset");
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Must be HH:MM (24h)");
+
+const localMinutes = (s: string) => Number(s.slice(11, 13)) * 60 + Number(s.slice(14, 16));
+
+export const visitPlanSchema = z
+  .object({ start: localDateTime, end: localDateTime })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.start.slice(0, 10) !== v.end.slice(0, 10)) {
+      ctx.addIssue({ code: "custom", message: "Visit must start and end on the same date" });
+      return;
+    }
+    const diff = localMinutes(v.end) - localMinutes(v.start);
+    if (diff <= 0) ctx.addIssue({ code: "custom", message: "Visit end must be after start" });
+    else if (diff > 720) ctx.addIssue({ code: "custom", message: "Visit must be at most 12 hours" });
+  });
+export type VisitPlan = z.infer<typeof visitPlanSchema>;
+
 const visibilitySchema = z.enum(["Shared", "Private"]);
 const languagesSchema = z.array(z.string().min(2).max(8)).max(10);
 
@@ -284,6 +303,9 @@ export const eventPreferencesSchema = z
     preferredTimes: z.array(z.enum(["morning", "afternoon", "evening"])).default([]),
     languages: languagesSchema.default([]),
     notes: z.string().max(1000).default(""),
+    visitBlockMinutes: z.number().int().min(60).max(240).default(150),
+    visitEarliest: hhmm.default("10:00"),
+    visitLatestEnd: hhmm.default("18:00"),
   })
   .strict();
 export type EventPreferences = z.infer<typeof eventPreferencesSchema>;
@@ -336,6 +358,7 @@ export const postResponseSchema = z
     visibility: visibilitySchema.optional(),
     people: z.array(z.string().max(80)).max(20).optional(),
     reason: z.string().max(EVENTS_LIMITS.maxFeedbackReason).optional(),
+    visit: visitPlanSchema.optional(),
   })
   .strict();
 export type PostResponse = z.infer<typeof postResponseSchema>;
@@ -346,6 +369,7 @@ export const patchPlanSchema = z
     notes: z.string().max(500).optional(),
     people: z.array(z.string()).max(20).optional(),
     visibility: visibilitySchema.optional(),
+    visit: visitPlanSchema.optional(),
   })
   .strict()
   .refine((p) => Object.keys(p).length > 0, "At least one field is required");

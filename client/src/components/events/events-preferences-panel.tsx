@@ -73,6 +73,9 @@ const EMPTY_PREFS: EventPreferences = {
   preferredTimes: [],
   languages: [],
   notes: "",
+  visitBlockMinutes: 150,
+  visitEarliest: "10:00",
+  visitLatestEnd: "18:00",
 };
 
 function toggle<T>(list: T[], value: T): T[] {

@@ -7,6 +7,7 @@ import {
   postFeedbackSchema,
   eventPreferencesSchema,
   patchPlanSchema,
+  postResponseSchema,
   EVENTS_LIMITS,
   SAMPLE_EVENT,
   SAMPLE_RECOMMENDATION_INPUT,
@@ -68,4 +69,50 @@ test("preferences default and patchPlan needs a key", () => {
   assert.equal(p.budget, "any");
   assert.equal(patchPlanSchema.safeParse({}).success, false);
   assert.equal(patchPlanSchema.safeParse({ notes: "x" }).success, true);
+});
+
+const goodVisit = { start: "2026-10-24T11:00", end: "2026-10-24T13:30" };
+
+test("visit accepted on postResponseSchema and patchPlanSchema", () => {
+  assert.equal(postResponseSchema.safeParse({ response: "going", visit: goodVisit }).success, true);
+  assert.equal(patchPlanSchema.safeParse({ visit: goodVisit }).success, true);
+  assert.equal(
+    patchPlanSchema.safeParse({ visit: { start: "2026-10-24T11:00:00", end: "2026-10-24T13:00:00" } }).success,
+    true,
+  );
+});
+
+test("visit rejects bad windows", () => {
+  const bad = [
+    { start: "2026-10-24T11:00", end: "2026-10-25T01:00" },
+    { start: "2026-10-24T11:00", end: "2026-10-24T11:00" },
+    { start: "2026-10-24T11:00", end: "2026-10-24T10:00" },
+    { start: "2026-10-24T08:00", end: "2026-10-24T20:01" },
+    { start: "2026-10-24T11:00Z", end: "2026-10-24T13:00Z" },
+    { start: "2026-10-24T11:00", end: "2026-10-24T13:00+02:00" },
+    { start: "2026-10-24T11:00", end: "2026-10-24T13:00", extra: 1 },
+  ];
+  for (const visit of bad) {
+    assert.equal(postResponseSchema.safeParse({ response: "going", visit }).success, false, JSON.stringify(visit));
+    assert.equal(patchPlanSchema.safeParse({ visit }).success, false, JSON.stringify(visit));
+  }
+});
+
+test("visit allows exactly 12 hours", () => {
+  assert.equal(
+    patchPlanSchema.safeParse({ visit: { start: "2026-10-24T08:00", end: "2026-10-24T20:00" } }).success,
+    true,
+  );
+});
+
+test("visit preferences default and validate", () => {
+  const p = eventPreferencesSchema.parse({});
+  assert.equal(p.visitBlockMinutes, 150);
+  assert.equal(p.visitEarliest, "10:00");
+  assert.equal(p.visitLatestEnd, "18:00");
+  assert.equal(eventPreferencesSchema.safeParse({ visitBlockMinutes: 30 }).success, false);
+  assert.equal(eventPreferencesSchema.safeParse({ visitBlockMinutes: 300 }).success, false);
+  assert.equal(eventPreferencesSchema.safeParse({ visitBlockMinutes: 90.5 }).success, false);
+  assert.equal(eventPreferencesSchema.safeParse({ visitEarliest: "25:00" }).success, false);
+  assert.equal(eventPreferencesSchema.safeParse({ visitLatestEnd: "9:00" }).success, false);
 });
