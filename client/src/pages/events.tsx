@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { CalendarDays, CalendarHeart, Hourglass, List } from "lucide-react";
 import type { EventCategory } from "@shared/events";
 import { EmptyState } from "@/components/empty-state";
 import { EventHero } from "@/components/events/event-hero";
+import { EventsDayPanel } from "@/components/events/events-day-panel";
 import { EventsMonth } from "@/components/events/events-month";
 import {
   DateBadge,
@@ -171,6 +172,8 @@ function Overview() {
   const [category, setCategory] = useState<EventCategory | null>(null);
   const [response, setResponse] = useState<ResponseFilter>("active");
   const [month, setMonth] = useState(`${today.slice(0, 7)}-01`);
+  const [selectedDate, setSelectedDate] = useState(today);
+  const panelRef = useRef<HTMLDivElement>(null);
   const { data: items = [], isLoading } = useEventItems({
     includeHidden: response === "all",
   });
@@ -194,6 +197,20 @@ function Overview() {
     () => Array.from(new Set(items.map((i) => i.event.category))),
     [items],
   );
+
+  const changeMonth = (monthIso: string) => {
+    setMonth(monthIso);
+    const ym = monthIso.slice(0, 7);
+    setSelectedDate(today.slice(0, 7) === ym ? today : `${ym}-01`);
+  };
+  const selectDate = (iso: string) => {
+    setSelectedDate(iso);
+    setMonth(`${iso.slice(0, 7)}-01`);
+    if (!window.matchMedia("(min-width: 1024px)").matches) {
+      // Wait for the panel to render the new day before scrolling.
+      requestAnimationFrame(() => panelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }));
+    }
+  };
 
   const counts = status?.counts;
   const columns = useMemo(() => agendaColumns(next14, 3), [next14]);
@@ -287,12 +304,22 @@ function Overview() {
           ))}
         </div>
       ) : view === "month" ? (
-        <EventsMonth
-          items={visible}
-          monthIso={month}
-          onMonthChange={setMonth}
-          weekStartsMonday
-        />
+        <div className="space-y-3 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-3 lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
+          <EventsMonth
+            items={visible}
+            monthIso={month}
+            onMonthChange={changeMonth}
+            weekStartsMonday
+            selectedDate={selectedDate}
+            onSelectDate={selectDate}
+          />
+          <div
+            ref={panelRef}
+            className="lg:sticky lg:top-3 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto"
+          >
+            <EventsDayPanel items={visible} dateIso={selectedDate} onDateChange={selectDate} />
+          </div>
+        </div>
       ) : next14.length === 0 && later.length === 0 ? (
         <p className={cn("text-lg", MUTED)} data-testid="events-none-match">
           No events match these filters.

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Check, ChevronLeft, ChevronRight, Star } from "lucide-react";
 import { DOW_TONES, LINE, SATCHEL_TONES, SERIF, SURFACE } from "@/components/person/satchel";
 import { useToday } from "@/hooks/use-today";
-import { CATEGORY_META, dateKeyInZone, type EventItem } from "@/lib/events";
+import { CATEGORY_META, eventDayEntries, type EventItem } from "@/lib/events";
 import { buildMonthCells, WEEKDAY_SHORT as WEEKDAY } from "@/lib/person-day";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,9 @@ interface EventsMonthProps {
   /** Called with the first day (YYYY-MM-01) of the newly selected month. */
   onMonthChange: (monthIso: string) => void;
   weekStartsMonday: boolean;
+  /** Selected day (YYYY-MM-DD); gets a ring in the grid. */
+  selectedDate: string;
+  onSelectDate: (iso: string) => void;
 }
 
 function parseMonth(monthIso: string): { year: number; month: number } {
@@ -28,12 +31,6 @@ function monthKey(year: number, month: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function occurrenceDates(item: EventItem): string[] {
-  const { schedule } = item.event;
-  const starts = schedule.occurrences.length > 0 ? schedule.occurrences.map((o) => o.start) : [schedule.start];
-  return Array.from(new Set(starts.map((s) => dateKeyInZone(s, schedule.timezone))));
-}
-
 function EventChip({ item }: { item: EventItem }) {
   const tone = SATCHEL_TONES[CATEGORY_META[item.event.category].tone];
   const cancelled = item.event.status === "cancelled";
@@ -41,6 +38,7 @@ function EventChip({ item }: { item: EventItem }) {
   return (
     <Link
       href={`/${encodeURIComponent(item.eventId)}`}
+      onClick={(e) => e.stopPropagation()}
       className={cn(
         "flex min-h-8 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold",
         tone.bg,
@@ -66,22 +64,43 @@ function EventChip({ item }: { item: EventItem }) {
   );
 }
 
-export function EventsMonth({ items, monthIso, onMonthChange, weekStartsMonday }: EventsMonthProps) {
+const DAY_LINK =
+  "min-h-8 rounded-md px-1 text-left text-xs font-semibold text-[#5d5648] underline-offset-2 hover:underline dark:text-muted-foreground";
+
+function dayLabel(iso: string, count: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const text = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  return `${text}, ${count} ${count === 1 ? "event" : "events"}`;
+}
+
+export function EventsMonth({
+  items,
+  monthIso,
+  onMonthChange,
+  weekStartsMonday,
+  selectedDate,
+  onSelectDate,
+}: EventsMonthProps) {
   const todayIso = useToday();
   const { year, month } = parseMonth(monthIso);
   const cells = buildMonthCells(year, month, weekStartsMonday);
 
-  const byDate = useMemo(() => {
-    const map = new Map<string, EventItem[]>();
-    for (const item of items) {
-      for (const date of occurrenceDates(item)) {
-        const list = map.get(date);
-        if (list) list.push(item);
-        else map.set(date, [item]);
-      }
-    }
+  const days = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof eventDayEntries<EventItem>>>();
+    for (const c of cells) map.set(c.iso, eventDayEntries(items, c.iso));
     return map;
-  }, [items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, monthIso, weekStartsMonday]);
+
+  const select = (iso: string) => {
+    onSelectDate(iso);
+    if (iso.slice(0, 7) !== monthIso.slice(0, 7)) onMonthChange(`${iso.slice(0, 7)}-01`);
+  };
 
   const headers = weekStartsMonday ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
   const navButton = "flex h-11 w-11 items-center justify-center rounded-full border";
@@ -123,33 +142,67 @@ export function EventsMonth({ items, monthIso, onMonthChange, weekStartsMonday }
           </div>
         ))}
         {cells.map((c) => {
-          const dayItems = byDate.get(c.iso) ?? [];
-          const extra = dayItems.length - MAX_CHIPS;
+          const entries = days.get(c.iso);
+          const sessions = entries?.sessions ?? [];
+          const openCount = entries?.open.length ?? 0;
+          const extra = sessions.length - MAX_CHIPS;
           const isToday = c.iso === todayIso;
+          const isSelected = c.iso === selectedDate;
           return (
             <div
               key={c.iso}
               className={cn(
-                "flex min-h-[104px] min-w-0 flex-col gap-1 rounded-[14px] border-2 p-1.5",
+                "flex min-h-[104px] min-w-0 cursor-pointer flex-col gap-1 rounded-[14px] border-2 p-1.5",
                 isToday ? "border-[#f4b942] bg-[#fcecc4] dark:bg-[#f4b942]/15" : "border-transparent",
+                isSelected && "ring-2 ring-[#a83818] ring-offset-1 dark:ring-[#e07a52]",
                 !c.inMonth && "opacity-40",
               )}
+              onClick={() => select(c.iso)}
               aria-current={isToday ? "date" : undefined}
               data-testid={`events-month-cell-${c.iso}`}
             >
-              <span
+              <button
+                type="button"
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold",
-                  isToday && "bg-[#a83818] text-[#fff8ef] dark:bg-[#e07a52]",
+                  isToday && "bg-[#a83818] text-[#fff8ef] dark:bg-[#e07a52] dark:text-[#1a1612]",
                 )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  select(c.iso);
+                }}
+                aria-label={dayLabel(c.iso, sessions.length + openCount)}
+                aria-pressed={isSelected}
+                data-testid={`events-month-day-${c.iso}`}
               >
                 {Number(c.iso.slice(8))}
-              </span>
-              {dayItems.slice(0, MAX_CHIPS).map((item) => (
+              </button>
+              {sessions.slice(0, MAX_CHIPS).map(({ item }) => (
                 <EventChip key={item.eventId} item={item} />
               ))}
               {extra > 0 && (
-                <span className="px-1 text-xs font-semibold text-[#5d5648] dark:text-muted-foreground">+{extra} more</span>
+                <button
+                  type="button"
+                  className={DAY_LINK}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    select(c.iso);
+                  }}
+                >
+                  +{extra} more
+                </button>
+              )}
+              {openCount > 0 && (
+                <button
+                  type="button"
+                  className={DAY_LINK}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    select(c.iso);
+                  }}
+                >
+                  {openCount} open all day
+                </button>
               )}
             </div>
           );
