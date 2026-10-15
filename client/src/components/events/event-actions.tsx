@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarPlus, Check, Pencil } from "lucide-react";
 import type { FeedbackSignal, HouseholdResponse } from "@shared/events";
@@ -9,7 +9,21 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { SATCHEL_TONES, SectionLabel, LINE, MUTED, SURFACE } from "@/components/person/satchel";
 import { cn } from "@/lib/utils";
-import { formatWhen, useRespond, useSendFeedback, useUpdatePlan, type EventItem } from "@/lib/events";
+import {
+  DEFAULT_VISIT_PREFS,
+  dayWindows,
+  resizeVisit,
+  shiftVisit,
+  suggestVisit,
+  visitToPlan,
+  type DayWindow,
+  type VisitBlock,
+  type VisitPrefs,
+} from "@shared/events-visit";
+import type { FfEvent } from "@shared/events";
+import { useToday } from "@/hooks/use-today";
+import { parseLocalDate } from "@/lib/format";
+import { formatClockRange, formatWhen, useEventPreferences, useRespond, useSendFeedback, useUpdatePlan, type EventItem } from "@/lib/events";
 
 type Visibility = "Shared" | "Private";
 type ChoiceResponse = "going" | "interested";
@@ -58,6 +72,158 @@ function isPast(item: EventItem): boolean {
   return stamps.length > 0 && Math.max(...stamps) < Date.now();
 }
 
+const MAX_VISIT_DAYS = 14;
+const LENGTH_CHOICES: { minutes: number; label: string; aria: string }[] = [
+  { minutes: 120, label: "2 h", aria: "Visit length 2 hours" },
+  { minutes: 150, label: "2½ h", aria: "Visit length 2 and a half hours" },
+  { minutes: 180, label: "3 h", aria: "Visit length 3 hours" },
+];
+
+const dayLabel = (date: string, opts: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" }) =>
+  parseLocalDate(date).toLocaleDateString("en-US", opts);
+
+function planToBlock(visit: { start: string; end: string }, window?: DayWindow): VisitBlock {
+  const start = visit.start.slice(11, 16);
+  const end = visit.end.slice(11, 16);
+  return {
+    date: visit.start.slice(0, 10),
+    start,
+    end,
+    wholeWindow: !!window && start <= window.open && end >= window.close,
+  };
+}
+
+function windowFor(windows: DayWindow[], block: VisitBlock): DayWindow | undefined {
+  return (
+    windows.find((w) => w.date === block.date && w.open <= block.start && block.end <= w.close) ??
+    windows.find((w) => w.date === block.date)
+  );
+}
+
+export function formatVisit(block: { date: string; start: string; end: string }): string {
+  return `${dayLabel(block.date)}, ${formatClockRange(block.start, block.end, "12h")}`;
+}
+
+/** Visit block state: the household's pick, else the saved plan visit, else the suggestion. */
+function useVisitBlock(event: FfEvent, saved: { start: string; end: string } | undefined, occurrenceStart?: string) {
+  const today = useToday();
+  const { data: preferences } = useEventPreferences();
+  const prefs: VisitPrefs = useMemo(
+    () =>
+      preferences
+        ? {
+            visitBlockMinutes: preferences.visitBlockMinutes,
+            visitEarliest: preferences.visitEarliest,
+            visitLatestEnd: preferences.visitLatestEnd,
+            preferredTimes: preferences.preferredTimes,
+          }
+        : DEFAULT_VISIT_PREFS,
+    [preferences],
+  );
+  const windows = useMemo(() => {
+    const all = dayWindows(event, { from: today, maxDays: MAX_VISIT_DAYS });
+    if (!occurrenceStart || event.schedule.occurrences.length === 0) return all;
+    return all.filter((w) => w.occurrenceStart === occurrenceStart);
+  }, [event, today, occurrenceStart]);
+  const [picked, setPicked] = useState<VisitBlock | null>(null);
+
+  const block = useMemo<VisitBlock | null>(() => {
+    if (picked && windowFor(windows, picked)) return picked;
+    if (saved) {
+      const b = planToBlock(saved);
+      const w = windowFor(windows, b);
+      if (w) return planToBlock(saved, w);
+    }
+    return windows[0] ? suggestVisit(windows[0], prefs) : null;
+  }, [picked, saved, windows, prefs]);
+
+  return { windows, block, setBlock: setPicked as (b: VisitBlock | null) => void };
+}
+
+function VisitEditor({
+  windows,
+  block,
+  onChange,
+  idPrefix,
+}: {
+  windows: DayWindow[];
+  block: VisitBlock | null;
+  onChange: (b: VisitBlock) => void;
+  idPrefix: string;
+}) {
+  if (!block) return null;
+  const window = windowFor(windows, block);
+  if (!window) return null;
+  const tone = SATCHEL_TONES.leaf;
+  const sameDay = (w: DayWindow) => windows.filter((o) => o.date === w.date).length > 1;
+  return (
+    <div className="space-y-2" data-testid={`${idPrefix}-visit-editor`}>
+      {windows.length > 1 && (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Visit day">
+          {windows.map((w) => {
+            const on = w === window;
+            const label = sameDay(w) ? `${dayLabel(w.date)} ${formatClockRange(w.open, w.close)}` : dayLabel(w.date);
+            return (
+              <Button
+                key={`${w.date}-${w.open}`}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                aria-label={`Visit on ${label}`}
+                variant={on ? "default" : "outline"}
+                className={BIG_BUTTON}
+                onClick={() => onChange(suggestVisit(w, DEFAULT_VISIT_PREFS))}
+                data-testid={`${idPrefix}-visit-day-${w.date}`}
+              >
+                {label}
+              </Button>
+            );
+          })}
+        </div>
+      )}
+      <div className={cn("rounded-xl px-3 py-2 text-base font-semibold", tone.bg, tone.fg)} data-testid={`${idPrefix}-visit-block`}>
+        {formatVisit(block)}
+        {block.wholeWindow && <span className="ml-2 text-sm font-medium">Whole event</span>}
+      </div>
+      {!block.wholeWindow && (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className={BIG_BUTTON} aria-label="Start 30 minutes earlier" onClick={() => onChange(shiftVisit(block, window, -30))} data-testid={`${idPrefix}-visit-earlier`}>
+            Earlier
+          </Button>
+          <Button type="button" variant="outline" className={BIG_BUTTON} aria-label="Start 30 minutes later" onClick={() => onChange(shiftVisit(block, window, 30))} data-testid={`${idPrefix}-visit-later`}>
+            Later
+          </Button>
+          {LENGTH_CHOICES.map((c) => {
+            const on = toMinutesLen(block) === c.minutes;
+            return (
+              <Button
+                key={c.minutes}
+                type="button"
+                aria-pressed={on}
+                aria-label={c.aria}
+                variant={on ? "default" : "outline"}
+                className={BIG_BUTTON}
+                onClick={() => onChange(resizeVisit(block, window, c.minutes))}
+                data-testid={`${idPrefix}-visit-length-${c.minutes}`}
+              >
+                {c.label}
+              </Button>
+            );
+          })}
+        </div>
+      )}
+      <div className={cn("text-sm", MUTED)}>
+        {window.hoursKnown ? `Open ${formatClockRange(window.open, window.close)}` : "Hours not listed \u2013 check before you go"}
+      </div>
+    </div>
+  );
+}
+
+function toMinutesLen(b: VisitBlock): number {
+  const m = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  return m(b.end) - m(b.start);
+}
+
 function VisibilityChoice({
   value,
   onChange,
@@ -102,12 +268,14 @@ function ChangePlanDialog({ item, open, onOpenChange }: { item: EventItem; open:
   const [who, setWho] = useState<string[]>(item.plan?.people ?? []);
   const [notes, setNotes] = useState(item.plan?.notes ?? "");
   const [visibility, setVisibility] = useState<Visibility>(item.calendar?.visibility ?? "Private");
+  const hasOccurrences = schedule.occurrences.length > 0;
+  const visit = useVisitBlock(item.event, item.plan?.visit, hasOccurrences ? occurrence : undefined);
 
   const toggle = (id: string) => setWho((cur) => (cur.includes(id) ? cur.filter((p) => p !== id) : [...cur, id]));
 
   const save = () =>
     updatePlan.mutate(
-      { occurrenceStart: occurrence, people: who, notes, visibility },
+      { occurrenceStart: occurrence, people: who, notes, visibility, ...(visit.block ? { visit: visitToPlan(visit.block) } : {}) },
       { onSuccess: () => onOpenChange(false) },
     );
 
@@ -119,6 +287,7 @@ function ChangePlanDialog({ item, open, onOpenChange }: { item: EventItem; open:
           <DialogDescription>Pick the date, who is going and how it shows on the calendar.</DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] space-y-4 overflow-y-auto">
+          {hasOccurrences && (
           <div className="space-y-2">
             <SectionLabel>Which date</SectionLabel>
             <div className="flex flex-col gap-2" role="radiogroup" aria-label="Which date">
@@ -141,6 +310,11 @@ function ChangePlanDialog({ item, open, onOpenChange }: { item: EventItem; open:
                 );
               })}
             </div>
+          </div>
+          )}
+          <div className="space-y-2">
+            <SectionLabel>Your visit</SectionLabel>
+            <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="plan" />
           </div>
           {people.length > 0 && (
             <div className="space-y-2">
@@ -204,6 +378,7 @@ export function EventActions({ item }: { item: EventItem }) {
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const [planOpen, setPlanOpen] = useState(false);
+  const visit = useVisitBlock(item.event, item.plan?.visit);
   const past = isPast(item);
   const current: HouseholdResponse = item.response;
 
@@ -215,6 +390,7 @@ export function EventActions({ item }: { item: EventItem }) {
     }
     setDeclining(false);
     setCalendarVisibility(item.calendar?.visibility ?? "Private");
+    visit.setBlock(null);
     setChoosing((c) => (c === value ? null : value));
   };
 
@@ -222,7 +398,12 @@ export function EventActions({ item }: { item: EventItem }) {
     if (!choosing) return;
     respond.mutate(
       addToCalendar
-        ? { response: choosing, addToCalendar: true, visibility: calendarVisibility }
+        ? {
+            response: choosing,
+            addToCalendar: true,
+            visibility: calendarVisibility,
+            ...(visit.block ? { visit: visitToPlan(visit.block) } : {}),
+          }
         : { response: choosing, addToCalendar: false },
       { onSuccess: () => setChoosing(null) },
     );
@@ -271,6 +452,7 @@ export function EventActions({ item }: { item: EventItem }) {
       {choosing && (
         <div className={cn("space-y-2 rounded-xl border p-2", SURFACE, LINE)} data-testid="panel-add-to-calendar">
           <SectionLabel>Add to calendar</SectionLabel>
+          <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="calendar" />
           <VisibilityChoice value={calendarVisibility} onChange={setCalendarVisibility} idPrefix="button-calendar" />
           <div className="flex flex-wrap gap-2">
             <Button type="button" className={BIG_BUTTON} disabled={respond.isPending} onClick={() => confirmCalendar(true)} aria-label={`Add to calendar as ${calendarVisibility}`} data-testid="button-calendar-confirm">
@@ -309,6 +491,11 @@ export function EventActions({ item }: { item: EventItem }) {
           <span className={cn("text-sm font-semibold", SATCHEL_TONES.sky.fg)} data-testid="text-calendar-visibility">
             On calendar · {item.calendar.visibility}
           </span>
+          {item.plan?.visit && (
+            <span className="text-sm font-semibold" data-testid="text-plan-visit">
+              Your visit: {formatVisit({ date: item.plan.visit.start.slice(0, 10), start: item.plan.visit.start.slice(11, 16), end: item.plan.visit.end.slice(11, 16) })}
+            </span>
+          )}
           <Button type="button" variant="outline" className={BIG_BUTTON} onClick={() => setPlanOpen(true)} aria-label="Change plan" data-testid="button-change-plan">
             <Pencil className="mr-1 h-4 w-4" aria-hidden />
             Change plan
