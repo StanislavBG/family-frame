@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_EVENT } from "@shared/events";
-import { formatCost, formatWhen, agendaColumns, groupForAgenda, statusBadge, CATEGORY_META } from "./events";
+import { eventDayEntries, formatClock, formatClockRange, formatCost, formatWhen, agendaColumns, groupForAgenda, statusBadge, CATEGORY_META } from "./events";
 import { EVENT_CATEGORIES } from "@shared/events";
 
 type Sched = typeof SAMPLE_EVENT.schedule;
@@ -154,5 +154,58 @@ describe("agendaColumns", () => {
     const groups = [g("2026-10-01", 2), g("2026-10-02", 1)];
     expect(agendaColumns(groups, 1)).toEqual([groups]);
     expect(agendaColumns(groups, 0)).toEqual([groups]);
+  });
+});
+
+describe("eventDayEntries", () => {
+  const ev = (title: string, over: Partial<Sched>) => ({ event: { ...SAMPLE_EVENT, title, schedule: sched(over) } });
+
+  it("lists a month-long event as open on a middle day", () => {
+    const farm = ev("Farm", { start: "2026-10-01T09:00:00", end: "2026-10-31T18:00:00" });
+    const r = eventDayEntries([farm], "2026-10-15");
+    expect(r.sessions).toEqual([]);
+    expect(r.open).toHaveLength(1);
+    expect(r.open[0].window).toMatchObject({ open: "09:00", close: "18:00" });
+  });
+
+  it("places occurrence events in sessions only on occurrence dates", () => {
+    const e = ev("Show", {
+      start: "2026-10-10T10:00:00",
+      occurrences: [{ start: "2026-10-10T10:00:00" }, { start: "2026-10-17T10:00:00" }],
+    });
+    expect(eventDayEntries([e], "2026-10-10").sessions).toHaveLength(1);
+    expect(eventDayEntries([e], "2026-10-17").sessions).toHaveLength(1);
+    expect(eventDayEntries([e], "2026-10-11").sessions).toHaveLength(0);
+  });
+
+  it("places a single-day event only on its date", () => {
+    const e = ev("One", { start: "2026-10-12T10:00:00", end: "2026-10-12T12:00:00" });
+    expect(eventDayEntries([e], "2026-10-12").sessions).toHaveLength(1);
+    expect(eventDayEntries([e], "2026-10-13").sessions).toHaveLength(0);
+    expect(eventDayEntries([e], "2026-10-11").sessions).toHaveLength(0);
+  });
+
+  it("sorts sessions by open time then title, open by title", () => {
+    const items = [
+      ev("Zed", { start: "2026-10-12T09:00:00", end: "2026-10-12T10:00:00" }),
+      ev("Beta", { start: "2026-10-12T08:00:00", end: "2026-10-12T09:00:00" }),
+      ev("Alpha", { start: "2026-10-12T09:00:00", end: "2026-10-12T10:00:00" }),
+      ev("Yard", { start: "2026-10-01T09:00:00", end: "2026-10-31T18:00:00" }),
+      ev("Barn", { start: "2026-10-01T09:00:00", end: "2026-10-31T18:00:00" }),
+    ];
+    const r = eventDayEntries(items, "2026-10-12");
+    expect(r.sessions.map((e) => e.item.event.title)).toEqual(["Beta", "Alpha", "Zed"]);
+    expect(r.open.map((e) => e.item.event.title)).toEqual(["Barn", "Yard"]);
+  });
+});
+
+describe("formatClock", () => {
+  it("formats 12h and 24h", () => {
+    expect(formatClock("14:30")).toBe("2:30 PM");
+    expect(formatClock("09:00")).toBe("9:00 AM");
+    expect(formatClock("00:05")).toBe("12:05 AM");
+    expect(formatClock("12:00")).toBe("12:00 PM");
+    expect(formatClock("14:30", "24h")).toBe("14:30");
+    expect(formatClockRange("10:00", "12:30", "12h")).toBe("10:00 AM \u2013 12:30 PM");
   });
 });

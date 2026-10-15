@@ -10,6 +10,7 @@ import type {
   PostFeedback,
   PostResponse,
 } from "@shared/events";
+import { dayWindows, type DayWindow } from "@shared/events-visit";
 import type { SatchelTone } from "@/components/person/satchel";
 import { apiRequest, queryClient } from "./queryClient";
 import { queryKeys } from "./api";
@@ -39,7 +40,7 @@ export interface EventItem {
   response: HouseholdResponse;
   feedback?: { relevance?: string; sentiment?: string; steer?: string };
   calendar?: { calendarEventId: string; visibility: "Shared" | "Private" };
-  plan?: { occurrenceStart?: string; notes?: string; people?: string[] };
+  plan?: { occurrenceStart?: string; notes?: string; people?: string[]; visit?: { start: string; end: string } };
   hasUnseenUpdate: boolean;
   withdrawn: boolean;
   recommendedAt: string;
@@ -52,6 +53,42 @@ export interface EventItemsParams {
 }
 
 export type TimeFormat = "12h" | "24h";
+
+export interface DayEntry<T> {
+  item: T;
+  window: DayWindow;
+}
+
+/** Events with a set-time session on `dateIso`, and events open across that day. */
+export function eventDayEntries<T extends { event: FfEvent }>(
+  items: T[],
+  dateIso: string,
+): { sessions: DayEntry<T>[]; open: DayEntry<T>[] } {
+  const sessions: DayEntry<T>[] = [];
+  const open: DayEntry<T>[] = [];
+  for (const item of items) {
+    for (const window of dayWindows(item.event, { from: dateIso, to: dateIso })) {
+      (window.kind === "session" ? sessions : open).push({ item, window });
+    }
+  }
+  const byTitle = (a: DayEntry<T>, b: DayEntry<T>) => a.item.event.title.localeCompare(b.item.event.title);
+  sessions.sort((a, b) =>
+    a.window.open === b.window.open ? byTitle(a, b) : a.window.open < b.window.open ? -1 : 1,
+  );
+  open.sort(byTitle);
+  return { sessions, open };
+}
+
+export function formatClock(hhmm: string, timeFormat: TimeFormat = "12h"): string {
+  if (timeFormat === "24h") return hhmm;
+  const [h, m] = hhmm.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${suffix}`;
+}
+
+export function formatClockRange(open: string, close: string, timeFormat: TimeFormat = "12h"): string {
+  return `${formatClock(open, timeFormat)} \u2013 ${formatClock(close, timeFormat)}`;
+}
 
 function withQuery(path: string, entries: Array<[string, string | number | undefined]>): string {
   const search = new URLSearchParams();
