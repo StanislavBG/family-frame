@@ -48,6 +48,29 @@ const TIMES: { value: EventPreferences["preferredTimes"][number]; label: string 
   { value: "evening", label: "Evening" },
 ];
 
+const VISIT_LENGTHS: { value: number; label: string }[] = [
+  { value: 90, label: "1½ h" },
+  { value: 120, label: "2 h" },
+  { value: 150, label: "2½ h" },
+  { value: 180, label: "3 h" },
+  { value: 240, label: "4 h" },
+];
+
+const VISIT_EARLIEST: { value: string; label: string }[] = [
+  { value: "09:00", label: "9:00 AM" },
+  { value: "09:30", label: "9:30 AM" },
+  { value: "10:00", label: "10:00 AM" },
+  { value: "10:30", label: "10:30 AM" },
+  { value: "11:00", label: "11:00 AM" },
+];
+
+const VISIT_LATEST_END: { value: string; label: string }[] = [
+  { value: "16:00", label: "4:00 PM" },
+  { value: "17:00", label: "5:00 PM" },
+  { value: "18:00", label: "6:00 PM" },
+  { value: "19:00", label: "7:00 PM" },
+];
+
 const SIGNAL_WORDS: Record<string, string> = {
   relevant: "Marked relevant",
   "not-relevant": "Marked not relevant",
@@ -94,11 +117,13 @@ function ChoiceButton({
   onClick,
   children,
   testId,
+  className,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
   testId: string;
+  className?: string;
 }) {
   return (
     <Button
@@ -107,10 +132,44 @@ function ChoiceButton({
       variant={active ? "default" : "outline"}
       aria-pressed={active}
       onClick={onClick}
+      className={className}
       data-testid={testId}
     >
       {children}
     </Button>
+  );
+}
+
+function VisitChoiceGroup<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+  testPrefix,
+}: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  testPrefix: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium">{label}</Label>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
+        {options.map((o) => (
+          <ChoiceButton
+            key={o.value}
+            active={value === o.value}
+            onClick={() => onChange(o.value)}
+            testId={`${testPrefix}-${o.value}`}
+            className="min-h-[44px]"
+          >
+            {o.label}
+          </ChoiceButton>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -272,6 +331,33 @@ export function EventsPreferencesPanel(_props: AppSettingsPanelProps) {
             </ChoiceButton>
           ))}
         </div>
+      </SettingsSection>
+
+      <SettingsSection title="Visit planning">
+        <p className="text-xs text-muted-foreground">
+          Used to suggest a 2-3 hour block for events that are open all day.
+        </p>
+        <VisitChoiceGroup
+          label="How long do you usually stay?"
+          options={VISIT_LENGTHS}
+          value={prefs.visitBlockMinutes}
+          onChange={(v) => setPrefs((p) => ({ ...p, visitBlockMinutes: v }))}
+          testPrefix="button-visit-length"
+        />
+        <VisitChoiceGroup
+          label="Earliest start"
+          options={VISIT_EARLIEST}
+          value={prefs.visitEarliest}
+          onChange={(v) => setPrefs((p) => ({ ...p, visitEarliest: v }))}
+          testPrefix="button-visit-earliest"
+        />
+        <VisitChoiceGroup
+          label="Be done by"
+          options={VISIT_LATEST_END}
+          value={prefs.visitLatestEnd}
+          onChange={(v) => setPrefs((p) => ({ ...p, visitLatestEnd: v }))}
+          testPrefix="button-visit-latest-end"
+        />
       </SettingsSection>
 
       <SettingsSection title="Languages and notes">
