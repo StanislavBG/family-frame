@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ffEventSchema } from "../../shared/events";
-import { fingerprint, isNearDuplicate, mergeDuplicate, normalizeCandidate, rawCandidateSchema } from "./normalize";
+import { deriveAdmission, fingerprint, isNearDuplicate, mergeDuplicate, normalizeCandidate, rawCandidateSchema } from "./normalize";
 
 const now = new Date("2026-10-10T12:00:00Z");
 const opts = { now, defaultTimezone: "America/Los_Angeles" };
@@ -92,4 +92,24 @@ test("near-duplicate merge unions sources", () => {
   assert.equal(m.location.address, "1200 River Road");
   assert.equal(ffEventSchema.safeParse(m).success, true);
   assert.equal(isNearDuplicate(a, ok({ ...base, title: "Jazz Night", start: "2026-10-25T10:00:00-07:00" })), false);
+});
+
+test("deriveAdmission follows the ordered rules", () => {
+  const c = { isFree: false, ticketRequired: false } as const;
+  assert.equal(deriveAdmission({ ...c, isFree: true, ticketRequired: true }, "music-performance"), "free");
+  assert.equal(deriveAdmission({ ...c, priceText: "Suggested $5 donation", minPrice: 5 }, "arts-culture"), "donation");
+  assert.equal(deriveAdmission({ ...c, priceText: "Pay what you wish" }, "kids-activities"), "donation");
+  assert.equal(deriveAdmission({ ...c, ticketRequired: true, minPrice: 30 }, "music-performance"), "ticketed");
+  assert.equal(deriveAdmission({ ...c, minPrice: 12, maxPrice: 20 }, "arts-culture"), "ticketed");
+  assert.equal(deriveAdmission({ ...c, minPrice: 10 }, "nature-animals"), "paid-entry");
+  assert.equal(deriveAdmission({ ...c }, "arts-culture"), "paid-entry");
+});
+
+test("normalized candidates carry cost.admission", () => {
+  assert.equal(ok({ ...base, isFree: true }).cost.admission, "free");
+  assert.equal(ok({ ...base, category: "nature-animals", minPrice: 12, currency: "USD" }).cost.admission, "paid-entry");
+  assert.equal(
+    ok({ ...base, category: "music-performance", minPrice: 30, ticketUrl: "https://tickets.example/x" }).cost.admission,
+    "ticketed",
+  );
 });

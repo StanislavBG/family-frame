@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
+  ADMISSION_KINDS,
   AGE_BANDS,
   EVENT_CATEGORIES,
   EVENTS_LIMITS,
@@ -259,6 +260,22 @@ function hostOf(url: string): string | undefined {
   }
 }
 
+type AdmissionKind = (typeof ADMISSION_KINDS)[number];
+
+const TICKETED_CATEGORIES: readonly EventCategory[] = ["music-performance", "arts-culture", "family-entertainment"];
+
+/** Deterministic admission kind from the cost fields and category. */
+export function deriveAdmission(
+  cost: Pick<FfEvent["cost"], "isFree" | "priceText" | "ticketRequired" | "minPrice" | "maxPrice">,
+  category: EventCategory,
+): AdmissionKind {
+  if (cost.isFree) return "free";
+  if (cost.priceText && /donation|pay what you (can|wish)|suggested/i.test(cost.priceText)) return "donation";
+  const priced = cost.minPrice !== undefined || cost.maxPrice !== undefined;
+  if (cost.ticketRequired || (TICKETED_CATEGORIES.includes(category) && priced)) return "ticketed";
+  return "paid-entry";
+}
+
 export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): NormalizeResult {
   const parsed = rawCandidateSchema.safeParse(raw);
   if (!parsed.success) {
@@ -373,6 +390,7 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
     firstSeenAt: nowIso,
   };
 
+  event.cost.admission = deriveAdmission(event.cost, category);
   event.fingerprint = fingerprint(event);
   event.id = eventIdFromFingerprint(event.fingerprint);
 
@@ -422,7 +440,9 @@ export function mergeDuplicate(existing: FfEvent, incoming: FfEvent): FfEvent {
   const firstSeenAt =
     Date.parse(incoming.firstSeenAt) < Date.parse(existing.firstSeenAt) ? incoming.firstSeenAt : existing.firstSeenAt;
 
-  const cost = completeness(incoming.cost) > completeness(existing.cost) ? incoming.cost : existing.cost;
+  const richerCost = completeness(incoming.cost) > completeness(existing.cost) ? incoming.cost : existing.cost;
+  const admission = incoming.cost.admission ?? richerCost.admission;
+  const cost = admission ? { ...richerCost, admission } : richerCost;
   const location =
     completeness(incoming.location) > completeness(existing.location) ? incoming.location : existing.location;
 
