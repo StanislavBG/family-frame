@@ -153,3 +153,25 @@ test("runSearchTask validates candidates with a fake runner", async () => {
   const missing = await runSearchTask(noList, task, { ...area, radiusKm: 30 }, [], "");
   assert.equal(missing.ok, false);
 });
+
+test("ticketed-shows task sits after the first focus task and respects lastSearchAt", () => {
+  const tasks = plan();
+  assert.equal(tasks[0].categoryKey, "general");
+  assert.equal(tasks[1].categoryKey, "ticketed-shows");
+  assert.equal(tasks[1].windowKey, "near");
+  assert.deepEqual(tasks[1].categories, ["music-performance", "arts-culture", "family-entertainment"]);
+  assert.equal(tasks.length, 11);
+  assert.equal(tasks[1].maxTicketPrice, 500);
+  const fresh = plan({ lastSearchAt: (w, k) => (w === "near" && k === "ticketed-shows" ? now.toISOString() : null) });
+  assert.ok(!fresh.some((t) => t.categoryKey === "ticketed-shows"));
+  const high = plan({ households: [household(), household({ maxTicketPrice: 900 })] });
+  assert.equal(high[1].maxTicketPrice, 900);
+});
+
+test("ticketed-shows prompt states the price ceiling", () => {
+  const t = plan({ households: [household({ maxTicketPrice: 250 })] })[1];
+  const prompt = buildSearchPrompt(t, { ...area, radiusKm: 25 }, [], "Family with a school-age (6-12) kid");
+  assert.ok(prompt.includes("ticketed concerts, shows and theatre"));
+  assert.ok(prompt.includes("ticket URLs"));
+  assert.ok(prompt.includes("more than 250"));
+});

@@ -144,6 +144,10 @@ function clashes(event: FfEvent, slot: Slot, busy: BusyInterval[]): boolean {
   return false;
 }
 
+function admissionOf(event: FfEvent): NonNullable<FfEvent["cost"]["admission"]> {
+  return event.cost.admission ?? (event.cost.ticketRequired ? "ticketed" : event.cost.isFree ? "free" : "paid-entry");
+}
+
 function isPaid(event: FfEvent): boolean {
   return !event.cost.isFree;
 }
@@ -252,7 +256,15 @@ export function rankForHousehold(input: RankInput): RankResult {
       skip("avoided category");
       continue;
     }
-    if (prefs.budget === "free" && isPaid(event)) {
+    const ticketed = admissionOf(event) === "ticketed" && !event.cost.isFree;
+    if (ticketed) {
+      const lowest = event.cost.minPrice ?? event.cost.maxPrice;
+      if (lowest !== undefined && lowest > prefs.maxTicketPrice) {
+        skip("over ticket price limit");
+        continue;
+      }
+    }
+    if (prefs.budget === "free" && isPaid(event) && !ticketed) {
       skip("paid event, budget is free");
       continue;
     }
@@ -295,6 +307,12 @@ export function rankForHousehold(input: RankInput): RankResult {
     const price = priceFit(event, prefs, learned.freePreference);
     if (event.cost.isFree) reasons.push("Free to attend");
     else if (prefs.budget === "low" && price >= 0.7) reasons.push("Fits a modest budget");
+    if (ticketed) {
+      const from = event.cost.minPrice;
+      reasons.push(
+        from !== undefined ? `Ticketed show, from ${event.cost.currency ?? "USD"} ${from}` : "Ticketed show",
+      );
+    }
     // Age
     const age = ageFit(event, memberAges);
     if (memberAges.length > 0 && age >= 0.99 && children.length > 0) reasons.push("Suits everyone's ages, including the kids");

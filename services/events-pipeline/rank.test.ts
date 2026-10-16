@@ -245,3 +245,22 @@ test("focus bonus, score range, and 1-5 plain-English reasons", () => {
     assert.ok(p.matchReasons.length >= 1 && p.matchReasons.length <= 5);
   }
 });
+
+test("ticketed events: over limit skipped, within limit kept under free budget, paid-entry still skipped", () => {
+  const over = ev(3);
+  over.cost = { ...over.cost, isFree: false, admission: "ticketed", ticketRequired: true, minPrice: 600, currency: "USD" };
+  const within = ev(3);
+  within.cost = { ...within.cost, isFree: false, admission: "ticketed", ticketRequired: true, minPrice: 40, currency: "USD" };
+  const noPrice = ev(3, { category: "music-performance" });
+  noPrice.cost = { ...noPrice.cost, isFree: false, ticketRequired: true, minPrice: undefined, maxPrice: undefined };
+  const paidEntry = ev(3);
+  paidEntry.cost = { ...paidEntry.cost, isFree: false, admission: "paid-entry", ticketRequired: false, minPrice: 10 };
+  const r = rankForHousehold(input([over, within, noPrice, paidEntry], {}, { budget: "free" }));
+  assert.equal(reasonOf(r, over), "over ticket price limit");
+  assert.match(reasonOf(r, paidEntry) ?? "", /budget/);
+  const ids = r.picks.map((p) => p.event.id).sort();
+  assert.deepEqual(ids, [within.id, noPrice.id].sort());
+  const reasons = (e: FfEvent) => r.picks.find((p) => p.event.id === e.id)!.matchReasons;
+  assert.ok(reasons(within).includes("Ticketed show, from USD 40"));
+  assert.ok(reasons(noPrice).includes("Ticketed show"));
+});
