@@ -84,6 +84,25 @@ export function eventDayEntries<T extends { event: FfEvent }>(
   return { sessions, open };
 }
 
+/** Every event of a month-grid day once: set-time sessions first, then open all-day ones. */
+export function monthCellItems<T extends { eventId: string }>(day: {
+  sessions: DayEntry<T>[];
+  open: DayEntry<T>[];
+}): { item: T; allDay: boolean }[] {
+  const seen = new Set<string>();
+  const out: { item: T; allDay: boolean }[] = [];
+  const add = (entries: DayEntry<T>[], allDay: boolean) => {
+    for (const { item } of entries) {
+      if (seen.has(item.eventId)) continue;
+      seen.add(item.eventId);
+      out.push({ item, allDay });
+    }
+  };
+  add(day.sessions, false);
+  add(day.open, true);
+  return out;
+}
+
 export function formatClock(hhmm: string, timeFormat: TimeFormat = "12h"): string {
   if (timeFormat === "24h") return hhmm;
   const [h, m] = hhmm.split(":").map(Number);

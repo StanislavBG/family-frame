@@ -3,11 +3,9 @@ import { Link } from "wouter";
 import { Check, ChevronLeft, ChevronRight, Star } from "lucide-react";
 import { DOW_TONES, LINE, SATCHEL_TONES, SERIF, SURFACE } from "@/components/person/satchel";
 import { useToday } from "@/hooks/use-today";
-import { CATEGORY_META, eventDayEntries, type EventItem } from "@/lib/events";
+import { CATEGORY_META, eventDayEntries, monthCellItems, type EventItem } from "@/lib/events";
 import { buildMonthCells, WEEKDAY_SHORT as WEEKDAY } from "@/lib/person-day";
 import { cn } from "@/lib/utils";
-
-const MAX_CHIPS = 3;
 
 interface EventsMonthProps {
   items: EventItem[];
@@ -31,7 +29,7 @@ function monthKey(year: number, month: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function EventChip({ item }: { item: EventItem }) {
+function EventChip({ item, allDay }: { item: EventItem; allDay?: boolean }) {
   const tone = SATCHEL_TONES[CATEGORY_META[item.event.category].tone];
   const cancelled = item.event.status === "cancelled";
   const { title } = item.event;
@@ -44,8 +42,9 @@ function EventChip({ item }: { item: EventItem }) {
         tone.bg,
         tone.fg,
         cancelled && "line-through",
+        allDay && "border border-dashed border-current",
       )}
-      aria-label={`${title}${item.response === "going" ? ", going" : item.response === "interested" ? ", interested" : ""}${cancelled ? ", cancelled" : ""}${item.hasUnseenUpdate ? ", changed" : ""}`}
+      aria-label={`${title}${item.response === "going" ? ", going" : item.response === "interested" ? ", interested" : ""}${cancelled ? ", cancelled" : ""}${item.hasUnseenUpdate ? ", changed" : ""}${allDay ? ", open all day" : ""}`}
       data-testid={`events-month-chip-${item.eventId}`}
     >
       {item.response === "going" && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
@@ -63,9 +62,6 @@ function EventChip({ item }: { item: EventItem }) {
     </Link>
   );
 }
-
-const DAY_LINK =
-  "min-h-8 rounded-md px-1 text-left text-xs font-semibold text-[#5d5648] underline-offset-2 hover:underline dark:text-muted-foreground";
 
 function dayLabel(iso: string, count: number): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -143,16 +139,14 @@ export function EventsMonth({
         ))}
         {cells.map((c) => {
           const entries = days.get(c.iso);
-          const sessions = entries?.sessions ?? [];
-          const openCount = entries?.open.length ?? 0;
-          const extra = sessions.length - MAX_CHIPS;
+          const list = monthCellItems(entries ?? { sessions: [], open: [] });
           const isToday = c.iso === todayIso;
           const isSelected = c.iso === selectedDate;
           return (
             <div
               key={c.iso}
               className={cn(
-                "flex min-h-[104px] min-w-0 cursor-pointer flex-col gap-1 rounded-[14px] border-2 p-1.5",
+                "flex h-[150px] min-w-0 cursor-pointer flex-col gap-1 rounded-[14px] border-2 p-1.5",
                 isToday ? "border-[#f4b942] bg-[#fcecc4] dark:bg-[#f4b942]/15" : "border-transparent",
                 isSelected && "ring-2 ring-[#a83818] ring-offset-1 dark:ring-[#e07a52]",
                 !c.inMonth && "opacity-40",
@@ -164,46 +158,27 @@ export function EventsMonth({
               <button
                 type="button"
                 className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold",
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold",
                   isToday && "bg-[#a83818] text-[#fff8ef] dark:bg-[#e07a52] dark:text-[#1a1612]",
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
                   select(c.iso);
                 }}
-                aria-label={dayLabel(c.iso, sessions.length + openCount)}
+                aria-label={dayLabel(c.iso, (entries?.sessions.length ?? 0) + (entries?.open.length ?? 0))}
                 aria-pressed={isSelected}
                 data-testid={`events-month-day-${c.iso}`}
               >
                 {Number(c.iso.slice(8))}
               </button>
-              {sessions.slice(0, MAX_CHIPS).map(({ item }) => (
-                <EventChip key={item.eventId} item={item} />
-              ))}
-              {extra > 0 && (
-                <button
-                  type="button"
-                  className={DAY_LINK}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    select(c.iso);
-                  }}
-                >
-                  +{extra} more
-                </button>
-              )}
-              {openCount > 0 && (
-                <button
-                  type="button"
-                  className={DAY_LINK}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    select(c.iso);
-                  }}
-                >
-                  {openCount} open all day
-                </button>
-              )}
+              <div
+                className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]"
+                data-testid={`events-month-cell-list-${c.iso}`}
+              >
+                {list.map(({ item, allDay }) => (
+                  <EventChip key={item.eventId} item={item} allDay={allDay} />
+                ))}
+              </div>
             </div>
           );
         })}

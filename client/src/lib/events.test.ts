@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_EVENT } from "@shared/events";
-import { eventDayEntries, formatClock, formatClockRange, formatCost, formatWhen, agendaColumns, groupForAgenda, statusBadge, CATEGORY_META, isTripIdea, matchesTripFilter, isPaidOrTicketed, tripBadge } from "./events";
+import { eventDayEntries, monthCellItems, formatClock, formatClockRange, formatCost, formatWhen, agendaColumns, groupForAgenda, statusBadge, CATEGORY_META, isTripIdea, matchesTripFilter, isPaidOrTicketed, tripBadge } from "./events";
 import { EVENT_CATEGORIES } from "@shared/events";
 
 type Sched = typeof SAMPLE_EVENT.schedule;
@@ -240,5 +240,21 @@ describe("trip helpers", () => {
     expect(tripBadge({ rec: { trip: trip("weekend", 130, 2) } })).toBe("Weekend \u00b7 2 nights \u00b7 about 2 h 15 min drive");
     expect(tripBadge({ rec: { tripType: "day-trip", driveMinutes: 30 } })).toBe("Day trip \u00b7 about 30 min drive");
     expect(tripBadge({ rec: {} })).toBe("");
+  });
+});
+
+describe("monthCellItems", () => {
+  const e = (eventId: string) => ({ item: { eventId }, window: {} as never });
+  it("lists sessions first then open items with allDay flags", () => {
+    const out = monthCellItems({ sessions: [e("a"), e("b")], open: [e("c")] });
+    expect(out.map((x) => x.item.eventId)).toEqual(["a", "b", "c"]);
+    expect(out.map((x) => x.allDay)).toEqual([false, false, true]);
+  });
+  it("keeps each eventId once, first occurrence wins", () => {
+    const out = monthCellItems({ sessions: [e("a"), e("a")], open: [e("a"), e("c")] });
+    expect(out.map((x) => [x.item.eventId, x.allDay])).toEqual([["a", false], ["c", true]]);
+  });
+  it("returns [] for an empty day", () => {
+    expect(monthCellItems({ sessions: [], open: [] })).toEqual([]);
   });
 });
