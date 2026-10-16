@@ -1,18 +1,21 @@
 import { useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, CalendarX, ExternalLink, MapPin } from "lucide-react";
+import { ArrowLeft, BedDouble, CalendarX, Car, Compass, ExternalLink, MapPin, Moon, Utensils, type LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { EventActions } from "@/components/events/event-actions";
-import { LINE, MUTED, SATCHEL_TONES, SectionLabel, SERIF, SURFACE, ToneChip } from "@/components/person/satchel";
+import { LINE, MUTED, SATCHEL_TONES, SectionLabel, SERIF, SURFACE, ToneChip, type SatchelTone } from "@/components/person/satchel";
 import { useFitScale } from "@/hooks/use-fit-scale";
 import { buildEventFacts, distanceText, mapUrl, whereSummary } from "@/lib/event-detail";
 import { cn } from "@/lib/utils";
+import type { Trip } from "@shared/events";
 import {
   CATEGORY_META,
+  formatClock,
   formatCost,
   formatWhen,
   statusBadge,
+  tripBadge,
   useEventItem,
   useMarkSeen,
 } from "@/lib/events";
@@ -46,6 +49,81 @@ function ExternalAnchor({ href, children, testId }: { href: string; children: Re
       {children}
       <ExternalLink className="h-4 w-4 flex-none" aria-hidden />
     </a>
+  );
+}
+
+const ADMISSION_BADGE: Record<string, { label: string; tone: SatchelTone }> = {
+  free: { label: "Free", tone: "leaf" },
+  donation: { label: "Donation", tone: "sun" },
+  "paid-entry": { label: "Paid entry", tone: "sky" },
+  ticketed: { label: "Ticketed", tone: "plum" },
+};
+
+function admissionBadge(cost: { isFree: boolean; admission?: string }): { label: string; tone: SatchelTone } {
+  return ADMISSION_BADGE[cost.admission ?? (cost.isFree ? "free" : "paid-entry")] ?? ADMISSION_BADGE["paid-entry"];
+}
+
+type TripItem = Trip["itinerary"][number]["items"][number];
+
+const ITEM_KIND: Record<TripItem["kind"], { label: string; tone: SatchelTone; Icon: LucideIcon }> = {
+  drive: { label: "Drive", tone: "stone", Icon: Car },
+  activity: { label: "Activity", tone: "leaf", Icon: Compass },
+  meal: { label: "Meal", tone: "sun", Icon: Utensils },
+  rest: { label: "Rest", tone: "sky", Icon: Moon },
+  lodging: { label: "Stay", tone: "plum", Icon: BedDouble },
+  other: { label: "Other", tone: "stone", Icon: Compass },
+};
+
+function TripPlan({ trip }: { trip: Trip }) {
+  return (
+    <section className={cn(CARD, "space-y-3")} data-testid="section-trip-plan">
+      <h2 className={cn(SERIF, "text-xl font-bold", SATCHEL_TONES.sky.fg)}>Plan for the trip</h2>
+      {trip.bestFor && <p className={BODY}>{trip.bestFor}</p>}
+      {trip.itinerary.map((day, d) => (
+        <div key={`${d}-${day.label}`} className="space-y-2" data-testid="trip-day">
+          <h3 className={cn(SERIF, "text-lg font-bold text-[#1a1612] dark:text-foreground")}>{day.label}</h3>
+          <ol className="space-y-2">
+            {day.items.map((it, i) => {
+              const kind = ITEM_KIND[it.kind];
+              return (
+                <li key={`${i}-${it.title}`} className={cn("flex gap-3 rounded-xl p-3", SATCHEL_TONES[kind.tone].bg)} data-testid="trip-item">
+                  <kind.Icon className={cn("mt-1 h-5 w-5 flex-none", SATCHEL_TONES[kind.tone].fg)} aria-label={kind.label} role="img" />
+                  <div className="min-w-0 flex-1">
+                    <div className={cn("text-base font-semibold", SATCHEL_TONES[kind.tone].fg)}>
+                      {it.time && <span className="mr-2">{formatClock(it.time)}</span>}
+                      <span className="text-[#1a1612] dark:text-foreground">{it.title}</span>
+                    </div>
+                    {it.notes && <p className={cn(BODY, "leading-snug")}>{it.notes}</p>}
+                    {it.url && <ExternalAnchor href={it.url}>Open link</ExternalAnchor>}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function TripLodging({ trip }: { trip: Trip }) {
+  if (trip.lodging.length === 0) return null;
+  return (
+    <section className={cn(CARD, "space-y-3")} data-testid="section-trip-lodging">
+      <h2 className={cn(SERIF, "text-xl font-bold", SATCHEL_TONES.plum.fg)}>Where to stay</h2>
+      <p className={cn("text-sm font-semibold", MUTED)}>Ideas we found – check prices and book directly.</p>
+      <ul className="space-y-2">
+        {trip.lodging.map((l, i) => (
+          <li key={`${i}-${l.name}`} className={cn("rounded-xl border p-3", LINE)} data-testid="trip-lodging">
+            <div className="text-base font-bold text-[#1a1612] dark:text-foreground">{l.name}</div>
+            <div className={cn("text-base", MUTED)}>{l.area}</div>
+            <div className={cn("text-base font-semibold", SATCHEL_TONES.plum.fg)}>{l.priceText}</div>
+            {l.notes && <p className={cn(BODY, "leading-snug")}>{l.notes}</p>}
+            <ExternalAnchor href={l.url}>View listing</ExternalAnchor>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -113,6 +191,8 @@ export function EventHero({ eventId }: { eventId: string }) {
   const showBanner = !!badge || !!event.statusNote || updates.length > 0;
   const { location, cost, organizer } = event;
   const facts = buildEventFacts(event, rec);
+  const tripLabel = tripBadge(item);
+  const admission = admissionBadge(cost);
   const links = [
     { href: mapUrl(location), label: "Open map", testId: "link-event-map" },
     ...(cost.ticketUrl ? [{ href: cost.ticketUrl, label: "Buy tickets", testId: "link-event-tickets" }] : []),
@@ -153,6 +233,16 @@ export function EventHero({ eventId }: { eventId: string }) {
           <h1 className={cn(SERIF, "text-2xl font-bold leading-tight lg:text-3xl", tone.fg)} data-testid="text-event-title">
             {event.title}
           </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            {tripLabel && (
+              <ToneChip tone="sky" className="bg-[#fffaf0]/70 dark:bg-background/40" data-testid="chip-event-trip">
+                {tripLabel}
+              </ToneChip>
+            )}
+            <ToneChip tone={admission.tone} className="bg-[#fffaf0]/70 dark:bg-background/40" data-testid="chip-event-admission">
+              {admission.label}
+            </ToneChip>
+          </div>
           <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 text-base font-semibold", tone.fg)}>
             <span data-testid="text-event-when">{formatWhen(event.schedule)}</span>
             <span className="inline-flex items-start gap-1" data-testid="event-where-summary">
@@ -261,6 +351,12 @@ export function EventHero({ eventId }: { eventId: string }) {
             </ul>
           </section>
         </div>
+        {rec.trip && (
+          <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
+            <TripPlan trip={rec.trip} />
+            <TripLodging trip={rec.trip} />
+          </div>
+        )}
       </article>
     </div>
   );
