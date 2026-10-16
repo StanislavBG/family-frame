@@ -40,7 +40,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Calendar as CalendarIcon, Plus, Users, Clock, ChevronLeft, ChevronRight, User, Trash2, MapPin } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { fitCount } from "@/lib/fit-scale";
 import { toISODateString } from "@/lib/format";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -280,6 +281,9 @@ function formatDateDisplay(date: Date): string {
   return `${year}/${month}/${day}`;
 }
 
+const CARD_WIDTH = 220;
+const CARD_GAP = 8; // gap-2
+
 export function UpcomingEventsStrip({
   events,
   people,
@@ -291,11 +295,26 @@ export function UpcomingEventsStrip({
   timeFormat: "12h" | "24h";
   onSelect: (event: CalendarEvent) => void;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => setWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const shown = width === null ? events : events.slice(0, fitCount(width, CARD_WIDTH, CARD_GAP));
+
   return (
-    <>
+    <div ref={rowRef} className="w-full min-w-0">
         {events.length > 0 ? (
-          <div className="flex flex-nowrap gap-2 items-stretch overflow-x-auto snap-x">
-            {events.map((event) => {
+          <div className="flex flex-nowrap gap-2 items-stretch overflow-hidden">
+            {shown.map((event) => {
               const startDate = parseLocalDate(event.startDate);
               const endDate = parseLocalDate(event.endDate);
               const isMultiDay = startDate.toDateString() !== endDate.toDateString();
@@ -309,7 +328,7 @@ export function UpcomingEventsStrip({
                 <div
                   key={event.id}
                   className={cn(
-                    "flex flex-col gap-0.5 px-3 py-2 rounded-md bg-muted/50 cursor-pointer hover-elevate w-[220px] flex-shrink-0 snap-start",
+                    "flex flex-col gap-0.5 px-3 py-2 rounded-md bg-muted/50 cursor-pointer hover-elevate w-[220px] flex-shrink-0",
                     event.type === EventType.SHARED ? "border-l-2 border-l-cyan-500" : "border-l-2 border-l-violet-500"
                   )}
                   onClick={() => onSelect(event)}
@@ -371,7 +390,7 @@ export function UpcomingEventsStrip({
             <span className="text-sm text-muted-foreground">No upcoming events</span>
           </div>
         )}
-    </>
+    </div>
   );
 }
 
@@ -576,7 +595,7 @@ export default function CalendarPage() {
   const upcomingEvents = (events || [])
     .filter((event) => parseLocalDate(event.endDate) >= today)
     .sort((a, b) => parseLocalDate(a.startDate).getTime() - parseLocalDate(b.startDate).getTime())
-    .slice(0, 7);
+    .slice(0, 20);
 
   const hasPeople = people && people.length > 0;
 

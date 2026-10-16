@@ -30,11 +30,12 @@ function render(events: CalendarEvent[]): string {
 }
 
 describe("UpcomingEventsStrip", () => {
-  it("renders 7 events in a single non-wrapping scroll row", () => {
+  it("renders 7 events in a single non-wrapping clipped row", () => {
     const html = render([1, 2, 3, 4, 5, 6, 7].map(makeEvent));
     for (let i = 1; i <= 7; i++) expect(html).toContain(`data-testid="upcoming-event-e${i}"`);
     expect(html).toContain("flex-nowrap");
-    expect(html).toContain("overflow-x-auto");
+    expect(html).toContain("overflow-hidden");
+    expect(html).not.toContain("overflow-x-auto");
     expect(html).not.toContain("flex-wrap");
   });
 

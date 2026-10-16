@@ -14,3 +14,9 @@ export function nextFitScale(availableHeight: number, naturalHeight: number, cur
   if (target > current && target - current < GROW_HYSTERESIS && target < 1) return current;
   return Math.round(target * 1000) / 1000;
 }
+
+/** Number of whole `itemWidth` items separated by `gap` that fit `containerWidth`; at least 1. */
+export function fitCount(containerWidth: number, itemWidth: number, gap: number): number {
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0) return 1;
+  return Math.max(1, Math.floor((containerWidth + gap) / (itemWidth + gap)));
+}

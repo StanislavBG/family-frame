@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextFitScale } from "./fit-scale";
+import { fitCount, nextFitScale } from "./fit-scale";
 
 describe("nextFitScale", () => {
   it("shrinks tall content to fit", () => {
@@ -18,5 +18,20 @@ describe("nextFitScale", () => {
   });
   it("keeps the current scale for unmeasured sizes", () => {
     expect(nextFitScale(0, 900, 0.9)).toBe(0.9);
+  });
+});
+
+describe("fitCount", () => {
+  it("counts whole items that fit", () => {
+    expect(fitCount(1000, 220, 8)).toBe(4);
+  });
+  it("handles the exact boundary", () => {
+    expect(fitCount(448, 220, 8)).toBe(2);
+    expect(fitCount(447, 220, 8)).toBe(1);
+  });
+  it("never returns below 1", () => {
+    expect(fitCount(0, 220, 8)).toBe(1);
+    expect(fitCount(NaN, 220, 8)).toBe(1);
+    expect(fitCount(-50, 220, 8)).toBe(1);
   });
 });
