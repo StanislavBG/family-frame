@@ -116,6 +116,22 @@ export function haversineKm(a: LatLon, b: LatLon): number {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+/** Drive-time cutoffs in minutes for the trip types. */
+export const TRIP_DRIVE_LIMITS = { local: 45, dayTrip: 90, weekend: 150 } as const;
+
+/** Rough drive minutes from straight-line km: 10 min overhead, 1.25 road factor, 65 km/h average. No routing service. */
+export function estimateDriveMinutes(km: number): number {
+  if (!Number.isFinite(km) || km < 0) return 0;
+  return Math.round(10 + (km * 1.25 * 60) / 65);
+}
+
+export function tripTypeFor(minutes: number): "local" | "day-trip" | "weekend" | null {
+  if (minutes < TRIP_DRIVE_LIMITS.local) return "local";
+  if (minutes < TRIP_DRIVE_LIMITS.dayTrip) return "day-trip";
+  if (minutes < TRIP_DRIVE_LIMITS.weekend) return "weekend";
+  return null;
+}
+
 function norm(s: string | undefined): string {
   return (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }

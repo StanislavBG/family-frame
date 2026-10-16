@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openEventsDb } from "./db";
-import { areaKey, canonicalAreaKeyFromLegacy, createGeocoder, geocodeHousehold, haversineKm } from "./geo";
+import { areaKey, canonicalAreaKeyFromLegacy, createGeocoder, estimateDriveMinutes, geocodeHousehold, haversineKm, TRIP_DRIVE_LIMITS, tripTypeFor } from "./geo";
 
 type Handler = (url: string) => unknown[] | Error;
 
@@ -98,4 +98,27 @@ test("canonicalAreaKeyFromLegacy converts legacy and canonical keys", () => {
   assert.equal(canonicalAreaKeyFromLegacy("santa clara||us"), "santa clara|us");
   assert.equal(canonicalAreaKeyFromLegacy("santa clara|us"), "santa clara|us");
   assert.equal(canonicalAreaKeyFromLegacy("plovdiv||bulgaria"), "plovdiv|bg");
+});
+
+test("estimateDriveMinutes adds overhead and road factor; bad input is 0", () => {
+  assert.equal(estimateDriveMinutes(0), 10);
+  assert.equal(estimateDriveMinutes(30), 45);
+  assert.equal(estimateDriveMinutes(100), 125);
+  assert.equal(estimateDriveMinutes(120), 148);
+  assert.equal(estimateDriveMinutes(NaN), 0);
+  assert.equal(estimateDriveMinutes(Infinity), 0);
+  assert.equal(estimateDriveMinutes(-5), 0);
+});
+
+test("tripTypeFor classifies drive minutes", () => {
+  assert.deepEqual(TRIP_DRIVE_LIMITS, { local: 45, dayTrip: 90, weekend: 150 });
+  assert.equal(tripTypeFor(estimateDriveMinutes(20)), "local");
+  assert.equal(tripTypeFor(44), "local");
+  assert.equal(tripTypeFor(estimateDriveMinutes(30)), "day-trip");
+  assert.equal(tripTypeFor(89), "day-trip");
+  assert.equal(tripTypeFor(90), "weekend");
+  assert.equal(tripTypeFor(estimateDriveMinutes(100)), "weekend");
+  assert.equal(tripTypeFor(estimateDriveMinutes(120)), "weekend");
+  assert.equal(tripTypeFor(150), null);
+  assert.equal(tripTypeFor(estimateDriveMinutes(200)), null);
 });
