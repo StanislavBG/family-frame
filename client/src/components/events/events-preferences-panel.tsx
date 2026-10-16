@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
+import type { Person } from "@shared/schema";
+import { householdProfile } from "@shared/events-profile";
 import { EVENT_CATEGORIES, type EventPreferences, type FeedbackEntry } from "@shared/events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -70,6 +74,30 @@ const VISIT_LATEST_END: { value: string; label: string }[] = [
   { value: "18:00", label: "6:00 PM" },
   { value: "19:00", label: "7:00 PM" },
 ];
+
+const TICKET_PRICES: { value: number; label: string }[] = [
+  { value: 50, label: "$50" },
+  { value: 100, label: "$100" },
+  { value: 250, label: "$250" },
+  { value: 500, label: "$500" },
+  { value: 1000, label: "$1000" },
+];
+
+// Whole years from YYYY-MM-DD birthdays; people without a valid birthday are skipped.
+function agesFromPeople(people: Array<{ birthday?: string }>, now: Date): number[] {
+  const ty = now.getFullYear();
+  const tm = now.getMonth() + 1;
+  const td = now.getDate();
+  const ages: number[] = [];
+  for (const person of people) {
+    const m = typeof person?.birthday === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(person.birthday) : null;
+    if (!m) continue;
+    let age = ty - Number(m[1]);
+    if (tm < Number(m[2]) || (tm === Number(m[2]) && td < Number(m[3]))) age--;
+    if (age >= 0) ages.push(age);
+  }
+  return ages;
+}
 
 const SIGNAL_WORDS: Record<string, string> = {
   relevant: "Marked relevant",
@@ -181,6 +209,9 @@ export function EventsPreferencesPanel(_props: AppSettingsPanelProps) {
   const feedbackQuery = useFeedbackLog();
   const save = useSaveEventPreferences();
   const deleteData = useDeleteEventData();
+
+  const { data: people = [] } = useQuery<Person[]>({ queryKey: ["/api/people/list"] });
+  const profileLines = householdProfile(agesFromPeople(people, new Date())).lines;
 
   const [prefs, setPrefs] = useState<EventPreferences>(EMPTY_PREFS);
   const [languagesText, setLanguagesText] = useState("");
@@ -360,6 +391,38 @@ export function EventsPreferencesPanel(_props: AppSettingsPanelProps) {
           onChange={(v) => setPrefs((p) => ({ ...p, visitLatestEnd: v }))}
           testPrefix="button-visit-latest-end"
         />
+      </SettingsSection>
+
+      <SettingsSection title="Trips and tickets">
+        <SettingsRow
+          label="Suggest day trips and weekends"
+          description="Adds trip ideas to your overview"
+        >
+          <Switch
+            checked={prefs.tripsEnabled}
+            onCheckedChange={(v) => setPrefs((p) => ({ ...p, tripsEnabled: v }))}
+            aria-label="Suggest day trips and weekends"
+            data-testid="switch-trips-enabled"
+          />
+        </SettingsRow>
+        <VisitChoiceGroup
+          label="Most we'd pay per ticket"
+          options={TICKET_PRICES}
+          value={prefs.maxTicketPrice}
+          onChange={(v) => setPrefs((p) => ({ ...p, maxTicketPrice: v }))}
+          testPrefix="button-max-ticket-price"
+        />
+        <div className="space-y-1" data-testid="section-household-profile">
+          <div className="text-sm font-medium">How we describe your household</div>
+          {profileLines.map((line) => (
+            <p key={line} className="text-sm">
+              {line}
+            </p>
+          ))}
+          <p className="text-xs text-muted-foreground">
+            Used as a hint, never a filter. You will still see other ideas.
+          </p>
+        </div>
       </SettingsSection>
 
       <SettingsSection title="Languages and notes">
