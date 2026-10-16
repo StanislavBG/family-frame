@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { EventActions } from "@/components/events/event-actions";
 import { LINE, MUTED, SATCHEL_TONES, SectionLabel, SERIF, SURFACE, ToneChip, type SatchelTone } from "@/components/person/satchel";
 import { useFitScale } from "@/hooks/use-fit-scale";
-import { buildEventFacts, distanceText, mapUrl, whereSummary } from "@/lib/event-detail";
+import { buildEventFacts, distanceText, hasMapLocation, mapUrl, whereSummary } from "@/lib/event-detail";
 import { cn } from "@/lib/utils";
 import type { Trip } from "@shared/events";
 import {
@@ -23,6 +23,18 @@ import {
 const CARD = cn("rounded-2xl border p-4", SURFACE, LINE);
 const LINK = cn("inline-flex min-h-11 items-center gap-1 text-base font-semibold underline underline-offset-2", SATCHEL_TONES.sky.fg);
 const BODY = "text-base leading-relaxed text-[#1a1612] dark:text-foreground";
+const ACTION_PILL = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-4 text-sm lg:text-base font-semibold";
+const HEADER_FACTS = new Set(["When", "Where", "Distance", "Cost"]);
+
+function sourceLabel(s: { url: string; publisher?: string; title?: string }): string {
+  if (s.publisher) return s.publisher;
+  if (s.title) return s.title;
+  try {
+    return new URL(s.url).hostname;
+  } catch {
+    return s.url;
+  }
+}
 
 
 function BulletList({ items }: { items: readonly string[] }) {
@@ -190,19 +202,15 @@ export function EventHero({ eventId }: { eventId: string }) {
   const updates = [...event.updates].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const showBanner = !!badge || !!event.statusNote || updates.length > 0;
   const { location, cost, organizer } = event;
-  const facts = buildEventFacts(event, rec);
+  const facts = buildEventFacts(event, rec).filter((f) => !HEADER_FACTS.has(f.label));
   const tripLabel = tripBadge(item);
   const admission = admissionBadge(cost);
-  const links = [
-    { href: mapUrl(location), label: "Open map", testId: "link-event-map" },
+  const hasMap = hasMapLocation(location);
+  const actions: { href: string; label: string; testId?: string; Icon?: LucideIcon }[] = [
+    ...(hasMap ? [{ href: mapUrl(location), label: "Google Maps", testId: "link-event-map", Icon: MapPin }] : []),
     ...(cost.ticketUrl ? [{ href: cost.ticketUrl, label: "Buy tickets", testId: "link-event-tickets" }] : []),
     ...(cost.registrationUrl ? [{ href: cost.registrationUrl, label: "Register", testId: "link-event-registration" }] : []),
-    ...(organizer?.url ? [{ href: organizer.url, label: "Organizer website", testId: undefined }] : []),
-    ...event.sources.map((s) => ({
-      href: s.url,
-      label: [s.publisher, s.title].filter(Boolean).join(" – ") || s.url,
-      testId: undefined,
-    })),
+    ...(organizer?.url ? [{ href: organizer.url, label: "Organizer website" }] : []),
   ];
 
   return (
@@ -218,9 +226,11 @@ export function EventHero({ eventId }: { eventId: string }) {
         data-testid={`event-hero-${item.eventId}`}
         data-fit-scale={fit.scale}
       >
-        <header className={cn("space-y-2 rounded-2xl p-4", tone.bg)} data-testid="event-hero-header">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <BackLink />
+        <div>
+          <BackLink />
+        </div>
+        <header className={cn("space-y-3 rounded-2xl p-4", tone.bg)} data-testid="event-hero-header">
+          <div className="flex flex-wrap items-center gap-2">
             <ToneChip tone={category.tone} className="bg-[#fffaf0]/70 dark:bg-background/40" data-testid="chip-event-category">
               {category.label}
             </ToneChip>
@@ -229,11 +239,6 @@ export function EventHero({ eventId }: { eventId: string }) {
                 {badge.label}
               </ToneChip>
             )}
-          </div>
-          <h1 className={cn(SERIF, "text-2xl font-bold leading-tight lg:text-3xl", tone.fg)} data-testid="text-event-title">
-            {event.title}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
             {tripLabel && (
               <ToneChip tone="sky" className="bg-[#fffaf0]/70 dark:bg-background/40" data-testid="chip-event-trip">
                 {tripLabel}
@@ -243,16 +248,49 @@ export function EventHero({ eventId }: { eventId: string }) {
               {admission.label}
             </ToneChip>
           </div>
+          <h1 className={cn(SERIF, "text-2xl font-bold leading-tight lg:text-3xl", tone.fg)} data-testid="text-event-title">
+            {event.title}
+          </h1>
           <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 text-base font-semibold", tone.fg)}>
             <span data-testid="text-event-when">{formatWhen(event.schedule)}</span>
             <span className="inline-flex items-start gap-1" data-testid="event-where-summary">
               <MapPin className="mt-1 h-4 w-4 flex-none" aria-hidden />
-              {whereSummary(location)}
+              {hasMap ? (
+                <a
+                  href={mapUrl(location)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2"
+                  data-testid="link-event-where-map"
+                >
+                  {whereSummary(location)}
+                </a>
+              ) : (
+                whereSummary(location)
+              )}
             </span>
             {distance && <span data-testid="text-event-distance">{distance}</span>}
             <span data-testid="text-event-cost">{formatCost(cost)}</span>
           </div>
-          <p className={cn(BODY, "lg:line-clamp-3")}>{event.summary}</p>
+          <p className={BODY}>{event.summary}</p>
+          {actions.length > 0 && (
+            <div className="flex flex-wrap gap-2" data-testid="event-primary-actions">
+              {actions.map((a) => (
+                <a
+                  key={a.href}
+                  href={a.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(ACTION_PILL, SURFACE, LINE, SATCHEL_TONES.sky.fg)}
+                  data-testid={a.testId}
+                >
+                  {a.Icon ? <a.Icon className="h-4 w-4 flex-none" aria-hidden /> : null}
+                  {a.label}
+                  {!a.Icon && <ExternalLink className="h-4 w-4 flex-none" aria-hidden />}
+                </a>
+              ))}
+            </div>
+          )}
         </header>
 
         <div className="space-y-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)] lg:items-start lg:gap-3 lg:space-y-0">
@@ -306,7 +344,7 @@ export function EventHero({ eventId }: { eventId: string }) {
           </div>
 
           <section className={cn(CARD, "space-y-3")} data-testid="section-why-household">
-            <h2 className={cn(SERIF, "text-xl font-bold", SATCHEL_TONES.leaf.fg)}>Why it suits your household</h2>
+            <h2 className={cn(SERIF, "text-lg font-bold", SATCHEL_TONES.leaf.fg)}>Why it suits your household</h2>
             <p className={BODY}>{rec.whyForHousehold}</p>
             {rec.matchReasons.length > 0 && (
               <div className="flex flex-wrap gap-2" data-testid="list-match-reasons">
@@ -319,13 +357,13 @@ export function EventHero({ eventId }: { eventId: string }) {
             )}
             {rec.whyForChildren && (
               <div className="space-y-1" data-testid="section-why-children">
-                <h2 className={cn(SERIF, "text-xl font-bold", SATCHEL_TONES.clay.fg)}>Why the kids will love it</h2>
+                <h2 className={cn(SERIF, "text-lg font-bold", SATCHEL_TONES.clay.fg)}>Why the kids will love it</h2>
                 <p className={BODY}>{rec.whyForChildren}</p>
               </div>
             )}
             {(rec.highlights.length > 0 || rec.tips.length > 0) && (
               <div className="space-y-1" data-testid="section-highlights">
-                <h2 className={cn(SERIF, "text-xl font-bold text-[#1a1612] dark:text-foreground")}>Highlights</h2>
+                <h2 className={cn(SERIF, "text-lg font-bold text-[#1a1612] dark:text-foreground")}>Highlights</h2>
                 {rec.highlights.length > 0 && <BulletList items={rec.highlights} />}
                 {rec.tips.length > 0 && <BulletList items={rec.tips} />}
               </div>
@@ -333,22 +371,36 @@ export function EventHero({ eventId }: { eventId: string }) {
           </section>
 
           <section className={cn(CARD, "space-y-3")} data-testid="section-details">
-            <h2 className={cn(SERIF, "text-xl font-bold text-[#1a1612] dark:text-foreground")}>Details</h2>
-            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-              {facts.map((row) => (
-                <div key={row.label} className="contents">
-                  <dt><SectionLabel>{row.label}</SectionLabel></dt>
-                  <dd className={cn(BODY, "leading-snug")}>{row.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <ul className="flex flex-wrap gap-x-4">
-              {links.map((l) => (
-                <li key={l.href}>
-                  <ExternalAnchor href={l.href} testId={l.testId}>{l.label}</ExternalAnchor>
-                </li>
-              ))}
-            </ul>
+            <h2 className={cn(SERIF, "text-lg font-bold text-[#1a1612] dark:text-foreground")}>Details</h2>
+            {facts.length > 0 && (
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+                {facts.map((row) => (
+                  <div key={row.label} className="contents">
+                    <dt><SectionLabel>{row.label}</SectionLabel></dt>
+                    <dd className={cn(BODY, "leading-snug")}>{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {event.sources.length > 0 && (
+              <div className="space-y-1">
+                <SectionLabel>Sources</SectionLabel>
+                <ul className="space-y-1" data-testid="list-event-sources">
+                  {event.sources.map((s) => (
+                    <li key={s.url} className="min-w-0">
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn("block min-h-11 truncate py-2 text-sm font-semibold", MUTED)}
+                      >
+                        {sourceLabel(s)}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
         </div>
         {rec.trip && (
