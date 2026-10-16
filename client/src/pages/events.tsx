@@ -374,9 +374,10 @@ function Overview() {
             selectedDate={selectedDate}
             onSelectDate={selectDate}
           />
+          {/* 5rem = App.tsx h-14 header (3.5rem) + 0.75rem top offset + 0.75rem bottom gap */}
           <div
             ref={panelRef}
-            className="lg:sticky lg:top-3 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto"
+            className="lg:sticky lg:top-3 lg:flex lg:max-h-[calc(100dvh-5rem)] lg:flex-col"
           >
             <EventsDayPanel items={dated} dateIso={selectedDate} onDateChange={selectDate} />
           </div>

@@ -88,11 +88,11 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
 
   return (
     <section
-      className={cn("space-y-3 rounded-3xl border p-4", SURFACE, LINE)}
+      className={cn("space-y-3 rounded-3xl border p-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col", SURFACE, LINE)}
       aria-label="Day events"
       data-testid="events-day-panel"
     >
-      <header className="flex items-center justify-between gap-2">
+      <header className="flex shrink-0 items-center justify-between gap-2">
         <button
           type="button"
           className={cn(NAV, SURFACE, LINE)}
@@ -121,6 +121,10 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
         </button>
       </header>
 
+      <div
+        className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
+        data-testid="events-day-list"
+      >
       {total === 0 && (
         <p className={cn("text-base", MUTED)} data-testid="events-day-empty">
           Nothing planned for this day.
@@ -163,6 +167,7 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
           })}
         </div>
       )}
+      </div>
     </section>
   );
 }
