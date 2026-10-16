@@ -1,4 +1,5 @@
 import type { EventCategory, FfEvent } from "../../shared/events";
+import { PROFILE_GUIDANCE } from "../../shared/events-profile";
 import type { HaikuRunner } from "./haiku";
 
 // Writes the household-specific text on each recommendation with one Haiku
@@ -18,6 +19,7 @@ export interface ExplainDigest {
   memberAges: number[];
   likedCategories: EventCategory[];
   preferenceLines: string[];
+  profileLines: string[];
 }
 
 export interface ExplainPick {
@@ -142,6 +144,8 @@ export function buildExplainPrompt(digest: ExplainDigest, picks: ExplainPick[]):
     `- Member ages: ${digest.memberAges.length ? digest.memberAges.join(", ") : "unknown"}`,
     `- Liked categories: ${digest.likedCategories.length ? digest.likedCategories.join(", ") : "none stated"}`,
     ...digest.preferenceLines.map((l) => `- ${l}`),
+    ...digest.profileLines.map((l) => `- ${l}`),
+    PROFILE_GUIDANCE,
     "",
     "For every event return: eventId (copied exactly), whyForHousehold (1-3 sentences, at most 600 characters),",
     kids

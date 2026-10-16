@@ -270,3 +270,28 @@ test("failing event geocode counts a miss and keeps the event", async () => {
   assert.equal(stats.newEvents, 1);
   assert.equal(stats.published, 1);
 });
+
+async function publishedAt(dLat: number | null) {
+  const geo = { geocode: async (q: string) => (q.includes("1 Main St") ? { lat: 45.5, lon: -122.6 } : { lat: 45.5 + (dLat ?? 0), lon: -122.6 }) };
+  const f = fakeFf([household("h1")], { h1: state("h1", { preferences: eventPreferencesSchema.parse({ maxDistanceKm: 100 }) }) });
+  const cand = dLat === null ? candidate : { ...candidate, venueName: "Riverside Farm", address: "9 Farm Rd", region: "OR" };
+  await run({ ff: f.ff, geocoder: dLat === null ? { geocode: async (q: string) => (q.includes("1 Main St") ? { lat: 45.5, lon: -122.6 } : null) } : geo, runner: fakeRunner(found(cand)) });
+  return f.puts[0];
+}
+
+test("published item carries driveMinutes and tripType from distance", async () => {
+  const near = await publishedAt(0.18);
+  assert.equal(Math.round(near.distanceKm ?? 0), 20);
+  assert.equal(near.driveMinutes, 33);
+  assert.equal(near.tripType, "local");
+  const far = await publishedAt(0.54);
+  assert.equal(far.tripType, "day-trip");
+  assert.ok((far.driveMinutes ?? 0) >= 45 && (far.driveMinutes ?? 0) < 90);
+});
+
+test("item without distance publishes neither driveMinutes nor tripType", async () => {
+  const none = await publishedAt(null);
+  assert.equal(none.distanceKm, undefined);
+  assert.equal(none.driveMinutes, undefined);
+  assert.equal(none.tripType, undefined);
+});

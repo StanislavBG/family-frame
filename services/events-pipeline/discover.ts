@@ -29,7 +29,8 @@ import {
 import { nextCheckAt } from "./dispatch";
 import { explainBatch } from "./explain";
 import type { FfClient, FfHousehold, FfState } from "./ff-client";
-import { areaKey as areaKeyOf, geocodeHousehold, type Geocoder } from "./geo";
+import { householdProfile } from "../../shared/events-profile";
+import { areaKey as areaKeyOf, estimateDriveMinutes, geocodeHousehold, tripTypeFor, type Geocoder } from "./geo";
 import type { HaikuRunner } from "./haiku";
 import { isNearDuplicate, mergeDuplicate, normalizeCandidate } from "./normalize";
 import { rankForHousehold, type BusyInterval, type RankLimits } from "./rank";
@@ -357,12 +358,14 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
             memberAges: a.h.memberAges,
             likedCategories: a.state.preferences.likedCategories,
             preferenceLines: a.learned.lines,
+            profileLines: householdProfile(a.h.memberAges).lines,
           },
           ranked.picks.map((p) => ({ event: p.event, matchReasons: p.matchReasons, distanceKm: p.distanceKm })),
         );
         for (const p of ranked.picks) {
           const t = texts.get(p.event.id);
           if (!t) continue;
+          const driveMinutes = p.distanceKm !== undefined ? estimateDriveMinutes(p.distanceKm) : undefined;
           const parsed = recommendationInputSchema.safeParse({
             event: p.event,
             whyForHousehold: t.whyForHousehold,
@@ -372,6 +375,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
             matchScore: clamp01(p.score),
             matchReasons: p.matchReasons.slice(0, 5).map((r) => r.slice(0, 200)),
             ...(p.distanceKm !== undefined ? { distanceKm: p.distanceKm } : {}),
+            ...(driveMinutes !== undefined ? { driveMinutes, tripType: tripTypeFor(driveMinutes) ?? "weekend" } : {}),
           });
           if (parsed.success) items.push(parsed.data);
           else stats.errors += 1;

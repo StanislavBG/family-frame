@@ -4,6 +4,7 @@ import { ffEventSchema } from "../../shared/events";
 import type { FfEvent } from "../../shared/events";
 import type { HaikuResult, HaikuRunInput, HaikuRunner } from "./haiku";
 import { EXPLAIN_MAX_PICKS, explainBatch, templateExplain } from "./explain";
+import { PROFILE_GUIDANCE } from "../../shared/events-profile";
 import type { ExplainDigest, ExplainPick } from "./explain";
 
 function makeEvent(id: string, over: Record<string, unknown> = {}): FfEvent {
@@ -34,7 +35,7 @@ const pick = (id: string, over: Partial<ExplainPick> = {}): ExplainPick => ({
   ...over,
 });
 
-const family: ExplainDigest = { city: "Portland", memberAges: [38, 36, 5], likedCategories: ["parks-outdoors"], preferenceLines: ["Prefers free events"] };
+const family: ExplainDigest = { city: "Portland", memberAges: [38, 36, 5], likedCategories: ["parks-outdoors"], preferenceLines: ["Prefers free events"], profileLines: ["Household includes a preschooler."] };
 const adults: ExplainDigest = { ...family, memberAges: [38, 36] };
 
 function fake(result: HaikuResult | (() => HaikuResult)) {
@@ -75,6 +76,8 @@ test("prompt has no street address, stays factual, includes digest", async () =>
   assert.match(p, /Portland/);
   assert.match(p, /factual/i);
   assert.match(p, /Prefers free events/);
+  assert.match(p, /Household includes a preschooler\./);
+  assert.ok(p.includes(PROFILE_GUIDANCE));
 });
 
 test("partial output falls back per event; unknown ids ignored", async () => {
