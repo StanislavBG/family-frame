@@ -9,7 +9,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
@@ -49,10 +48,14 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { CalendarEvent, Person, InsertCalendarEvent, EventTypeValue, UserSettings } from "@shared/schema";
-import { Link } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { EventType } from "@shared/schema";
 import { useUser } from "@clerk/react";
 import { Home } from "lucide-react";
+import { CalendarDayView } from "@/components/calendar/calendar-day-view";
+import { formatTimeOfDay } from "@/lib/calendar-day";
+import { fromMinutes, toMinutes } from "@shared/events-visit";
+import { useToday } from "@/hooks/use-today";
 
 // Parse date string as local date (not UTC) to avoid timezone offset issues
 function parseLocalDate(dateStr: string): Date {
@@ -73,12 +76,13 @@ const eventFormSchema = z.object({
 
 type EventFormValues = z.infer<typeof eventFormSchema>;
 
-// Format a stored HH:MM (24h) time for display using the user's 12h/24h setting
-function formatEventTime(time: string, timeFormat: "12h" | "24h"): string {
-  if (timeFormat === "24h") return time;
-  const [h, m] = time.split(":").map(Number);
-  const suffix = h >= 12 ? "PM" : "AM";
-  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${suffix}`;
+function isValidIsoDate(value: string | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return toISODateString(parseLocalDate(value)) === value;
+}
+
+function plusOneHour(hhmm: string): string {
+  return fromMinutes(Math.min(toMinutes(hhmm) + 60, 23 * 60 + 59));
 }
 
 function CalendarSkeleton() {
@@ -363,8 +367,8 @@ export function UpcomingEventsStrip({
                     <div className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-event-time-${event.id}`}>
                       <Clock className="h-3 w-3" />
                       <span>
-                        {formatEventTime(event.startTime, timeFormat)}
-                        {event.endTime && ` - ${formatEventTime(event.endTime, timeFormat)}`}
+                        {formatTimeOfDay(event.startTime, timeFormat)}
+                        {event.endTime && ` - ${formatTimeOfDay(event.endTime, timeFormat)}`}
                       </span>
                     </div>
                   )}
@@ -400,7 +404,14 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   // Bumped at local midnight so "today" highlighting and filters re-evaluate on always-on displays.
   const [, setDayTick] = useState(0);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [, setLocation] = useLocation();
+  const [isDay, dayParams] = useRoute<{ date: string }>("/day/:date");
+  const todayIso = useToday();
+  const dayIso = isDay && isValidIsoDate(dayParams?.date) ? dayParams!.date : null;
+  const invalidDay = isDay && !dayIso;
+  useEffect(() => {
+    if (invalidDay) setLocation("/");
+  }, [invalidDay, setLocation]);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => {
@@ -576,9 +587,26 @@ export default function CalendarPage() {
   };
 
   const handleDateClick = (date: Date) => {
-    setSelectedDate(date);
-    form.setValue("startDate", toISODateString(date));
-    form.setValue("endDate", toISODateString(date));
+    setLocation(`/day/${toISODateString(date)}`);
+  };
+
+  const handleCreateAt = (day: string, startTime?: string) => {
+    form.reset({
+      ...form.getValues(),
+      startDate: day,
+      endDate: day,
+      startTime: startTime ?? "",
+      endTime: startTime ? plusOneHour(startTime) : "",
+    });
+    setCreateEventOpen(true);
+  };
+
+  const handleDayBack = () => {
+    if (dayIso) {
+      const d = parseLocalDate(dayIso);
+      setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+    setLocation("/");
   };
 
   if (eventsLoading || peopleLoading) {
@@ -599,6 +627,423 @@ export default function CalendarPage() {
 
   const hasPeople = people && people.length > 0;
 
+  const dialogs = (
+    <>
+        <Dialog open={createEventOpen} onOpenChange={setCreateEventOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Event</DialogTitle>
+              <DialogDescription>
+                Add a new event to your family calendar.
+              </DialogDescription>
+            </DialogHeader>
+            {!hasPeople ? (
+              <div className="py-8 text-center">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                  <User className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="font-medium mb-2">No People Added Yet</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Add household members in Global Config before creating events.
+                </p>
+                <Button asChild onClick={() => setCreateEventOpen(false)} data-testid="button-add-person-first">
+                  <Link href="~/settings">
+                    <Users className="h-4 w-4 mr-2" />
+                    Go to Global Config
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit, onFormError)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Title</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Event title" {...field} data-testid="input-event-title" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="startDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Start Date</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} data-testid="input-event-start" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="endDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>End Date</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} data-testid="input-event-end" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="startTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Start Time (optional)</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} value={field.value ?? ""} data-testid="input-event-start-time" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="endTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>End Time (optional)</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} value={field.value ?? ""} data-testid="input-event-end-time" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name="location"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location (optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Where is it?" {...field} value={field.value ?? ""} data-testid="input-event-location" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Type</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-event-type">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={EventType.SHARED}>Shared</SelectItem>
+                            <SelectItem value={EventType.PRIVATE}>Private</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="people"
+                    render={({ field }) => {
+                      const selectedPeople = field.value || [];
+                      return (
+                        <FormItem>
+                          <FormLabel>People</FormLabel>
+                          <div className="flex flex-wrap gap-2">
+                            {people?.map((person) => (
+                              <Button
+                                key={person.id}
+                                type="button"
+                                variant={selectedPeople.includes(person.id) ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => {
+                                  const newValue = selectedPeople.includes(person.id)
+                                    ? selectedPeople.filter((id) => id !== person.id)
+                                    : [...selectedPeople, person.id];
+                                  field.onChange(newValue);
+                                }}
+                                data-testid={`button-person-${person.id}`}
+                              >
+                                {person.name}
+                              </Button>
+                            ))}
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setCreateEventOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={createEventMutation.isPending} data-testid="button-submit-event">
+                      {createEventMutation.isPending ? "Creating..." : "Create Event"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            )}
+          </DialogContent>
+        </Dialog>
+        <Dialog open={editEventOpen} onOpenChange={(open) => {
+          setEditEventOpen(open);
+          if (!open) setEditingEvent(null);
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Event</DialogTitle>
+              <DialogDescription>
+                Update the event details.
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(onEditSubmit, onFormError)} className="space-y-4">
+                <fieldset disabled={!isEditingOwner} className="space-y-4 min-w-0 border-0 p-0 m-0">
+                <FormField
+                  control={editForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Event title" {...field} data-testid="input-edit-event-title" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Start Date</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} data-testid="input-edit-event-start" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>End Date</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} data-testid="input-edit-event-end" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="startTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Start Time (optional)</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} value={field.value ?? ""} data-testid="input-edit-event-start-time" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="endTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>End Time (optional)</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} value={field.value ?? ""} data-testid="input-edit-event-end-time" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={editForm.control}
+                  name="location"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location (optional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Where is it?" {...field} value={field.value ?? ""} data-testid="input-edit-event-location" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-event-type">
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={EventType.SHARED}>Shared</SelectItem>
+                          <SelectItem value={EventType.PRIVATE}>Private</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="people"
+                  render={({ field }) => {
+                    const selectedPeople = field.value || [];
+                    return (
+                      <FormItem>
+                        <FormLabel>People</FormLabel>
+                        <div className="flex flex-wrap gap-2">
+                          {people?.map((person) => (
+                            <Button
+                              key={person.id}
+                              type="button"
+                              variant={selectedPeople.includes(person.id) ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => {
+                                const newValue = selectedPeople.includes(person.id)
+                                  ? selectedPeople.filter((id) => id !== person.id)
+                                  : [...selectedPeople, person.id];
+                                field.onChange(newValue);
+                              }}
+                              data-testid={`button-edit-person-${person.id}`}
+                            >
+                              {person.name}
+                            </Button>
+                          ))}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+                </fieldset>
+                {eventsRefId && (
+                  <Link
+                    href={`~/events/${encodeURIComponent(eventsRefId)}`}
+                    className="text-sm font-medium text-primary underline underline-offset-2"
+                    data-testid="link-open-in-events"
+                  >
+                    Open in Events
+                  </Link>
+                )}
+                {!isEditingOwner && editingEvent && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-event-readonly">
+                    Created by {editingEvent.creatorName || "another household"} — only they can change it.
+                  </p>
+                )}
+                <DialogFooter>
+                  {isEditingOwner && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="mr-auto"
+                      onClick={() => setConfirmDeleteOpen(true)}
+                      data-testid="button-delete-event"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </Button>
+                  )}
+                  <Button type="button" variant="outline" onClick={() => {
+                    setEditEventOpen(false);
+                    setEditingEvent(null);
+                  }}>
+                    {isEditingOwner ? "Cancel" : "Close"}
+                  </Button>
+                  {isEditingOwner && (
+                    <Button type="submit" disabled={updateEventMutation.isPending} data-testid="button-update-event">
+                      {updateEventMutation.isPending ? "Updating..." : "Update Event"}
+                    </Button>
+                  )}
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+        <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete event?</AlertDialogTitle>
+              <AlertDialogDescription>
+                "{editingEvent?.title}" will be removed from your calendar. This can't be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-delete-event">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deleteEventMutation.isPending}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (editingEvent) deleteEventMutation.mutate(editingEvent.id);
+                }}
+                data-testid="button-confirm-delete-event"
+              >
+                {deleteEventMutation.isPending ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+    </>
+  );
+
+  if (dayIso) {
+    return (
+      <div className="h-full p-4 md:p-6 flex flex-col bg-background overflow-hidden">
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <CalendarDayView
+            dayIso={dayIso}
+            todayIso={todayIso}
+            events={events || []}
+            people={people || []}
+            timeFormat={timeFormat}
+            onNavigate={(iso) => setLocation(`/day/${iso}`)}
+            onBack={handleDayBack}
+            onSelectEvent={handleEditEvent}
+            onCreateAt={handleCreateAt}
+          />
+        </Card>
+        {dialogs}
+      </div>
+    );
+  }
+
   return (
     <div className="h-full p-4 md:p-6 flex flex-col bg-background overflow-hidden">
       <div className="flex-1 flex flex-col gap-3 min-h-0">
@@ -615,403 +1060,10 @@ export default function CalendarPage() {
                 <ChevronRight className="h-5 w-5" />
               </Button>
             </div>
-            <Dialog open={createEventOpen} onOpenChange={setCreateEventOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-create-event">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Event
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Create Event</DialogTitle>
-                  <DialogDescription>
-                    Add a new event to your family calendar.
-                  </DialogDescription>
-                </DialogHeader>
-                {!hasPeople ? (
-                  <div className="py-8 text-center">
-                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                      <User className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <h3 className="font-medium mb-2">No People Added Yet</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Add household members in Global Config before creating events.
-                    </p>
-                    <Button asChild onClick={() => setCreateEventOpen(false)} data-testid="button-add-person-first">
-                      <Link href="/settings">
-                        <Users className="h-4 w-4 mr-2" />
-                        Go to Global Config
-                      </Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit, onFormError)} className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="title"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Title</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Event title" {...field} data-testid="input-event-title" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <div className="grid grid-cols-2 gap-4">
-                        <FormField
-                          control={form.control}
-                          name="startDate"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Start Date</FormLabel>
-                              <FormControl>
-                                <Input type="date" {...field} data-testid="input-event-start" />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="endDate"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>End Date</FormLabel>
-                              <FormControl>
-                                <Input type="date" {...field} data-testid="input-event-end" />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="startTime"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Start Time (optional)</FormLabel>
-                            <FormControl>
-                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-event-start-time" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="endTime"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>End Time (optional)</FormLabel>
-                            <FormControl>
-                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-event-end-time" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <FormField
-                      control={form.control}
-                      name="location"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Location (optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Where is it?" {...field} value={field.value ?? ""} data-testid="input-event-location" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                      <FormField
-                        control={form.control}
-                        name="type"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Type</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger data-testid="select-event-type">
-                                  <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value={EventType.SHARED}>Shared</SelectItem>
-                                <SelectItem value={EventType.PRIVATE}>Private</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="people"
-                        render={({ field }) => {
-                          const selectedPeople = field.value || [];
-                          return (
-                            <FormItem>
-                              <FormLabel>People</FormLabel>
-                              <div className="flex flex-wrap gap-2">
-                                {people?.map((person) => (
-                                  <Button
-                                    key={person.id}
-                                    type="button"
-                                    variant={selectedPeople.includes(person.id) ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={() => {
-                                      const newValue = selectedPeople.includes(person.id)
-                                        ? selectedPeople.filter((id) => id !== person.id)
-                                        : [...selectedPeople, person.id];
-                                      field.onChange(newValue);
-                                    }}
-                                    data-testid={`button-person-${person.id}`}
-                                  >
-                                    {person.name}
-                                  </Button>
-                                ))}
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          );
-                        }}
-                      />
-                      <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setCreateEventOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button type="submit" disabled={createEventMutation.isPending} data-testid="button-submit-event">
-                          {createEventMutation.isPending ? "Creating..." : "Create Event"}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </Form>
-                )}
-              </DialogContent>
-            </Dialog>
-            <Dialog open={editEventOpen} onOpenChange={(open) => {
-              setEditEventOpen(open);
-              if (!open) setEditingEvent(null);
-            }}>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Edit Event</DialogTitle>
-                  <DialogDescription>
-                    Update the event details.
-                  </DialogDescription>
-                </DialogHeader>
-                <Form {...editForm}>
-                  <form onSubmit={editForm.handleSubmit(onEditSubmit, onFormError)} className="space-y-4">
-                    <fieldset disabled={!isEditingOwner} className="space-y-4 min-w-0 border-0 p-0 m-0">
-                    <FormField
-                      control={editForm.control}
-                      name="title"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Title</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Event title" {...field} data-testid="input-edit-event-title" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={editForm.control}
-                        name="startDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Start Date</FormLabel>
-                            <FormControl>
-                              <Input type="date" {...field} data-testid="input-edit-event-start" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="endDate"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>End Date</FormLabel>
-                            <FormControl>
-                              <Input type="date" {...field} data-testid="input-edit-event-end" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={editForm.control}
-                        name="startTime"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Start Time (optional)</FormLabel>
-                            <FormControl>
-                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-edit-event-start-time" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={editForm.control}
-                        name="endTime"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>End Time (optional)</FormLabel>
-                            <FormControl>
-                              <Input type="time" {...field} value={field.value ?? ""} data-testid="input-edit-event-end-time" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <FormField
-                      control={editForm.control}
-                      name="location"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Location (optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Where is it?" {...field} value={field.value ?? ""} data-testid="input-edit-event-location" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={editForm.control}
-                      name="type"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Type</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-edit-event-type">
-                                <SelectValue placeholder="Select type" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value={EventType.SHARED}>Shared</SelectItem>
-                              <SelectItem value={EventType.PRIVATE}>Private</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={editForm.control}
-                      name="people"
-                      render={({ field }) => {
-                        const selectedPeople = field.value || [];
-                        return (
-                          <FormItem>
-                            <FormLabel>People</FormLabel>
-                            <div className="flex flex-wrap gap-2">
-                              {people?.map((person) => (
-                                <Button
-                                  key={person.id}
-                                  type="button"
-                                  variant={selectedPeople.includes(person.id) ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => {
-                                    const newValue = selectedPeople.includes(person.id)
-                                      ? selectedPeople.filter((id) => id !== person.id)
-                                      : [...selectedPeople, person.id];
-                                    field.onChange(newValue);
-                                  }}
-                                  data-testid={`button-edit-person-${person.id}`}
-                                >
-                                  {person.name}
-                                </Button>
-                              ))}
-                            </div>
-                            <FormMessage />
-                          </FormItem>
-                        );
-                      }}
-                    />
-                    </fieldset>
-                    {eventsRefId && (
-                      <Link
-                        href={`/events/${encodeURIComponent(eventsRefId)}`}
-                        className="text-sm font-medium text-primary underline underline-offset-2"
-                        data-testid="link-open-in-events"
-                      >
-                        Open in Events
-                      </Link>
-                    )}
-                    {!isEditingOwner && editingEvent && (
-                      <p className="text-sm text-muted-foreground" data-testid="text-event-readonly">
-                        Created by {editingEvent.creatorName || "another household"} — only they can change it.
-                      </p>
-                    )}
-                    <DialogFooter>
-                      {isEditingOwner && (
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          className="mr-auto"
-                          onClick={() => setConfirmDeleteOpen(true)}
-                          data-testid="button-delete-event"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </Button>
-                      )}
-                      <Button type="button" variant="outline" onClick={() => {
-                        setEditEventOpen(false);
-                        setEditingEvent(null);
-                      }}>
-                        {isEditingOwner ? "Cancel" : "Close"}
-                      </Button>
-                      {isEditingOwner && (
-                        <Button type="submit" disabled={updateEventMutation.isPending} data-testid="button-update-event">
-                          {updateEventMutation.isPending ? "Updating..." : "Update Event"}
-                        </Button>
-                      )}
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
-            <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete event?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    "{editingEvent?.title}" will be removed from your calendar. This can't be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel data-testid="button-cancel-delete-event">Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={deleteEventMutation.isPending}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (editingEvent) deleteEventMutation.mutate(editingEvent.id);
-                    }}
-                    data-testid="button-confirm-delete-event"
-                  >
-                    {deleteEventMutation.isPending ? "Deleting..." : "Delete"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button onClick={() => setCreateEventOpen(true)} data-testid="button-create-event">
+              <Plus className="h-4 w-4 mr-2" />
+              New Event
+            </Button>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col p-2 md:p-4 min-h-0">
             <div className="flex-1 min-h-0">
@@ -1019,7 +1071,7 @@ export default function CalendarPage() {
                 currentDate={currentDate}
                 events={events || []}
                 onDateClick={handleDateClick}
-                selectedDate={selectedDate}
+                selectedDate={null}
                 people={people || []}
                 weekStartsMonday={weekStartsMonday}
               />
@@ -1033,7 +1085,7 @@ export default function CalendarPage() {
           </CardContent>
         </Card>
       </div>
-
+      {dialogs}
     </div>
   );
 }

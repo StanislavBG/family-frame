@@ -90,6 +90,7 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     id: "calendar",
     title: "Calendar",
     url: "/calendar",
+    nested: true,
     defaultEnabled: true,
     summary: "Shared family calendar with birthday tracking.",
     description: "One calendar for the whole household, so everyone knows what is coming up. Birthdays are never forgotten.",

@@ -58,7 +58,7 @@ describe("app manifest", () => {
     expect(events.fixed).toBeFalsy();
     expect(events.nested).toBe(true);
     expect(getAppManifest("people").nested).toBe(true);
-    expect(getAppManifest("calendar").nested).toBeFalsy();
+    expect(getAppManifest("calendar").nested).toBe(true);
     expect(APP_IDS.indexOf("events")).toBe(APP_IDS.indexOf("calendar") + 1);
   });
 
