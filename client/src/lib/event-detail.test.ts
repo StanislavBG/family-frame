@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_EVENT, type FfEvent } from "@shared/events";
-import { buildEventFacts, distanceText, whereSummary } from "./event-detail";
+import { buildEventFacts, distanceText, hasMapLocation, mapUrl, whereSummary } from "./event-detail";
 import { formatCost, formatWhen } from "./events";
 
 const rec = { distanceKm: 8.4, travelMinutes: 18 };
@@ -65,5 +65,32 @@ describe("helpers", () => {
   });
   it("whereSummary falls back to See map", () => {
     expect(whereSummary({ ...SAMPLE_EVENT.location, venueName: undefined, address: undefined, city: undefined, region: undefined })).toBe("See map");
+  });
+});
+
+describe("mapUrl", () => {
+  it("builds a Google Maps search URL from the place text", () => {
+    const url = mapUrl(SAMPLE_EVENT.location);
+    expect(url.startsWith("https://www.google.com/maps/search/?api=1&query=")).toBe(true);
+    expect(url).toContain(encodeURIComponent("Riverside Farm"));
+  });
+
+  it("falls back to lat,lon when there is no place text", () => {
+    const location = { setting: "unknown", online: false, lat: 45.5152, lon: -122.6784 } as FfEvent["location"];
+    expect(mapUrl(location)).toBe("https://www.google.com/maps/search/?api=1&query=45.5152%2C-122.6784");
+  });
+});
+
+describe("hasMapLocation", () => {
+  it("is true for a place with a venue and address", () => {
+    expect(hasMapLocation(SAMPLE_EVENT.location)).toBe(true);
+  });
+
+  it("is true for coordinates only", () => {
+    expect(hasMapLocation({ setting: "unknown", online: false, lat: 1, lon: 2 } as FfEvent["location"])).toBe(true);
+  });
+
+  it("is false for an online event with no place or coordinates", () => {
+    expect(hasMapLocation({ country: "US", setting: "unknown", online: true } as FfEvent["location"])).toBe(false);
   });
 });
