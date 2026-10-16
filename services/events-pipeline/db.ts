@@ -459,3 +459,17 @@ export function finishRun(db: EventsDb, id: string, finishedAt: string, stats: u
   const params: SQLInputValue[] = [finishedAt, JSON.stringify(stats ?? null), error ?? null, id];
   db.prepare("UPDATE runs SET finished_at = ?, stats_json = ?, error = ? WHERE id = ?").run(...params);
 }
+
+/** Every recommendation row of a household with the RecommendationInput as last published (null if none was stored). */
+export function listPublishedForHousehold(
+  db: EventsDb,
+  householdId: string,
+): { eventId: string; published: RecommendationInput | null }[] {
+  return db
+    .prepare("SELECT event_id, published_json FROM recommendations WHERE household_id = ? ORDER BY published_at, event_id")
+    .all(householdId)
+    .map((r) => {
+      const json = strOrNull(r.published_json);
+      return { eventId: str(r.event_id), published: json ? (JSON.parse(json) as RecommendationInput) : null };
+    });
+}

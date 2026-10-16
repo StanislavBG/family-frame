@@ -11,6 +11,7 @@ import { createGeocoder, type Geocoder } from "./geo";
 import { createHaikuRunner, type HaikuRunner, type HaikuUsage } from "./haiku";
 import { loadJobState, planNotices, saveJobState, sendNotice, type JobOutcome, type Notice, type NotifyJob } from "./notify";
 import { buildReport } from "./report";
+import { runTrips, type TripRunStats } from "./trips-run";
 import { runWatch, type WatchResult } from "./watch";
 
 const MIN_NODE = [22, 13] as const;
@@ -368,7 +369,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
 
     const runner = buildRunner();
     const geocoder = buildGeocoder();
-    const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; haiku?: HaikuUsage; ms?: number; pruned?: PruneCounts } = {
+    const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; haiku?: HaikuUsage; ms?: number; pruned?: PruneCounts; trips?: TripRunStats } = {
       mode: args.mode,
       dryRun: args.dryRun,
     };
@@ -405,6 +406,9 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
           throw e;
         }
       }
+    }
+    if (args.mode === "all") {
+      stats.trips = await runTrips({ db, ff, runner, now: now(), runId: randomUUID(), dryRun: args.dryRun, onlyHouseholdId: args.householdId });
     }
     if (args.mode === "all" && !args.dryRun) stats.pruned = pruneLocalState(db, now().toISOString());
     stats.haiku = runner.usage?.();
