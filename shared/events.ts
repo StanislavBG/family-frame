@@ -90,6 +90,7 @@ export const EVENTS_LIMITS = {
   maxEventJsonBytes: 20000,
   maxActivePerHousehold: 400,
   maxFeedbackReason: 280,
+  maxActiveTrips: 3,
 } as const;
 
 const httpsUrl = z
@@ -170,9 +171,14 @@ const locationSchema = z
   })
   .strict();
 
+export const ADMISSION_KINDS = ["free", "donation", "paid-entry", "ticketed"] as const;
+export const TRIP_TYPES = ["local", "day-trip", "weekend"] as const;
+export type TripType = (typeof TRIP_TYPES)[number];
+
 const costSchema = z
   .object({
     isFree: z.boolean(),
+    admission: z.enum(ADMISSION_KINDS).optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).optional(),
     minPrice: z.number().min(0).optional(),
     maxPrice: z.number().min(0).optional(),
@@ -270,6 +276,57 @@ export type FfEvent = z.infer<typeof ffEventSchema>;
 
 const shortLines = z.array(z.string().min(1).max(200)).max(5);
 
+const tripItemSchema = z
+  .object({
+    time: hhmm.optional(),
+    title: z.string().min(1).max(120),
+    kind: z.enum(["drive", "activity", "meal", "rest", "lodging", "other"]),
+    notes: z.string().max(300).optional(),
+    url: httpsUrl.optional(),
+  })
+  .strict();
+
+const tripLodgingSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    area: z.string().min(1).max(120),
+    priceText: z.string().min(1).max(120),
+    url: httpsUrl,
+    notes: z.string().max(300).optional(),
+  })
+  .strict();
+
+export const tripSchema = z
+  .object({
+    type: z.enum(["day-trip", "weekend"]),
+    driveMinutes: z.number().int().min(0).max(600),
+    nights: z.number().int().min(0).max(2),
+    itinerary: z
+      .array(
+        z
+          .object({
+            label: z.string().min(1).max(60),
+            items: z.array(tripItemSchema).min(1).max(10),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(3),
+    lodging: z.array(tripLodgingSchema).max(3),
+    bestFor: z.string().max(200).optional(),
+  })
+  .strict()
+  .superRefine((t, ctx) => {
+    if (t.type === "weekend") {
+      if (t.nights < 1) ctx.addIssue({ code: "custom", path: ["nights"], message: "Weekend trips need at least 1 night" });
+      if (t.lodging.length < 1) ctx.addIssue({ code: "custom", path: ["lodging"], message: "Weekend trips need at least 1 lodging option" });
+    } else {
+      if (t.nights !== 0) ctx.addIssue({ code: "custom", path: ["nights"], message: "Day trips have 0 nights" });
+      if (t.lodging.length > 0) ctx.addIssue({ code: "custom", path: ["lodging"], message: "Day trips have no lodging" });
+    }
+  });
+export type Trip = z.infer<typeof tripSchema>;
+
 export const recommendationInputSchema = z
   .object({
     event: ffEventSchema,
@@ -281,8 +338,15 @@ export const recommendationInputSchema = z
     matchReasons: shortLines.default([]),
     distanceKm: z.number().min(0).optional(),
     travelMinutes: z.number().int().min(0).optional(),
+    tripType: z.enum(TRIP_TYPES).optional(),
+    driveMinutes: z.number().int().min(0).max(600).optional(),
+    trip: tripSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((r) => !r.trip || r.tripType === r.trip.type, {
+    message: "tripType must equal trip.type when trip is present",
+    path: ["tripType"],
+  });
 export type RecommendationInput = z.infer<typeof recommendationInputSchema>;
 
 export const putRecommendationsSchema = z
@@ -306,6 +370,8 @@ export const eventPreferencesSchema = z
     visitBlockMinutes: z.number().int().min(60).max(240).default(150),
     visitEarliest: hhmm.default("10:00"),
     visitLatestEnd: hhmm.default("18:00"),
+    maxTicketPrice: z.number().min(0).max(5000).default(500),
+    tripsEnabled: z.boolean().default(true),
   })
   .strict();
 export type EventPreferences = z.infer<typeof eventPreferencesSchema>;

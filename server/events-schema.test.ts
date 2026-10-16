@@ -116,3 +116,54 @@ test("visit preferences default and validate", () => {
   assert.equal(eventPreferencesSchema.safeParse({ visitEarliest: "25:00" }).success, false);
   assert.equal(eventPreferencesSchema.safeParse({ visitLatestEnd: "9:00" }).success, false);
 });
+
+const tripRec = (trip: Record<string, unknown>, tripType?: string) => ({
+  ...clone(SAMPLE_RECOMMENDATION_INPUT),
+  tripType,
+  driveMinutes: 60,
+  trip,
+});
+const dayTrip = () => ({
+  type: "day-trip",
+  driveMinutes: 60,
+  nights: 0,
+  itinerary: [{ label: "Day 1", items: [{ time: "09:00", title: "Drive", kind: "drive" }] }],
+  lodging: [],
+});
+const lodging = () => ({ name: "Inn", area: "Town", priceText: "$120/night", url: "https://example.com/inn" });
+const weekend = () => ({ ...dayTrip(), type: "weekend", nights: 1, lodging: [lodging()] });
+
+test("valid day-trip and weekend recommendations parse", () => {
+  assert.equal(recommendationInputSchema.safeParse(tripRec(dayTrip(), "day-trip")).success, true);
+  assert.equal(recommendationInputSchema.safeParse(tripRec(weekend(), "weekend")).success, true);
+});
+
+test("trip refinements reject bad shapes", () => {
+  const noLodging = { ...weekend(), lodging: [] };
+  assert.equal(recommendationInputSchema.safeParse(tripRec(noLodging, "weekend")).success, false);
+  const dayWithLodging = { ...dayTrip(), lodging: [lodging()] };
+  assert.equal(recommendationInputSchema.safeParse(tripRec(dayWithLodging, "day-trip")).success, false);
+  assert.equal(recommendationInputSchema.safeParse(tripRec(dayTrip(), "weekend")).success, false);
+  assert.equal(recommendationInputSchema.safeParse(tripRec(dayTrip(), undefined)).success, false);
+  const httpLodging = { ...weekend(), lodging: [{ ...lodging(), url: "http://example.com/inn" }] };
+  assert.equal(recommendationInputSchema.safeParse(tripRec(httpLodging, "weekend")).success, false);
+});
+
+test("cost admission values", () => {
+  for (const admission of ["free", "donation", "paid-entry", "ticketed"]) {
+    const e = clone(SAMPLE_EVENT);
+    (e.cost as Record<string, unknown>).admission = admission;
+    assert.equal(ffEventSchema.safeParse(e).success, true, admission);
+  }
+  const bad = clone(SAMPLE_EVENT);
+  (bad.cost as Record<string, unknown>).admission = "vip";
+  assert.equal(ffEventSchema.safeParse(bad).success, false);
+});
+
+test("preference trip and ticket defaults", () => {
+  const p = eventPreferencesSchema.parse({});
+  assert.equal(p.maxTicketPrice, 500);
+  assert.equal(p.tripsEnabled, true);
+  assert.equal(EVENTS_LIMITS.maxActiveTrips, 3);
+  assert.equal(eventPreferencesSchema.safeParse({ maxTicketPrice: 6000 }).success, false);
+});

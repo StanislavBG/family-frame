@@ -99,6 +99,8 @@ const EMPTY_PREFS: EventPreferences = {
   visitBlockMinutes: 150,
   visitEarliest: "10:00",
   visitLatestEnd: "18:00",
+  maxTicketPrice: 500,
+  tripsEnabled: true,
 };
 
 function toggle<T>(list: T[], value: T): T[] {
