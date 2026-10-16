@@ -590,6 +590,16 @@ export default function CalendarPage() {
     setLocation(`/day/${toISODateString(date)}`);
   };
 
+  const closeCreate = () => {
+    form.reset();
+    setCreateEventOpen(false);
+  };
+
+  const openCreateFresh = () => {
+    form.reset();
+    setCreateEventOpen(true);
+  };
+
   const handleCreateAt = (day: string, startTime?: string) => {
     form.reset({
       ...form.getValues(),
@@ -629,7 +639,7 @@ export default function CalendarPage() {
 
   const dialogs = (
     <>
-        <Dialog open={createEventOpen} onOpenChange={setCreateEventOpen}>
+        <Dialog open={createEventOpen} onOpenChange={(open) => (open ? setCreateEventOpen(true) : closeCreate())}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Create Event</DialogTitle>
@@ -646,7 +656,7 @@ export default function CalendarPage() {
                 <p className="text-sm text-muted-foreground mb-4">
                   Add household members in Global Config before creating events.
                 </p>
-                <Button asChild onClick={() => setCreateEventOpen(false)} data-testid="button-add-person-first">
+                <Button asChild onClick={closeCreate} data-testid="button-add-person-first">
                   <Link href="~/settings">
                     <Users className="h-4 w-4 mr-2" />
                     Go to Global Config
@@ -792,7 +802,7 @@ export default function CalendarPage() {
                     }}
                   />
                   <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setCreateEventOpen(false)}>
+                    <Button type="button" variant="outline" onClick={closeCreate}>
                       Cancel
                     </Button>
                     <Button type="submit" disabled={createEventMutation.isPending} data-testid="button-submit-event">
@@ -1060,7 +1070,7 @@ export default function CalendarPage() {
                 <ChevronRight className="h-5 w-5" />
               </Button>
             </div>
-            <Button onClick={() => setCreateEventOpen(true)} data-testid="button-create-event">
+            <Button onClick={openCreateFresh} data-testid="button-create-event">
               <Plus className="h-4 w-4 mr-2" />
               New Event
             </Button>
