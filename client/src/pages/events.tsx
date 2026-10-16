@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
-import { CalendarDays, CalendarHeart, Hourglass, List } from "lucide-react";
+import { CalendarDays, CalendarHeart, Hourglass, List, MapPin } from "lucide-react";
 import type { EventCategory } from "@shared/events";
 import { EmptyState } from "@/components/empty-state";
 import { EventHero } from "@/components/events/event-hero";
@@ -17,6 +17,7 @@ import {
   ToneChip,
 } from "@/components/person/satchel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { hasMapLocation, mapUrl } from "@/lib/event-detail";
 import { useToday } from "@/hooks/use-today";
 import {
   CATEGORY_META,
@@ -58,6 +59,9 @@ const TRIP_FILTERS: { id: TripFilter; label: string }[] = [
 const HIDDEN_RESPONSES = new Set(["not-interested", "dismissed"]);
 const BTN =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-3 text-sm lg:text-base font-semibold";
+
+const MAP_BTN =
+  "flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl text-xs font-semibold leading-none bg-[#dde8f1] text-[#3d6a8f] dark:bg-[#8fb4d4]/15 dark:text-[#8fb4d4]";
 
 function matchesResponse(item: EventItem, filter: ResponseFilter): boolean {
   if (filter === "all") return true;
@@ -112,8 +116,7 @@ function AgendaCard({ item }: { item: EventItem }) {
   const km = item.rec.distanceKm;
   const responseLabel = RESPONSE_LABELS[item.response];
   return (
-    <Link
-      href={`/${encodeURIComponent(item.eventId)}`}
+    <div
       className={cn(
         "flex min-h-16 items-start gap-2.5 rounded-2xl border p-2.5",
         SURFACE,
@@ -121,6 +124,7 @@ function AgendaCard({ item }: { item: EventItem }) {
       )}
       data-testid={`events-card-${item.eventId}`}
     >
+      <Link href={`/${encodeURIComponent(item.eventId)}`} className="flex min-w-0 flex-1 items-start gap-2.5">
       <DateBadge
         tone={cat.tone}
         top={new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
@@ -163,7 +167,21 @@ function AgendaCard({ item }: { item: EventItem }) {
           )}
         </div>
       </div>
-    </Link>
+      </Link>
+      {hasMapLocation(event.location) && (
+        <a
+          href={mapUrl(event.location)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={MAP_BTN}
+          aria-label={`Open ${event.location.venueName || event.title} in Google Maps`}
+          data-testid={`events-card-map-${item.eventId}`}
+        >
+          <MapPin className="h-4 w-4" aria-hidden="true" />
+          Map
+        </a>
+      )}
+    </div>
   );
 }
 

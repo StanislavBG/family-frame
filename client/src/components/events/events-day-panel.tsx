@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
-import { Check, ChevronLeft, ChevronRight, Star } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, MapPin, Star } from "lucide-react";
 import { DEFAULT_VISIT_PREFS, suggestVisit, type VisitPrefs } from "@shared/events-visit";
 import { LINE, MUTED, SERIF, SURFACE, ToneChip } from "@/components/person/satchel";
 import {
@@ -12,6 +12,7 @@ import {
   type DayEntry,
   type EventItem,
 } from "@/lib/events";
+import { hasMapLocation, mapUrl } from "@/lib/event-detail";
 import { addDaysIso } from "@/lib/person-day";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,9 @@ interface EventsDayPanelProps {
 }
 
 const NAV = "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border";
+
+const MAP_BTN =
+  "flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl text-xs font-semibold leading-none bg-[#dde8f1] text-[#3d6a8f] dark:bg-[#8fb4d4]/15 dark:text-[#8fb4d4]";
 
 function headingFor(dateIso: string): string {
   const [y, m, d] = dateIso.split("-").map(Number);
@@ -40,11 +44,11 @@ function Row({ entry, children }: { entry: DayEntry<EventItem>; children: React.
   const km = item.rec.distanceKm;
   const where = formatWhere(event.location);
   return (
-    <Link
-      href={`/${encodeURIComponent(item.eventId)}`}
-      className={cn("block min-h-11 space-y-0.5 rounded-2xl border p-2.5", SURFACE, LINE)}
+    <div
+      className={cn("flex min-h-11 items-start gap-2 rounded-2xl border p-2.5", SURFACE, LINE)}
       data-testid={`events-day-row-${item.eventId}`}
     >
+      <Link href={`/${encodeURIComponent(item.eventId)}`} className="block min-w-0 flex-1 space-y-0.5">
       {children}
       <div className="flex items-center gap-1.5">
         {item.response === "going" && <Check className="h-4 w-4 shrink-0" aria-label="Going" />}
@@ -69,7 +73,21 @@ function Row({ entry, children }: { entry: DayEntry<EventItem>; children: React.
           </span>
         )}
       </div>
-    </Link>
+      </Link>
+      {hasMapLocation(event.location) && (
+        <a
+          href={mapUrl(event.location)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={MAP_BTN}
+          aria-label={`Open ${event.location.venueName || event.title} in Google Maps`}
+          data-testid={`events-day-map-${item.eventId}`}
+        >
+          <MapPin className="h-4 w-4" aria-hidden="true" />
+          Map
+        </a>
+      )}
+    </div>
   );
 }
 
