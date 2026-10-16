@@ -9,7 +9,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 - **Clock**: Real-time display with timezone support
 - **Weather**: Current conditions and forecasts via Open-Meteo API (supports Celsius/Fahrenheit)
 - **Photos**: Digital photo frame powered by Google Photos or Pixabay with customizable slideshow intervals
-- **Calendar**: Shared family events with birthday tracking
+- **Calendar**: Shared family events with birthday tracking; Day view is an hour-by-hour plan of existing events with participants, location and notes
 - **Messages**: Household messaging system with unread count tracking
 - **Radio**: Bulgarian radio station streaming with metadata display
 - **Baby Songs**: Age-specific nursery rhymes (0-6 years)
@@ -62,6 +62,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       │   ├── ui/             # shadcn components
 │       │   ├── person/         # People app person views (Satchel design; see below)
 │       │   ├── events/         # Events app UI (hero, month view, actions, preferences)
+│       │   ├── calendar/       # Calendar Day view UI (calendar-day-view.tsx)
 │       │   ├── app-sidebar.tsx # Navigation sidebar
 │       │   ├── app-picker.tsx  # App Picker (enable/disable apps)
 │       │   ├── empty-state.tsx # Reusable empty state component
@@ -74,6 +75,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       └── lib/
 │           ├── api.ts          # Query keys, mutation helpers
 │           ├── agent-data.ts   # Typed hooks and URL builders for mail and data routes
+│           ├── calendar-day.ts # Pure Day view layout and time formatting logic
 │           ├── events.ts       # Typed hooks for /api/events/* and /api/household/*
 │           ├── app-registry.ts # APP_ICONS + app layout hook
 │           ├── format.ts       # Formatting utilities (dates, temps)
@@ -275,6 +277,12 @@ Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`,
 - Preference weights come from the append-only feedback log via `shared/events-preferences.ts`; calendar linking rules live in `server/events-service.ts`.
 - `shared/events-visit.ts` - day windows and visit-block suggestion (`dayWindows`, `suggestVisit`), used by both the server and the client; keep that logic there.
 - Month view day panel: `client/src/components/events/events-day-panel.tsx` (`EventsDayPanel`), the full list for the day selected in the month view, rendered by `pages/events.tsx`.
+
+### Calendar Day view
+- Route `/calendar/day/YYYY-MM-DD`; calendar is a nested app, so absolute links use `~/` (e.g. `~/calendar/day/...`).
+- Layout and time formatting logic stays in `client/src/lib/calendar-day.ts` (pure, unit-tested); the component is `client/src/components/calendar/calendar-day-view.tsx`.
+- The day view only renders existing calendar events; it never creates any by itself.
+- The upcoming strip renders only the cards that fit one row (`fitCount` in `client/src/lib/fit-scale.ts`); it never wraps or scrolls sideways.
 
 ### Household email
 Operator guide: `docs/household-email.md`. One operator Gmail inbox; households forward to `<base>+<key>[-<person>]`; `services/mail-intake/` (local 5-minute timer) delivers through `POST /api/service/inbox/deliver`.
