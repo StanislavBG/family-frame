@@ -90,9 +90,21 @@ export function buildEventFacts(event: FfEvent, rec: Pick<EventItem["rec"], "dis
   return facts;
 }
 
+function hasCoordinates(location: FfEvent["location"]): boolean {
+  return typeof location.lat === "number" && typeof location.lon === "number";
+}
+
+/** True when the event has a place a map can find (not online-only). */
+export function hasMapLocation(location: FfEvent["location"]): boolean {
+  const { venueName, address, city, region, postalCode } = location;
+  return [venueName, address, city, region, postalCode].some(Boolean) || hasCoordinates(location);
+}
+
+/** Google Maps search link for the place text, or its coordinates when there is no text. */
 export function mapUrl(location: FfEvent["location"]): string {
-  const query = [location.venueName, location.address, location.city, location.region, location.postalCode, location.country]
+  const text = [location.venueName, location.address, location.city, location.region, location.postalCode, location.country]
     .filter(Boolean)
     .join(", ");
-  return `https://www.openstreetmap.org/search?query=${encodeURIComponent(query)}`;
+  const query = text || (hasCoordinates(location) ? `${location.lat},${location.lon}` : "");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
