@@ -276,6 +276,8 @@ Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`,
 - `events:run -- report` profiles recent runs and recommendations (Markdown, no address); the timers send desktop notices on failures and per-household results, off with `EVENTS_NOTIFY=off` (`services/events-pipeline/notify.ts`, `report.ts`).
 - Preference weights come from the append-only feedback log via `shared/events-preferences.ts`; calendar linking rules live in `server/events-service.ts`.
 - `shared/events-visit.ts` - day windows and visit-block suggestion (`dayWindows`, `suggestVisit`), used by both the server and the client; keep that logic there.
+- `shared/events-profile.ts` - household life stages and profile lines from member ages only (`householdProfile`, `PROFILE_GUIDANCE`); profile and preferences are hints, not filters.
+- `services/events-pipeline/trips.ts` + `trips-run.ts` - trip ideas (day trip, weekend; research only, no booking): max 3 active per household, one new per `all` run, kept out of the shared events table; drive limits in `geo.ts`.
 - Month view day panel: `client/src/components/events/events-day-panel.tsx` (`EventsDayPanel`), the full list for the day selected in the month view, rendered by `pages/events.tsx`.
 
 ### Calendar Day view

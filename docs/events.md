@@ -50,7 +50,7 @@ Erase: `DELETE /api/events/data` removes `eventRecs`, `eventFeedback`, `eventPre
 | `category` | one of `EVENT_CATEGORIES` (parks-outdoors, nature-animals, kids-activities, baby-toddler, sports-fitness, arts-culture, music-performance, museums-learning, festivals-fairs, faith-church, food-markets, community-volunteering, holiday-seasonal, family-entertainment, other); `tags[]` max 20 |
 | `schedule` | `timezone`, `start`, `end?`, `allDay`, `recurrenceText?`, `occurrences[]` (max 50) |
 | `location` | venue, address, city, country (required), `lat`/`lon`, `setting` (indoor/outdoor/mixed/unknown), `online`, accessibility and parking notes |
-| `cost` | `isFree`, currency, min/max price, `priceText`, `ticketRequired`, `registrationRequired`, https URLs |
+| `cost` | `isFree`, `admission` (optional: `free`, `donation`, `paid-entry`, `ticketed`), currency, min/max price, `priceText`, `ticketRequired`, `registrationRequired`, https URLs. When `admission` is absent the pipeline derives it: `ticketed` if `ticketRequired`, else `free` if `isFree`, else `paid-entry` |
 | `audience` | `ageBands[]` (baby ... senior, all-ages), `ageMin/Max`, `familyFriendly`, `strollerFriendly`, `languages` |
 | `organizer`, `media` | optional |
 | `sources[]` | 1-10 https sources with `kind` (official, listing, social, news, other) and `retrievedAt` |
@@ -61,11 +61,15 @@ Erase: `DELETE /api/events/data` removes `eventRecs`, `eventFeedback`, `eventPre
 
 `updates[].kind`: `cancelled`, `postponed`, `rescheduled`, `time-changed`, `venue-changed`, `price-changed`, `sold-out`, `announcement`, `details-changed`, `reinstated`.
 
-Per-household wrapper (`recommendationInputSchema`): `event`, `whyForHousehold`, `whyForChildren?`, `highlights[]`, `tips[]`, `matchScore` 0-1, `matchReasons[]`, `distanceKm?`, `travelMinutes?`. Batches of up to 50 per PUT. Household response states: `new`, `interested`, `going`, `maybe`, `not-interested`, `dismissed`. `SAMPLE_EVENT` in `shared/events.ts` is a full example. Unchanged re-publishes are no-ops; `new` and `dismissed` recommendations are pruned 30 days after the event ended.
+Per-household wrapper (`recommendationInputSchema`): `event`, `whyForHousehold`, `whyForChildren?`, `highlights[]`, `tips[]`, `matchScore` 0-1, `matchReasons[]`, `distanceKm?`, `travelMinutes?`, `tripType?`, `driveMinutes?`, `trip?`. Batches of up to 50 per PUT. Household response states: `new`, `interested`, `going`, `maybe`, `not-interested`, `dismissed`. `SAMPLE_EVENT` in `shared/events.ts` is a full example. Unchanged re-publishes are no-ops; `new` and `dismissed` recommendations are pruned 30 days after the event ended.
+
+Trip fields (`shared/events.ts`): `tripType` is `local`, `day-trip` or `weekend`; `driveMinutes` (0-600) is the estimated drive from the household. `trip` (`tripSchema`) is present only on trip ideas and must match `tripType`: `type` (`day-trip` or `weekend`), `driveMinutes`, `nights` (weekend 1-2, day trip 0), `itinerary[]` (1-3 days, each a `label` and 1-10 timed `items` of kind drive, activity, meal, rest, lodging or other), `lodging[]` (weekend 1-3 options with name, area, `priceText` and https `url`; day trips have none) and optional `bestFor`. Trips are research only: the pipeline never books anything, it links to pages the household can open.
 
 Planned visit (`plan.visit`, `visitPlanSchema`): `{start, end}` as local wall-clock times without an offset (`YYYY-MM-DDTHH:MM:SS`), on the same date, end after start, at most 12 hours. It is the part of the day the household intends to go. The server also rejects a visit on a day the event does not run or outside that day's known opening hours (400).
 
 Visit preferences (in `eventPrefs`, `PUT /api/events/preferences`): `visitBlockMinutes` (60-240, default 150), `visitEarliest` (`HH:MM`, default `10:00`) and `visitLatestEnd` (`HH:MM`, default `18:00`). They shape the suggested block (section 6).
+
+Ticket and trip preferences (also in `eventPrefs`): `maxTicketPrice` (0-5000, default 500) is the highest cheapest-ticket price accepted for ticketed shows, and `tripsEnabled` (default true) turns trip ideas on or off for the household.
 
 ## 4. Household API (`/api/events/*`)
 
@@ -140,11 +144,13 @@ Every response and feedback appends to `eventFeedback/<uid>` (id, `at`, `eventId
 
 Weights decay with a 120-day half-life. Category sums are normalised with `tanh(sum / 3)` to -1..1; stated liked categories add +0.6, stated avoided categories force -1. Tags get half weight (top 30 kept). Output also has `freePreference`, `preferredWeekdays`, `maxDistanceKm` and up to 6 human lines ("Likes: ...") shown in the app as what has been learned. The service API returns this as `learned`.
 
+Household profile (`shared/events-profile.ts`, `householdProfile(memberAges)`): life stages (`baby`, `toddler`, `preschool`, `school-age`, `teen`, `adults-only`, `multi-generational`) and up to 3 plain lines such as "Household: 2 adults and a toddler (1-2)." They come from the member ages the service API already shares, so there is no new personal data and no consent change. The lines go into the explain and trip prompts together with `PROFILE_GUIDANCE`: the profile and preferences are hints, not filters, and the model should still include some ideas outside them.
+
 ## 8. Pipeline
 
 `services/events-pipeline/` is a separate Node 22.13+ package (`node:sqlite`), run with `npm run events:run -- <discover|refresh|all|watch|status|report> [--dry-run] [--household <id>] [--max-sessions <n>]` (`report` also takes `--runs <n>`). It is excluded from the root `npm test` and `npm run check`; use `npm run events:test` and `npm run events:check`.
 
-Modules: `cli.ts` (entry, lock, stats line), `ff-client.ts` (service API client), `db.ts` (SQLite state), `geo.ts` (Nominatim, cached, one request at a time), `search.ts` (query planning per window), `haiku.ts` (`claude -p` runner), `normalize.ts` (raw result to `ffEventSchema`), `rank.ts` (scoring with learned weights, distance, busy overlap, dedupe), `explain.ts` (why-for-household/children text, template fallback), `discover.ts` (purge revoked, search, dedupe, rank, explain, publish), `dispatch.ts` (re-check due events, push changes).
+Modules (trip modules are described below): `cli.ts` (entry, lock, stats line), `ff-client.ts` (service API client), `db.ts` (SQLite state), `geo.ts` (Nominatim, cached, one request at a time), `search.ts` (query planning per window), `haiku.ts` (`claude -p` runner), `normalize.ts` (raw result to `ffEventSchema`), `rank.ts` (scoring with learned weights, distance, busy overlap, dedupe), `explain.ts` (why-for-household/children text, template fallback), `discover.ts` (purge revoked, search, dedupe, rank, explain, publish), `dispatch.ts` (re-check due events, push changes), `trips.ts` (research one trip idea), `trips-run.ts` (trip pool per household).
 
 Search windows (`SEARCH_WINDOWS`), each searched again when due:
 
@@ -163,6 +169,18 @@ Search and ranking:
 - Same-series dedupe: a candidate whose title is at least 0.6 similar to an already picked or known recommendation is dropped.
 - Events without coordinates are geocoded in `discover.ts` from the event's own public location (venue, address, city, region, country) only, never the household address. A miss or error keeps the event unchanged (`geocodeHits` / `geocodeMisses` in the run stats).
 - Explanations run in consecutive Haiku batches of 12 picks, with a template fallback per failed batch.
+
+Drive estimate (`geo.ts`): `estimateDriveMinutes(km) = round(10 + km * 1.25 * 60 / 65)` from the straight-line distance (10 minutes overhead, 1.25 road factor, 65 km/h average; no routing service). `tripTypeFor` maps minutes to a type using `TRIP_DRIVE_LIMITS`: local under 45, day trip under 90, weekend under 150. Discover sets `driveMinutes` and `tripType` on every ranked recommendation that has a distance (beyond 150 minutes it is labelled `weekend`). Trip research rejects a destination over its type's limit (day trip 90, weekend 150).
+
+Ticketed shows: `planSearchTasks` adds one `ticketed-shows` task in the `near` window (music-performance, arts-culture and family-entertainment, minus categories every household avoids). Its prompt asks for ticketed concerts, shows and theatre suited to the household's ages, with price ranges and ticket URLs, and states a price ceiling (the highest `maxTicketPrice` in the area). Ranking skips a ticketed, non-free candidate whose cheapest price (`minPrice`, else `maxPrice`) is above the household's `maxTicketPrice` with the reason `over ticket price limit` (visible in `skippedByReason`); ticketed picks are explained as "Ticketed show, from <currency> <price>".
+
+Trip ideas (`trips.ts`, `trips-run.ts`): run at the end of each `all` run (not `discover`, `refresh` or `watch`), after discover and refresh, for every sharing household. Skipped for `--dry-run`.
+
+- The pool holds at most 3 active trips (`EVENTS_LIMITS.maxActiveTrips`) per household, and only while `tripsEnabled` is true. At most one new trip is researched per household per `all` run (one Haiku session), alternating weekend and day trip based on what the pool already holds.
+- A trip is a normal recommendation with `trip` set, dated to the next Saturday in the household's timezone (weekends also Sunday). Once its end date has passed it is re-dated and re-published for the next Saturday, so it is re-suggested every weekend until it is retired.
+- A trip is retired when the household answers `going` and the trip is past, answers `not-interested` or `dismissed`, or it is withdrawn.
+- Trip events are kept out of the shared events table: they live only in the household's `recommendations.published_json` row in the local DB, so no other household sees them.
+- The prompt carries city and region, the household profile lines, liked and avoided categories, the ticket ceiling and the titles of existing trips; never the street address, names or birthdays. Run stats carry `trips` (`households`, `active`, `refreshed`, `created`, `retired`, `failed`).
 
 Cost caps: `--max-sessions` caps Haiku sessions per run, shared across discover and refresh in `all`; default 45 for `discover`/`refresh`/`all`, 20 for `watch`. Every `claude -p` call pins `--model claude-haiku-4-5-20251001` with read-only web tools; rate-limit or budget errors stop the run. A lock file `<EVENTS_DB_PATH>.lock` prevents overlap (stale after 2 hours). `discover`, `refresh` and `all` wait for the lock up to 20 minutes (40 tries, 30 seconds apart) so the daily run does not lose to a long watch run. If another run held it the whole time, the run prints `{"skipped":"locked","waitedMs":...}`, sends a critical notice and exits 1. `watch` does not wait.
 
