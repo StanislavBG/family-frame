@@ -25,7 +25,12 @@ import {
   formatWhen,
   agendaColumns,
   groupForAgenda,
+  isPaidOrTicketed,
+  isTripIdea,
+  matchesTripFilter,
   statusBadge,
+  tripBadge,
+  type TripFilter,
   useEventItems,
   useEventsStatus,
   type EventItem,
@@ -40,6 +45,13 @@ const RESPONSE_FILTERS: { id: ResponseFilter; label: string }[] = [
   { id: "new", label: "New" },
   { id: "going", label: "Going" },
   { id: "interested", label: "Interested" },
+  { id: "all", label: "All" },
+];
+
+const TRIP_FILTERS: { id: TripFilter; label: string }[] = [
+  { id: "local", label: "Nearby" },
+  { id: "day-trip", label: "Day trips" },
+  { id: "weekend", label: "Weekends" },
   { id: "all", label: "All" },
 ];
 
@@ -155,6 +167,26 @@ function AgendaCard({ item }: { item: EventItem }) {
   );
 }
 
+function TripCard({ item }: { item: EventItem }) {
+  return (
+    <Link
+      href={`/${encodeURIComponent(item.eventId)}`}
+      className={cn("block min-h-16 space-y-1 rounded-2xl border p-3", SURFACE, LINE)}
+      data-testid={`events-trip-${item.eventId}`}
+    >
+      <div
+        className={cn(SERIF, "line-clamp-2 text-base font-bold leading-snug text-[#1a1612] dark:text-foreground")}
+      >
+        {item.event.title}
+      </div>
+      <ToneChip tone="leaf">{tripBadge(item)}</ToneChip>
+      {item.event.summary && (
+        <p className={cn("line-clamp-3 text-sm", MUTED)}>{item.event.summary}</p>
+      )}
+    </Link>
+  );
+}
+
 function dayHeading(date: string, today: string): string {
   const [y, m, d] = date.split("-").map(Number);
   const label = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
@@ -171,6 +203,8 @@ function Overview() {
   const [view, setView] = useState<View>("agenda");
   const [category, setCategory] = useState<EventCategory | null>(null);
   const [response, setResponse] = useState<ResponseFilter>("active");
+  const [tripFilter, setTripFilter] = useState<TripFilter>("all");
+  const [paidOnly, setPaidOnly] = useState(false);
   const [month, setMonth] = useState(`${today.slice(0, 7)}-01`);
   const [selectedDate, setSelectedDate] = useState(today);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -185,13 +219,17 @@ function Overview() {
         (i) =>
           !i.withdrawn &&
           (!category || i.event.category === category) &&
-          matchesResponse(i, response),
+          matchesResponse(i, response) &&
+          matchesTripFilter(i, tripFilter) &&
+          (!paidOnly || isPaidOrTicketed(i)),
       ),
-    [items, category, response],
+    [items, category, response, tripFilter, paidOnly],
   );
+  const trips = useMemo(() => visible.filter(isTripIdea), [visible]);
+  const dated = useMemo(() => visible.filter((i) => !isTripIdea(i)), [visible]);
   const { next14, later } = useMemo(
-    () => groupForAgenda(visible, today),
-    [visible, today],
+    () => groupForAgenda(dated, today),
+    [dated, today],
   );
   const usedCategories = useMemo(
     () => Array.from(new Set(items.map((i) => i.event.category))),
@@ -270,6 +308,29 @@ function Overview() {
             </Chip>
           ))}
         </div>
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Trip type filter"
+        >
+          {TRIP_FILTERS.map((f) => (
+            <Chip
+              key={f.id}
+              active={tripFilter === f.id}
+              onClick={() => setTripFilter(f.id)}
+              testId={`events-trip-filter-${f.id}`}
+            >
+              {f.label}
+            </Chip>
+          ))}
+          <Chip
+            active={paidOnly}
+            onClick={() => setPaidOnly(!paidOnly)}
+            testId="events-paid-filter"
+          >
+            Paid / Ticketed
+          </Chip>
+        </div>
         {usedCategories.length > 0 && (
           <div
             className="flex flex-wrap items-center gap-2"
@@ -306,7 +367,7 @@ function Overview() {
       ) : view === "month" ? (
         <div className="space-y-3 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-3 lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
           <EventsMonth
-            items={visible}
+            items={dated}
             monthIso={month}
             onMonthChange={changeMonth}
             weekStartsMonday
@@ -317,15 +378,30 @@ function Overview() {
             ref={panelRef}
             className="lg:sticky lg:top-3 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto"
           >
-            <EventsDayPanel items={visible} dateIso={selectedDate} onDateChange={selectDate} />
+            <EventsDayPanel items={dated} dateIso={selectedDate} onDateChange={selectDate} />
           </div>
         </div>
-      ) : next14.length === 0 && later.length === 0 ? (
+      ) : next14.length === 0 && later.length === 0 && trips.length === 0 ? (
         <p className={cn("text-lg", MUTED)} data-testid="events-none-match">
           No events match these filters.
         </p>
       ) : (
         <div className="space-y-4">
+          {trips.length > 0 && (
+            <section aria-labelledby="events-trips" className="space-y-2" data-testid="events-trips">
+              <h2
+                id="events-trips"
+                className={cn(SERIF, "text-2xl font-bold", SATCHEL_TONES.leaf.fg)}
+              >
+                Trip ideas
+              </h2>
+              <div className="grid gap-2 lg:grid-cols-3 xl:grid-cols-4">
+                {trips.map((item) => (
+                  <TripCard key={item.eventId} item={item} />
+                ))}
+              </div>
+            </section>
+          )}
           <section aria-labelledby="events-next14" className="space-y-2">
             <h2
               id="events-next14"

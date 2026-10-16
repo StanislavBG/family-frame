@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_EVENT } from "@shared/events";
-import { eventDayEntries, formatClock, formatClockRange, formatCost, formatWhen, agendaColumns, groupForAgenda, statusBadge, CATEGORY_META } from "./events";
+import { eventDayEntries, formatClock, formatClockRange, formatCost, formatWhen, agendaColumns, groupForAgenda, statusBadge, CATEGORY_META, isTripIdea, matchesTripFilter, isPaidOrTicketed, tripBadge } from "./events";
 import { EVENT_CATEGORIES } from "@shared/events";
 
 type Sched = typeof SAMPLE_EVENT.schedule;
@@ -207,5 +207,38 @@ describe("formatClock", () => {
     expect(formatClock("12:00")).toBe("12:00 PM");
     expect(formatClock("14:30", "24h")).toBe("14:30");
     expect(formatClockRange("10:00", "12:30", "12h")).toBe("10:00 AM \u2013 12:30 PM");
+  });
+});
+
+describe("trip helpers", () => {
+  const trip = (type: "day-trip" | "weekend", driveMinutes: number, nights: number) =>
+    ({ type, driveMinutes, nights }) as never;
+  it("isTripIdea checks rec.trip", () => {
+    expect(isTripIdea({ rec: { trip: trip("day-trip", 60, 0) } })).toBe(true);
+    expect(isTripIdea({ rec: {} })).toBe(false);
+  });
+  it("matchesTripFilter treats missing tripType as local", () => {
+    expect(matchesTripFilter({ rec: {} }, "local")).toBe(true);
+    expect(matchesTripFilter({ rec: {} }, "weekend")).toBe(false);
+    expect(matchesTripFilter({ rec: { tripType: "weekend" } }, "weekend")).toBe(true);
+    expect(matchesTripFilter({ rec: { tripType: "weekend" } }, "all")).toBe(true);
+    expect(matchesTripFilter({ rec: { tripType: "day-trip" } }, "local")).toBe(false);
+  });
+  it("isPaidOrTicketed uses admission, else isFree", () => {
+    const c = (isFree: boolean, admission?: string) => ({ event: { cost: { isFree, admission } } });
+    expect(isPaidOrTicketed(c(false, "ticketed"))).toBe(true);
+    expect(isPaidOrTicketed(c(false, "paid-entry"))).toBe(true);
+    expect(isPaidOrTicketed(c(true, "free"))).toBe(false);
+    expect(isPaidOrTicketed(c(false, "donation"))).toBe(false);
+    expect(isPaidOrTicketed(c(false))).toBe(true);
+    expect(isPaidOrTicketed(c(true))).toBe(false);
+  });
+  it("tripBadge formats type, nights and drive time", () => {
+    expect(tripBadge({ rec: { trip: trip("day-trip", 45, 0) } })).toBe("Day trip \u00b7 about 45 min drive");
+    expect(tripBadge({ rec: { trip: trip("day-trip", 75, 0) } })).toBe("Day trip \u00b7 about 1 h 15 min drive");
+    expect(tripBadge({ rec: { trip: trip("weekend", 120, 1) } })).toBe("Weekend \u00b7 1 night \u00b7 about 2 h drive");
+    expect(tripBadge({ rec: { trip: trip("weekend", 130, 2) } })).toBe("Weekend \u00b7 2 nights \u00b7 about 2 h 15 min drive");
+    expect(tripBadge({ rec: { tripType: "day-trip", driveMinutes: 30 } })).toBe("Day trip \u00b7 about 30 min drive");
+    expect(tripBadge({ rec: {} })).toBe("");
   });
 });

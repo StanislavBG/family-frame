@@ -9,6 +9,8 @@ import type {
   PatchPlan,
   PostFeedback,
   PostResponse,
+  Trip,
+  TripType,
 } from "@shared/events";
 import { dayWindows, type DayWindow } from "@shared/events-visit";
 import type { SatchelTone } from "@/components/person/satchel";
@@ -31,6 +33,9 @@ export interface EventRecExplanation {
   matchReasons: string[];
   distanceKm?: number;
   travelMinutes?: number;
+  tripType?: TripType;
+  driveMinutes?: number;
+  trip?: Trip;
 }
 
 export interface EventItem {
@@ -428,4 +433,44 @@ export function statusBadge(
   if (fromStatus) return fromStatus;
   const latest = [...updates].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
   return (latest && UPDATE_BADGES[latest.kind]) || null;
+}
+
+export type TripFilter = "all" | TripType;
+
+/** Day trips and weekends are reusable ideas, not dated events. */
+export function isTripIdea(item: { rec: { trip?: unknown } }): boolean {
+  return item.rec.trip != null;
+}
+
+/** A missing tripType counts as local ("Nearby"). */
+export function matchesTripFilter(item: { rec: { tripType?: TripType } }, filter: TripFilter): boolean {
+  if (filter === "all") return true;
+  return (item.rec.tripType ?? "local") === filter;
+}
+
+/** Shows and concerts: paid entry or ticketed; without an admission kind, anything not free. */
+export function isPaidOrTicketed(item: { event: { cost: { isFree: boolean; admission?: string } } }): boolean {
+  const { admission, isFree } = item.event.cost;
+  if (admission === undefined) return !isFree;
+  return admission === "paid-entry" || admission === "ticketed";
+}
+
+function formatDrive(minutes: number): string {
+  if (minutes < 60) return `about ${Math.round(minutes)} min drive`;
+  const total = Math.round(minutes / 15) * 15;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m === 0 ? `about ${h} h drive` : `about ${h} h ${m} min drive`;
+}
+
+/** "Day trip \u00b7 about 1 h 15 min drive", "Weekend \u00b7 1 night \u00b7 about 2 h drive"; "" for non-trips. */
+export function tripBadge(item: { rec: { trip?: Trip; tripType?: TripType; driveMinutes?: number } }): string {
+  const { trip, tripType, driveMinutes } = item.rec;
+  const type = trip?.type ?? tripType;
+  if (type !== "day-trip" && type !== "weekend") return "";
+  const parts = [type === "weekend" ? "Weekend" : "Day trip"];
+  if (type === "weekend" && trip) parts.push(`${trip.nights} ${trip.nights === 1 ? "night" : "nights"}`);
+  const drive = trip?.driveMinutes ?? driveMinutes;
+  if (drive !== undefined) parts.push(formatDrive(drive));
+  return parts.join(" \u00b7 ");
 }
