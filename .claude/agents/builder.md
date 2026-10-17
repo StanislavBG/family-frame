@@ -28,6 +28,13 @@ npm run release                  # merge, gate (npm run check + npm test), fast-
 It merges in a temp worktree, runs `npm run check` and `npm test`, fast-forwards `main`, runs
 `git push origin main`, and prints a Markdown summary. Relay that summary.
 
+## Diverged main
+
+If `main` and `origin/main` have diverged (e.g. Replit "Published your App" commits), the release
+merges `origin/main` into the release branch with `--no-ff` before the other branches, so the pushed
+result is a superset of both sides. Never rebase or force-push. If that merge conflicts, it stops
+and pushes nothing; report the conflict.
+
 ## Hold rules
 
 A branch is held, not merged, when it has: uncommitted changes in its worktree; open PRDs still

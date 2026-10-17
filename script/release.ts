@@ -146,11 +146,15 @@ function main(): number {
     }
   }
   const hasOrigin = gitOk(root, ["rev-parse", "--verify", "origin/main"]);
+  let diverged = false;
   if (hasOrigin && !gitOk(root, ["merge-base", "--is-ancestor", "origin/main", "main"])) {
     if (!gitOk(root, ["merge-base", "--is-ancestor", "main", "origin/main"])) {
-      fail("main has diverged from origin/main and cannot be fast-forwarded; reconcile them manually");
-    }
-    if (!dryRun) {
+      // Replit "Published your App" commits land on origin/main; keep both sides (superset) via a merge below.
+      diverged = true;
+      console.log(
+        `${dryRun ? "(dry run) " : ""}main has diverged from origin/main; a release merges origin/main into main so the result holds both sides`,
+      );
+    } else if (!dryRun) {
       try {
         if (onMain) git(root, ["merge", "--ff-only", "origin/main"]);
         else git(root, ["fetch", ".", "origin/main:main"]);
@@ -189,6 +193,19 @@ function main(): number {
     git(root, ["worktree", "add", "-b", relBranch, tmp, "main"]);
     created = true;
     symlinkSync(path.join(root, "node_modules"), path.join(tmp, "node_modules"), "dir");
+
+    if (diverged) {
+      try {
+        git(tmp, ["merge", "--no-ff", "--no-edit", "origin/main"]);
+      } catch {
+        try {
+          git(tmp, ["merge", "--abort"]);
+        } catch {}
+        console.error("\nrelease: origin/main conflicts with main; resolve by hand (never auto-dropping either side). Nothing pushed.");
+        return 1;
+      }
+      console.log("Merged origin/main into the release branch (superset of both histories).");
+    }
 
     const merged: Array<{ branch: string; commits: string }> = [];
     const held = plan.hold.map((h) => ({ ...h }));
