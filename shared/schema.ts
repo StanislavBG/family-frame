@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { APP_MANIFESTS } from "./apps";
+import { APP_MANIFESTS, type AppId } from "./apps";
 import { personIdsSchema } from "./agent-data";
 
 // Event type enum
@@ -258,6 +258,7 @@ export const userSettingsSchema = z.object({
   // App picker settings
   visibleApps: z.array(z.string().max(40)).max(50).optional(), // If undefined, all apps visible
   appOrder: z.array(z.string().max(40)).max(50).optional(), // Custom app order (excludes fixed apps)
+  appSetupDone: z.boolean().optional(), // Household finished the welcome app setup
   // Baby Radio settings
   babyAgeMonths: z.number().min(0).max(72).default(12), // Baby age in months (0-72 = 0-6 years)
   // Custom playlists for Baby Songs (user-defined YouTube playlists)
@@ -310,6 +311,62 @@ export const updateUserSettingsSchema = userSettingsSchema
   .strict();
 
 export type UpdateUserSettings = z.infer<typeof updateUserSettingsSchema>;
+
+// Defaults applied when settings are read, so accounts store only what was set
+export const SETTINGS_DEFAULTS: UserSettings = userSettingsSchema.parse({});
+
+// Overlay stored settings on the defaults. Never parses `stored`: legacy values may be out of range.
+export function withSettingsDefaults(stored: unknown): UserSettings {
+  const result: Record<string, unknown> = { ...SETTINGS_DEFAULTS };
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    for (const [key, value] of Object.entries(stored)) {
+      if (value !== undefined && value !== null) result[key] = value;
+    }
+  }
+  return result as UserSettings;
+}
+
+// Who owns each setting: the household, or the app that reads it
+export const HOUSEHOLD_SETTINGS_KEYS = [
+  "homeName",
+  "location",
+  "temperatureUnit",
+  "timeFormat",
+  "visibleApps",
+  "appOrder",
+  "appSetupDone",
+  "dashboardLayout",
+] as const satisfies readonly (keyof UserSettings)[];
+
+export const APP_SETTINGS_KEYS: Partial<Record<AppId, readonly (keyof UserSettings)[]>> = {
+  clock: ["clockStyle"],
+  weather: ["weatherDisplayMode", "weatherAlertsEnabled"],
+  photos: [
+    "googlePhotosConnected",
+    "selectedAlbums",
+    "pickerSessionId",
+    "selectedPhotos",
+    "photoSource",
+    "photoInterval",
+    "photoMediaScope",
+    "photoMediaPersonIds",
+  ],
+  calendar: ["weekStartsMonday"],
+  utilities: ["utilitiesPhotoMediaId"],
+  radio: ["radioEnabled", "radioVolume", "radioStation"],
+  stocks: ["trackedStocks"],
+  "baby-songs": ["babyAgeMonths", "customPlaylists", "babySongsFavorites", "babySongsShuffleEnabled"],
+  tv: ["tvVolume", "lastTvChannel"],
+  screensaver: [
+    "screensaverEnabled",
+    "screensaverDelay",
+    "screensaverMode",
+    "sleepModeEnabled",
+    "sleepStartTime",
+    "sleepEndTime",
+    "sleepDimLevel",
+  ],
+};
 
 export const CONNECTION_USER_ID_PATTERN = /^user_[A-Za-z0-9]+$/;
 
