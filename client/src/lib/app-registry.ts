@@ -27,6 +27,7 @@ import {
   moveAppInOrder,
   resolveAppLayout,
   setAppEnabled,
+  APP_MANIFESTS,
   type AppId,
 } from "@shared/apps";
 import type { UserSettings } from "@shared/schema";
@@ -135,4 +136,39 @@ export function useAppLayout(): UseAppLayoutResult {
   const move = useCallback((id: AppId, direction: "up" | "down") => mutate({ kind: "move", id, direction }), [mutate]);
 
   return { status, layout, isEnabled, setEnabled, move, isSaving: mutation.isPending };
+}
+
+const PHOTO_PATCH_KEYS = ["photoSource", "photoMediaScope", "photoMediaPersonIds"] as const;
+
+export function settingsPatchInvalidations(patch: Partial<UserSettings>): string[][] {
+  const keys = [["/api/settings"]];
+  if (PHOTO_PATCH_KEYS.some((k) => k in patch)) keys.push(["/api/photos"]);
+  return keys;
+}
+
+export function useSettingsPatch(): (patch: Partial<UserSettings>) => void {
+  const { mutate } = useMutation({
+    mutationFn: (data: Partial<UserSettings>) => apiRequest("PATCH", "/api/settings", data),
+    onSuccess: (_data, patch) => {
+      for (const queryKey of settingsPatchInvalidations(patch)) {
+        queryClient.invalidateQueries({ queryKey });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to save", description: error.message, variant: "destructive" });
+    },
+  });
+  return useCallback((patch: Partial<UserSettings>) => mutate(patch), [mutate]);
+}
+
+export function appIdForPath(path: string): AppId | null {
+  const clean = path.split("?")[0];
+  let best: { id: AppId; len: number } | null = null;
+  for (const m of APP_MANIFESTS) {
+    if (m.fixed) continue;
+    if ((clean === m.url || clean.startsWith(m.url + "/")) && (!best || m.url.length > best.len)) {
+      best = { id: m.id, len: m.url.length };
+    }
+  }
+  return best ? best.id : null;
 }

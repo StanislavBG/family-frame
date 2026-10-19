@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Sheet,
@@ -9,8 +9,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Settings, ExternalLink } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { useSettingsPatch } from "@/lib/app-registry";
 import type { UserSettings } from "@shared/schema";
 import { APP_MANIFESTS, type AppId } from "@shared/apps";
 import { APP_SETTINGS_PANELS } from "@/components/app-settings-panels";
@@ -40,22 +39,7 @@ export function AppSettingsSheet({ open, onOpenChange }: AppSettingsSheetProps) 
     enabled: open,
   });
 
-  const { toast } = useToast();
-  const updateSettings = useMutation({
-    mutationFn: (data: Partial<UserSettings>) =>
-      apiRequest("PATCH", "/api/settings", data),
-    onSuccess: (_data, patch) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-      if ("photoSource" in patch || "photoMediaScope" in patch || "photoMediaPersonIds" in patch) {
-        queryClient.invalidateQueries({ queryKey: ["/api/photos"] });
-      }
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to save", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const update = (patch: Partial<UserSettings>) => updateSettings.mutate(patch);
+  const update = useSettingsPatch();
 
   if (!appId || !entry) return null;
 
