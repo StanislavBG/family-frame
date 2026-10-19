@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import {
   APP_IDS,
+  applyStarterPack,
   getAppManifest,
   moveAppInOrder,
   normalizeAppOrder,
@@ -19,6 +20,11 @@ export interface AppVisibilityDeps {
 
 const enabledBodySchema = z.object({ enabled: z.boolean() }).strict();
 const moveBodySchema = z.object({ direction: z.enum(["up", "down"]) }).strict();
+
+const setupBodySchema = z.object({
+  packId: z.string().max(40).nullable(),
+  mode: z.enum(["add", "replace"]).default("add"),
+}).strict();
 
 // appId is only ever compared against APP_IDS, never used as a Firebase path segment.
 function parseMovableAppId(raw: unknown): AppId | null {
@@ -54,6 +60,39 @@ export function registerAppVisibilityRoutes(
     const visibleApps = setAppEnabled(settings?.visibleApps, appId, parsed.data.enabled);
     await deps.updateUserData(userId, { settings: { ...settings, visibleApps } });
     res.json({ visibleApps, appOrder: normalizeAppOrder(settings?.appOrder) });
+  }));
+
+  app.post("/api/settings/apps/setup", asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.headers["x-clerk-user-id"] as string;
+    const username = (req.headers["x-clerk-username"] as string) || "user";
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const parsed = setupBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+
+    const userData = await deps.getOrCreateUser(userId, username);
+    const settings = userData.settings;
+    let newSettings = { ...settings, appSetupDone: true };
+    if (parsed.data.packId !== null) {
+      // packId is only compared against STARTER_PACKS, never used as a Firebase path segment.
+      const visibleApps = applyStarterPack(settings?.visibleApps, parsed.data.packId, parsed.data.mode);
+      if (!visibleApps) {
+        res.status(400).json({ error: "Unknown starter pack" });
+        return;
+      }
+      newSettings = { ...newSettings, visibleApps };
+    }
+    await deps.updateUserData(userId, { settings: newSettings });
+    res.json({
+      visibleApps: resolveAppLayout(newSettings).enabledIds,
+      appOrder: normalizeAppOrder(settings?.appOrder),
+      appSetupDone: true,
+    });
   }));
 
   app.post("/api/settings/apps/:appId/move", asyncHandler(async (req: Request, res: Response) => {

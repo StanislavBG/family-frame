@@ -117,3 +117,56 @@ test("missing user is 401", async () => {
   assert.equal((await call(handlers[MOVE], { appId: "clock", body: { direction: "up" } })).status, 401);
   assert.equal(updates.length, 0);
 });
+
+const SETUP = "POST /api/settings/apps/setup";
+
+test("setup add keeps existing apps and adds the pack", async () => {
+  const { handlers, updates } = setup({ theme: "x", visibleApps: ["home", "settings", "tv"] });
+  const r = await call(handlers[SETUP], { appId: "-", body: { packId: "kitchen" }, userId: "u1" });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.appSetupDone, true);
+  for (const id of ["tv", "clock", "weather", "shopping"]) assert.ok(r.body.visibleApps.includes(id), id);
+  assert.equal(updates[0].settings.appSetupDone, true);
+  assert.equal(updates[0].settings.theme, "x");
+  assert.deepEqual(updates[0].settings.visibleApps, r.body.visibleApps);
+});
+
+test("setup replace keeps only fixed apps plus the pack", async () => {
+  const { handlers } = setup({ visibleApps: ["home", "settings", "tv", "radio"] });
+  const r = await call(handlers[SETUP], { appId: "-", body: { packId: "kitchen", mode: "replace" }, userId: "u1" });
+  assert.equal(r.status, 200);
+  assert.ok(!r.body.visibleApps.includes("tv"));
+  assert.ok(!r.body.visibleApps.includes("radio"));
+  for (const id of ["home", "settings", "clock", "calendar"]) assert.ok(r.body.visibleApps.includes(id), id);
+});
+
+test("setup add with legacy undefined visibleApps keeps everything", async () => {
+  const { handlers } = setup({});
+  const r = await call(handlers[SETUP], { appId: "-", body: { packId: "kitchen", mode: "add" }, userId: "u1" });
+  assert.equal(r.status, 200);
+  assert.deepEqual([...r.body.visibleApps].sort(), [...APP_IDS].sort());
+});
+
+test("setup with null packId only sets appSetupDone", async () => {
+  const { handlers, updates } = setup({ theme: "x" });
+  const r = await call(handlers[SETUP], { appId: "-", body: { packId: null }, userId: "u1" });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.appSetupDone, true);
+  assert.deepEqual(updates[0].settings, { theme: "x", appSetupDone: true });
+  assert.ok(!("visibleApps" in updates[0].settings));
+});
+
+test("setup unknown pack and bad body are 400", async () => {
+  const { handlers, updates } = setup({});
+  assert.equal((await call(handlers[SETUP], { appId: "-", body: { packId: "nope" }, userId: "u1" })).status, 400);
+  assert.equal((await call(handlers[SETUP], { appId: "-", body: { packId: "kitchen", mode: "merge" }, userId: "u1" })).status, 400);
+  assert.equal((await call(handlers[SETUP], { appId: "-", body: { packId: "kitchen", x: 1 }, userId: "u1" })).status, 400);
+  assert.equal((await call(handlers[SETUP], { appId: "-", body: {}, userId: "u1" })).status, 400);
+  assert.equal(updates.length, 0);
+});
+
+test("setup missing user is 401", async () => {
+  const { handlers, updates } = setup({});
+  assert.equal((await call(handlers[SETUP], { appId: "-", body: { packId: null } })).status, 401);
+  assert.equal(updates.length, 0);
+});
