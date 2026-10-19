@@ -5,9 +5,8 @@ import { useState, useEffect, useCallback, createContext, useContext, useRef } f
 import { useLocation } from "wouter";
 import { radioService } from "@/lib/radio-service";
 import { useQuery } from "@tanstack/react-query";
-import { APP_MANIFESTS } from "@shared/apps";
-import { useAppLayout } from "@/lib/app-registry";
-import { AppSettingsSheet, routeToAppId } from "@/components/app-settings";
+import { appIdForPath, useAppLayout } from "@/lib/app-registry";
+import { AppSettingsSheet } from "@/components/app-settings";
 
 interface AppControlsContextType {
   showDebug: boolean;
@@ -236,9 +235,9 @@ export function HeaderControls() {
       ? radioService.getStationByUrl(radioState.currentStation)?.name || "Radio"
       : null;
 
-  // Show the gear icon only for apps that have an in-app settings panel
-  const routeApp = APP_MANIFESTS.find((a) => a.url === location);
-  const hasAppSettings = !!routeToAppId[location] && !!routeApp && isEnabled(routeApp.id);
+  // The gear shows on every page of every enabled (non-fixed) app
+  const routeAppId = appIdForPath(location);
+  const hasAppSettings = !!routeAppId && isEnabled(routeAppId);
 
   return (
     <div className="flex items-center gap-2">
