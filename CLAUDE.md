@@ -64,7 +64,8 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       │   ├── events/         # Events app UI (hero, month view, actions, preferences)
 │       │   ├── calendar/       # Calendar Day view UI (calendar-day-view.tsx)
 │       │   ├── app-sidebar.tsx # Navigation sidebar
-│       │   ├── app-picker.tsx  # App Picker (enable/disable apps)
+│       │   ├── app-picker.tsx  # Settings > Apps shelf (add, set up, configure apps via AppPage)
+│       │   ├── app-page.tsx    # AppPage: the one structured page for every app (setup needs, settings)
 │       │   ├── empty-state.tsx # Reusable empty state component
 │       │   ├── fullscreen-button.tsx # Reusable fullscreen toggle
 │       │   └── [widgets].tsx   # Clock, Weather, Stock widgets
@@ -300,6 +301,9 @@ Operator guide: `docs/household-email.md`. One operator Gmail inbox; households 
 
 ### App Registry (framework vs apps)
 - `shared/apps.ts` is the single list of apps: `APP_IDS`, `APP_MANIFESTS`, `defaultEnabled`.
+- Every `APP_MANIFESTS` entry must set `category` (one of `APP_CATEGORIES`) and `needs` (list of setup needs, `[]` if none). Need text lives in `APP_NEED_COPY`; done/todo state in `appNeedStatus` (both `shared/apps.ts`).
+- `client/src/components/app-page.tsx` (`AppPage`) is the one structured page for every app: it is how an app is added, set up and configured. It is rendered by Settings > Apps (`client/src/components/app-picker.tsx`) and by the gear sheet (`client/src/components/app-settings.tsx`); never build a separate per-app setup screen.
+- A new need type needs an `APP_NEED_COPY` entry and an `appNeedStatus` rule.
 - Shell files (`app-sidebar`, `App.tsx` router, `app-picker`, home, screensaver, app-settings sheet, landing) read the registry; never hard-code app ids there.
 - Adding an app fills these slots only:
   - `APP_IDS` + `APP_MANIFESTS` entry: `shared/apps.ts`
@@ -375,7 +379,8 @@ app.get("/api/resource", asyncHandler(async (req, res) => {
 - `client/src/pages/settings.tsx` - Comprehensive settings panels
 - `shared/apps.ts` - App registry (APP_IDS, APP_MANIFESTS, defaultEnabled)
 - `client/src/lib/app-registry.ts` - APP_ICONS and app layout hook
-- `client/src/components/app-picker.tsx` - App Picker
+- `client/src/components/app-picker.tsx` - Settings > Apps shelf
+- `client/src/components/app-page.tsx` - AppPage, shared by the shelf and the gear sheet
 - `server/apps/` - Per-app route modules
 - `server/media-proxy.ts` - Media proxy, radio and TV routes
 - `server/route-inventory.test.ts` - Route inventory guard
