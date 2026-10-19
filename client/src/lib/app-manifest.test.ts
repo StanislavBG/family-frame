@@ -7,6 +7,8 @@ import {
   type AppNeed,
   type AppNeedFacts,
   APP_MANIFESTS,
+  applyStarterPack,
+  STARTER_PACKS,
   DEFAULT_APP_ORDER,
   DEFAULT_VISIBLE_APP_IDS,
   getAppManifest,
@@ -40,12 +42,64 @@ describe("app manifest", () => {
 
   it("defaults", () => {
     const on = APP_MANIFESTS.filter((a) => a.defaultEnabled).map((a) => a.id).sort();
-    expect(on).toEqual(["calendar", "clock", "home", "messages", "photos", "settings", "weather"]);
+    expect(on).toEqual(["clock", "home", "settings", "weather"]);
     expect([...DEFAULT_VISIBLE_APP_IDS].sort()).toEqual(on);
     expect(DEFAULT_APP_ORDER).toEqual([
-      "calendar", "weather", "clock", "messages", "photos", "people", "radio", "baby-songs", "tv",
+      "clock", "weather", "calendar", "messages", "photos", "people", "radio", "baby-songs", "tv",
       "stocks", "chores", "recipes", "notepad", "shopping", "screensaver",
     ]);
+  });
+
+  it("has the four starter packs", () => {
+    expect(STARTER_PACKS.map((p) => p.id)).toEqual(["kitchen", "grandparents", "organiser", "frame"]);
+    const byId = (id: string) => STARTER_PACKS.find((p) => p.id === id)!.appIds;
+    expect(byId("kitchen")).toEqual(["clock", "weather", "calendar", "photos", "shopping", "screensaver"]);
+    expect(byId("grandparents")).toEqual(["clock", "weather", "photos", "messages", "screensaver"]);
+    expect(byId("organiser")).toEqual(["calendar", "chores", "shopping", "recipes", "notepad", "people"]);
+    expect(byId("frame")).toEqual(["photos", "clock", "screensaver"]);
+    for (const p of STARTER_PACKS) {
+      expect(p.title.length, p.id).toBeGreaterThan(0);
+      expect(p.description.length, p.id).toBeGreaterThan(0);
+    }
+  });
+
+  it("starter pack apps are real, non-fixed apps", () => {
+    for (const p of STARTER_PACKS) {
+      for (const id of p.appIds) {
+        const m = APP_MANIFESTS.find((a) => a.id === id);
+        expect(m, `${p.id}:${id}`).toBeDefined();
+        expect(m!.fixed, `${p.id}:${id}`).toBeFalsy();
+      }
+    }
+  });
+
+  it("applyStarterPack add keeps current apps and adds the pack", () => {
+    expect(applyStarterPack(["clock", "weather"], "frame", "add")).toEqual(["home", "settings", "clock", "weather", "photos", "screensaver"]);
+    expect(applyStarterPack(["clock", "tv"], "grandparents", "add")).toEqual(
+      ["home", "settings", "clock", "weather", "photos", "messages", "tv", "screensaver"],
+    );
+  });
+
+  it("applyStarterPack replace drops current apps", () => {
+    expect(applyStarterPack(["clock", "weather", "tv"], "frame", "replace")).toEqual(["home", "settings", "clock", "photos", "screensaver"]);
+    for (const p of STARTER_PACKS) {
+      const out = applyStarterPack(["tv"], p.id, "replace")!;
+      expect(out).toEqual(expect.arrayContaining(["home", "settings", ...p.appIds]));
+      expect(out).not.toContain("tv");
+      expect(out).toHaveLength(2 + p.appIds.length);
+    }
+  });
+
+  it("applyStarterPack treats missing visibleApps as all apps on (add) and ignores it (replace)", () => {
+    for (const v of [undefined, null]) {
+      expect(applyStarterPack(v, "frame", "add")).toEqual([...APP_IDS]);
+      expect(applyStarterPack(v, "frame", "replace")).toEqual(["home", "settings", "clock", "photos", "screensaver"]);
+    }
+  });
+
+  it("applyStarterPack returns null for an unknown pack", () => {
+    expect(applyStarterPack(["clock"], "nope", "add")).toBeNull();
+    expect(applyStarterPack(["clock"], "nope", "replace")).toBeNull();
   });
 
   it("registers people as an optional, movable app", () => {

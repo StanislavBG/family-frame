@@ -131,7 +131,7 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     needs: [],
     title: "Picture Frame",
     url: "/photos",
-    defaultEnabled: true,
+    defaultEnabled: false,
     summary: "Turns the screen into a digital photo frame.",
     description: "Show your favourite pictures as a slideshow, just like a photo frame on the wall. Choose your own photos or enjoy ambient pictures.",
     features: ["Your Google Photos or ambient Pixabay pictures", "Adjustable slideshow speed", "Full-screen slideshow"],
@@ -143,7 +143,7 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     title: "Calendar",
     url: "/calendar",
     nested: true,
-    defaultEnabled: true,
+    defaultEnabled: false,
     summary: "Shared family calendar with birthday tracking.",
     description: "One calendar for the whole household, so everyone knows what is coming up. Birthdays are never forgotten.",
     features: ["Events everyone in the home can see", "Birthdays of household members appear automatically", "Upcoming events on the Home screen"],
@@ -211,7 +211,7 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
     needs: ["connections"],
     title: "Messages",
     url: "/messages",
-    defaultEnabled: true,
+    defaultEnabled: false,
     summary: "Send messages between your home and connected homes.",
     description: "Stay in touch with the family. Send a note to a connected home and see new messages as soon as they arrive.",
     features: ["Messages with connected households", "Unread count in the menu and on Home"],
@@ -311,9 +311,53 @@ export const DEFAULT_VISIBLE_APP_IDS: AppId[] = APP_MANIFESTS.filter((a) => a.de
 
 // Seeds NEW users only: default-ON apps first, then the rest. Not the manifest order.
 export const DEFAULT_APP_ORDER: AppId[] = [
-  "calendar", "weather", "clock", "messages", "photos", "people",
+  "clock", "weather", "calendar", "messages", "photos", "people",
   "radio", "baby-songs", "tv", "stocks", "chores", "recipes", "notepad", "shopping", "screensaver",
 ];
+
+export type StarterPackId = "kitchen" | "grandparents" | "organiser" | "frame";
+
+// "What is this screen for?" choices on the welcome screen.
+export const STARTER_PACKS: readonly { id: StarterPackId; title: string; description: string; appIds: AppId[] }[] = [
+  {
+    id: "kitchen",
+    title: "Kitchen wall screen",
+    description: "The time, weather, family calendar, photos and the shopping list.",
+    appIds: ["clock", "weather", "calendar", "photos", "shopping", "screensaver"],
+  },
+  {
+    id: "grandparents",
+    title: "A screen for grandparents",
+    description: "A big clock, the weather, family photos and messages from the family.",
+    appIds: ["clock", "weather", "photos", "messages", "screensaver"],
+  },
+  {
+    id: "organiser",
+    title: "Family organiser",
+    description: "Calendar, chores, shopping, recipes, notes and a page for each person.",
+    appIds: ["calendar", "chores", "shopping", "recipes", "notepad", "people"],
+  },
+  {
+    id: "frame",
+    title: "Just a picture frame",
+    description: "Photos and a clock, nothing else.",
+    appIds: ["photos", "clock", "screensaver"],
+  },
+];
+
+// "add" keeps the current apps (all apps when visibleApps is unset); "replace" starts from the fixed apps.
+export function applyStarterPack(
+  visibleApps: readonly string[] | null | undefined,
+  packId: string,
+  mode: "add" | "replace",
+): AppId[] | null {
+  const pack = STARTER_PACKS.find((p) => p.id === packId);
+  if (!pack) return null;
+  const next = new Set<string>(mode === "add" ? (visibleApps ?? APP_IDS) : []);
+  for (const id of pack.appIds) next.add(id);
+  for (const f of FIXED_IDS) next.add(f);
+  return APP_IDS.filter((id) => next.has(id));
+}
 
 export type AppVisibilitySettings =
   | { visibleApps?: readonly string[] | null; appOrder?: readonly string[] | null }

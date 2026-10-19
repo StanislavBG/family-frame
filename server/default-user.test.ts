@@ -25,7 +25,7 @@ test("visibleApps and appOrder come from the manifest", () => {
 
 test("new accounts see only the short default menu", () => {
   const ids = resolveAppLayout(data.settings).menu.map((a) => a.id);
-  assert.deepEqual(ids, ["home", "settings", "calendar", "weather", "clock", "messages", "photos"]);
+  assert.deepEqual(ids, ["home", "settings", "clock", "weather"]);
 });
 
 test("seeded settings hold exactly the household keys and the app list", () => {
