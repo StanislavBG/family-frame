@@ -13,7 +13,8 @@ import { formatTemperature } from "@/lib/weather-utils";
 import type { UserSettings, WeatherData } from "@shared/schema";
 import { availableStocks } from "@shared/schema";
 import { useAppLayout } from "@/lib/app-registry";
-import { getHomeLayout } from "@/lib/display-layout";
+import { getHomeLayout, shouldShowWelcome } from "@/lib/display-layout";
+import { WelcomeCard } from "@/components/welcome-card";
 
 interface WeatherResponse {
   current: WeatherData;
@@ -53,6 +54,8 @@ export default function HomePage() {
     staleTime: 5 * 60 * 1000,
     refetchInterval: 15 * 60 * 1000,
   });
+
+  const welcome = shouldShowWelcome(settings);
 
   const { isEnabled } = useAppLayout();
   const { showClock, showWeather, showLeftColumn, showCalendar, showStocks, showUnread } =
@@ -100,6 +103,11 @@ export default function HomePage() {
 
   return (
     <div className="h-full bg-background flex flex-col overflow-hidden">
+      {welcome && (
+        <div className="flex-shrink-0 px-4 pt-4 md:px-6">
+          <WelcomeCard kind={welcome} />
+        </div>
+      )}
       {/*
         LAYOUT (Option B):
         ┌──────────────────┬───────────────────────┐

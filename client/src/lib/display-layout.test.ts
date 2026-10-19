@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { AppId } from "@shared/apps";
-import { getHomeLayout, getScreensaverModes } from "./display-layout";
+import { getHomeLayout, getScreensaverModes, shouldShowWelcome } from "./display-layout";
 
 const only = (...ids: AppId[]) => (id: AppId) => ids.includes(id);
 const all = () => true;
@@ -63,5 +63,27 @@ describe("getScreensaverModes", () => {
 
   it("cycle with none enabled falls back to clock", () => {
     expect(getScreensaverModes("cycle", none)).toEqual(["clock"]);
+  });
+});
+
+describe("shouldShowWelcome", () => {
+  it("is null while settings are loading", () => {
+    expect(shouldShowWelcome(undefined)).toBeNull();
+  });
+  it("is null once setup is done", () => {
+    expect(shouldShowWelcome({ appSetupDone: true, visibleApps: undefined })).toBeNull();
+    expect(shouldShowWelcome({ appSetupDone: true, visibleApps: ["clock"] })).toBeNull();
+  });
+  it("is legacy when visibleApps was never chosen", () => {
+    expect(shouldShowWelcome({})).toBe("legacy");
+    expect(shouldShowWelcome({ visibleApps: undefined })).toBe("legacy");
+  });
+  it("is new when only clock and weather are on", () => {
+    expect(shouldShowWelcome({ visibleApps: ["clock", "weather"] })).toBe("new");
+    expect(shouldShowWelcome({ visibleApps: ["clock"] })).toBe("new");
+    expect(shouldShowWelcome({ visibleApps: [] })).toBe("new");
+  });
+  it("is null when the household already chose other apps", () => {
+    expect(shouldShowWelcome({ visibleApps: ["clock", "weather", "photos"] })).toBeNull();
   });
 });
