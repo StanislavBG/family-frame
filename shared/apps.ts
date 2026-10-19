@@ -25,8 +25,48 @@ export const APP_IDS = [
 
 export type AppId = typeof APP_IDS[number];
 
+export type AppCategory = "everyday" | "family" | "media" | "money";
+
+export const APP_CATEGORIES: readonly { id: AppCategory; title: string }[] = [
+  { id: "everyday", title: "Everyday" },
+  { id: "family", title: "Family & home" },
+  { id: "media", title: "Listen & watch" },
+  { id: "money", title: "Money & bills" },
+];
+
+export type AppNeed = "location" | "people" | "connections" | "agent" | "address";
+
+export const APP_NEED_COPY: Record<AppNeed, { label: string; howTo: string; href: string }> = {
+  location: { label: "Your home's city", howTo: "Set the city and country of this home.", href: "/settings?section=location" },
+  people: { label: "The people in your home", howTo: "Add each member of the household.", href: "/settings?section=people" },
+  connections: { label: "A connected home", howTo: "Connect with another family's home to send messages.", href: "/settings?section=connections" },
+  agent: { label: "An agent that sends data", howTo: "Create an access key for your agent so it can send your data.", href: "/settings?section=agents" },
+  address: { label: "Your street address and permission", howTo: "Open the app and follow its first step to share your address for local suggestions.", href: "/events" },
+};
+
+export interface AppNeedFacts {
+  hasLocation: boolean;
+  peopleCount: number;
+  connectionCount: number;
+  tokenCount: number;
+}
+
+// "in-app" = the app checks this need itself, so Settings cannot tell.
+export function appNeedStatus(need: AppNeed, facts: AppNeedFacts | null): "done" | "todo" | "in-app" {
+  if (need === "address") return "in-app";
+  if (!facts) return "todo";
+  switch (need) {
+    case "location": return facts.hasLocation ? "done" : "todo";
+    case "people": return facts.peopleCount > 0 ? "done" : "todo";
+    case "connections": return facts.connectionCount > 0 ? "done" : "todo";
+    case "agent": return facts.tokenCount > 0 ? "done" : "todo";
+  }
+}
+
 export interface AppManifest {
   id: AppId;
+  category: AppCategory;
+  needs: AppNeed[];
   title: string;
   url: string;
   fixed?: boolean;
@@ -41,6 +81,8 @@ export interface AppManifest {
 export const APP_MANIFESTS: readonly AppManifest[] = [
   {
     id: "home",
+    category: "everyday",
+    needs: [],
     title: "Home",
     url: "/",
     fixed: true,
@@ -51,6 +93,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "settings",
+    category: "everyday",
+    needs: [],
     title: "Global Config",
     url: "/settings",
     fixed: true,
@@ -61,6 +105,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "clock",
+    category: "everyday",
+    needs: [],
     title: "Clock",
     url: "/clock",
     defaultEnabled: true,
@@ -70,6 +116,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "weather",
+    category: "everyday",
+    needs: ["location"],
     title: "Weather",
     url: "/weather",
     defaultEnabled: true,
@@ -79,6 +127,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "photos",
+    category: "everyday",
+    needs: [],
     title: "Picture Frame",
     url: "/photos",
     defaultEnabled: true,
@@ -88,6 +138,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "calendar",
+    category: "everyday",
+    needs: [],
     title: "Calendar",
     url: "/calendar",
     nested: true,
@@ -98,6 +150,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "events",
+    category: "family",
+    needs: ["location", "address"],
     title: "Events",
     url: "/events",
     nested: true,
@@ -108,6 +162,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "people",
+    category: "family",
+    needs: ["people"],
     title: "People",
     url: "/people",
     nested: true,
@@ -118,6 +174,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "chores",
+    category: "family",
+    needs: [],
     title: "Chores",
     url: "/chores",
     defaultEnabled: false,
@@ -127,6 +185,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "recipes",
+    category: "family",
+    needs: [],
     title: "Recipes",
     url: "/recipes",
     defaultEnabled: false,
@@ -136,6 +196,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "notepad",
+    category: "family",
+    needs: [],
     title: "Notepad",
     url: "/notepad",
     defaultEnabled: false,
@@ -145,6 +207,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "messages",
+    category: "family",
+    needs: ["connections"],
     title: "Messages",
     url: "/messages",
     defaultEnabled: true,
@@ -154,6 +218,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "radio",
+    category: "media",
+    needs: [],
     title: "BG Radio",
     url: "/radio",
     defaultEnabled: false,
@@ -163,6 +229,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "baby-songs",
+    category: "media",
+    needs: [],
     title: "Baby Songs",
     url: "/baby-songs",
     defaultEnabled: false,
@@ -172,6 +240,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "tv",
+    category: "media",
+    needs: [],
     title: "World TV",
     url: "/tv",
     defaultEnabled: false,
@@ -181,6 +251,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "shopping",
+    category: "family",
+    needs: [],
     title: "Shopping",
     url: "/shopping",
     defaultEnabled: false,
@@ -190,6 +262,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "stocks",
+    category: "money",
+    needs: [],
     title: "Stocks",
     url: "/stocks",
     defaultEnabled: false,
@@ -199,6 +273,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "utilities",
+    category: "money",
+    needs: ["agent"],
     title: "Utilities",
     url: "/utilities",
     nested: true,
@@ -209,6 +285,8 @@ export const APP_MANIFESTS: readonly AppManifest[] = [
   },
   {
     id: "screensaver",
+    category: "everyday",
+    needs: [],
     title: "Screensaver",
     url: "/screensaver",
     defaultEnabled: false,

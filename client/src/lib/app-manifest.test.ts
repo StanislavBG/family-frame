@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  APP_CATEGORIES,
   APP_IDS,
+  APP_NEED_COPY,
+  appNeedStatus,
+  type AppNeed,
+  type AppNeedFacts,
   APP_MANIFESTS,
   DEFAULT_APP_ORDER,
   DEFAULT_VISIBLE_APP_IDS,
@@ -128,5 +133,45 @@ describe("app manifest", () => {
     expect(updateUserSettingsSchema.safeParse({ visibleApps: ids51 }).success).toBe(false);
     const ids17 = [...APP_IDS, "dashboard"];
     expect(updateUserSettingsSchema.safeParse({ visibleApps: ids17 }).success).toBe(true);
+  });
+});
+
+describe("app categories and needs", () => {
+  it("puts every app in a known category", () => {
+    expect(APP_CATEGORIES.map((c) => c.title)).toEqual(["Everyday", "Family & home", "Listen & watch", "Money & bills"]);
+    const ids = APP_CATEGORIES.map((c) => c.id);
+    for (const app of APP_MANIFESTS) expect(ids, app.id).toContain(app.category);
+  });
+
+  it("has copy with an in-app href for every need", () => {
+    const needs: AppNeed[] = ["location", "people", "connections", "agent", "address"];
+    expect(Object.keys(APP_NEED_COPY).sort()).toEqual([...needs].sort());
+    for (const need of needs) {
+      expect(APP_NEED_COPY[need].label.length, need).toBeGreaterThan(0);
+      expect(APP_NEED_COPY[need].howTo.length, need).toBeGreaterThan(0);
+      expect(APP_NEED_COPY[need].href.startsWith("/"), need).toBe(true);
+    }
+  });
+
+  it("maps needs for the apps that have them", () => {
+    expect(getAppManifest("weather").needs).toEqual(["location"]);
+    expect(getAppManifest("people").needs).toEqual(["people"]);
+    expect(getAppManifest("messages").needs).toEqual(["connections"]);
+    expect(getAppManifest("utilities").needs).toEqual(["agent"]);
+    expect(getAppManifest("events").needs).toEqual(["location", "address"]);
+    expect(getAppManifest("clock").needs).toEqual([]);
+  });
+
+  it("reports need status from facts", () => {
+    const done: AppNeedFacts = { hasLocation: true, peopleCount: 2, connectionCount: 1, tokenCount: 3 };
+    const todo: AppNeedFacts = { hasLocation: false, peopleCount: 0, connectionCount: 0, tokenCount: 0 };
+    for (const need of ["location", "people", "connections", "agent"] as const) {
+      expect(appNeedStatus(need, done), need).toBe("done");
+      expect(appNeedStatus(need, todo), need).toBe("todo");
+      expect(appNeedStatus(need, null), need).toBe("todo");
+    }
+    expect(appNeedStatus("address", done)).toBe("in-app");
+    expect(appNeedStatus("address", todo)).toBe("in-app");
+    expect(appNeedStatus("address", null)).toBe("in-app");
   });
 });
