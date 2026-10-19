@@ -50,7 +50,7 @@ import type {
   GooglePhotoItem,
   StoredPhoto,
 } from "@shared/schema";
-import { insertCalendarEventSchema, insertPersonSchema, ConnectionStatus, PhotoSource, EventType, updateUserSettingsSchema, updatePersonSchema, isValidConnectionUserId, createPlaylistSchema, updatePlaylistSchema } from "@shared/schema";
+import { withSettingsDefaults, insertCalendarEventSchema, insertPersonSchema, ConnectionStatus, PhotoSource, EventType, updateUserSettingsSchema, updatePersonSchema, isValidConnectionUserId, createPlaylistSchema, updatePlaylistSchema } from "@shared/schema";
 
 // Detect if running in production deployment
 const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
@@ -189,7 +189,7 @@ export async function registerRoutes(
     }
 
     const userData = await getOrCreateUser(userId, username);
-    res.json(userData.settings);
+    res.json(withSettingsDefaults(userData.settings));
   }));
 
   app.patch("/api/settings", asyncHandler(async (req: Request, res: Response) => {
@@ -212,7 +212,7 @@ export async function registerRoutes(
 
     await updateUserData(userId, { settings: updatedSettings });
 
-    res.json(updatedSettings);
+    res.json(withSettingsDefaults(updatedSettings));
   }));
 
   registerHouseholdRoutes(app);
