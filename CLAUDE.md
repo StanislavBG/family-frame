@@ -312,7 +312,10 @@ Operator guide: `docs/household-email.md`. One operator Gmail inbox; households 
   - optional `APP_SETTINGS_PANELS`: `client/src/components/app-settings-panels.tsx`
   - optional `runAppDisableHook` case: `client/src/lib/app-lifecycle.ts`
   - server routes in `server/apps/<id>.ts`, registered from `server/routes.ts`
-- Visibility: new users get `defaultEnabled` apps (`server/default-user.ts`); `visibleApps` undefined = legacy all-on.
+- Visibility: new households get only home, settings, clock and weather (`defaultEnabled`, `server/default-user.ts`); `visibleApps` undefined = legacy all-on.
+- Everything else is chosen by the household: `STARTER_PACKS` / `applyStarterPack` (`shared/apps.ts`) via `POST /api/settings/apps/setup` (apply a pack or mark setup done), offered by the one-time Home welcome card (`client/src/components/welcome-card.tsx`, `shouldShowWelcome` in `client/src/lib/display-layout.ts`).
+- Settings are owned per app: a new setting key must be added to `APP_SETTINGS_KEYS` or `HOUSEHOLD_SETTINGS_KEYS` in `shared/schema.ts` (the ownership test enforces it).
+- App defaults are applied on read by `withSettingsDefaults` (`shared/schema.ts`), never seeded into new accounts; new users get sparse settings.
 - Changes go through `PUT /api/settings/apps/:appId` and `POST /api/settings/apps/:appId/move`.
 - Turning an app off hides it from screens but keeps its data and agent/MCP access.
 
