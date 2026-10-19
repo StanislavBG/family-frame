@@ -218,7 +218,7 @@ const navItems: NavItem[] = [
   { id: "email", label: "Household email", icon: Mail },
   { id: "people", label: "People", icon: Users },
   { id: "connections", label: "Connections", icon: LinkIcon },
-  { id: "apps", label: "App Picker", icon: LayoutGrid },
+  { id: "apps", label: "Apps", icon: LayoutGrid },
   { id: "agents", label: "Agent Access", icon: Bot },
 ];
 
