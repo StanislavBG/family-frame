@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { CalendarDays, CalendarHeart, Hourglass, List, MapPin } from "lucide-react";
 import type { EventCategory } from "@shared/events";
+import { CLOSE_TO_HOME_MILES } from "@shared/events-proximity";
 import { EmptyState } from "@/components/empty-state";
 import { EventHero } from "@/components/events/event-hero";
 import { EventsDayPanel } from "@/components/events/events-day-panel";
@@ -50,6 +51,7 @@ const RESPONSE_FILTERS: { id: ResponseFilter; label: string }[] = [
 ];
 
 const TRIP_FILTERS: { id: TripFilter; label: string }[] = [
+  { id: "close", label: "Close to home" },
   { id: "local", label: "Nearby" },
   { id: "day-trip", label: "Day trips" },
   { id: "weekend", label: "Weekends" },
@@ -157,6 +159,11 @@ function AgendaCard({ item }: { item: EventItem }) {
             </ToneChip>
           )}
           {badge && <ToneChip tone={badge.tone}>{badge.label}</ToneChip>}
+          {item.closeToHome === true && (
+            <ToneChip tone="leaf" data-testid={`events-close-${item.eventId}`}>
+              Close to home
+            </ToneChip>
+          )}
           {item.hasUnseenUpdate && (
             <ToneChip
               tone="clay"
@@ -341,6 +348,11 @@ function Overview() {
               {f.label}
             </Chip>
           ))}
+          {tripFilter === "close" && (
+            <span className={cn("text-sm", MUTED)} data-testid="events-close-caption">
+              {`Within ${CLOSE_TO_HOME_MILES} miles of home or in your city`}
+            </span>
+          )}
           <Chip
             active={paidOnly}
             onClick={() => setPaidOnly(!paidOnly)}

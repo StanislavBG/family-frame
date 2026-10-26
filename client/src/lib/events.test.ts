@@ -217,6 +217,13 @@ describe("trip helpers", () => {
     expect(isTripIdea({ rec: { trip: trip("day-trip", 60, 0) } })).toBe(true);
     expect(isTripIdea({ rec: {} })).toBe(false);
   });
+  it("matchesTripFilter close requires closeToHome === true", () => {
+    expect(matchesTripFilter({ rec: {}, closeToHome: true }, "close")).toBe(true);
+    expect(matchesTripFilter({ rec: {}, closeToHome: false }, "close")).toBe(false);
+    expect(matchesTripFilter({ rec: {} }, "close")).toBe(false);
+    expect(matchesTripFilter({ rec: {}, closeToHome: true }, "local")).toBe(true);
+  });
+
   it("matchesTripFilter treats missing tripType as local", () => {
     expect(matchesTripFilter({ rec: {} }, "local")).toBe(true);
     expect(matchesTripFilter({ rec: {} }, "weekend")).toBe(false);

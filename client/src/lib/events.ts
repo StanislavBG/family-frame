@@ -49,6 +49,8 @@ export interface EventItem {
   hasUnseenUpdate: boolean;
   withdrawn: boolean;
   recommendedAt: string;
+  /** Within CLOSE_TO_HOME_MILES of home or in the household's city; older servers omit it. */
+  closeToHome?: boolean;
 }
 
 export interface EventItemsParams {
@@ -454,7 +456,7 @@ export function statusBadge(
   return (latest && UPDATE_BADGES[latest.kind]) || null;
 }
 
-export type TripFilter = "all" | TripType;
+export type TripFilter = "all" | "close" | TripType;
 
 /** Day trips and weekends are reusable ideas, not dated events. */
 export function isTripIdea(item: { rec: { trip?: unknown } }): boolean {
@@ -462,8 +464,12 @@ export function isTripIdea(item: { rec: { trip?: unknown } }): boolean {
 }
 
 /** A missing tripType counts as local ("Nearby"). */
-export function matchesTripFilter(item: { rec: { tripType?: TripType } }, filter: TripFilter): boolean {
+export function matchesTripFilter(
+  item: { rec: { tripType?: TripType }; closeToHome?: boolean },
+  filter: TripFilter,
+): boolean {
   if (filter === "all") return true;
+  if (filter === "close") return item.closeToHome === true;
   return (item.rec.tripType ?? "local") === filter;
 }
 
