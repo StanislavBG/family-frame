@@ -65,6 +65,11 @@ function Row({ entry, children }: { entry: DayEntry<EventItem>; children: React.
       </div>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <ToneChip tone={cat.tone}>{cat.label}</ToneChip>
+        {item.closeToHome === true && (
+          <ToneChip tone="leaf" data-testid={`events-day-close-${item.eventId}`}>
+            Close to home
+          </ToneChip>
+        )}
         {(where || km !== undefined) && (
           <span className={cn("text-sm", MUTED)}>
             {where}

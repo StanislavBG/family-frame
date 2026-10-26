@@ -269,7 +269,17 @@ export function EventHero({ eventId }: { eventId: string }) {
                 whereSummary(location)
               )}
             </span>
-            {distance && <span data-testid="text-event-distance">{distance}</span>}
+            {item.closeToHome === true && (
+              <span className="inline-flex items-center gap-1.5" data-testid="event-hero-close">
+                <ToneChip tone="leaf" className="bg-[#fffaf0]/70 dark:bg-background/40">
+                  Close to home
+                </ToneChip>
+                {rec.distanceKm !== undefined && <span>· {rec.distanceKm.toFixed(1)} km</span>}
+              </span>
+            )}
+            {distance && !(item.closeToHome === true && rec.distanceKm !== undefined) && (
+              <span data-testid="text-event-distance">{distance}</span>
+            )}
             <span data-testid="text-event-cost">{formatCost(cost)}</span>
           </div>
           <p className={BODY}>{event.summary}</p>
