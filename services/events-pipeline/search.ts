@@ -1,5 +1,6 @@
 import { EVENT_CATEGORIES } from "../../shared/events";
 import type { EventCategory, EventPreferences } from "../../shared/events";
+import { CLOSE_TO_HOME_KM, CLOSE_TO_HOME_MILES } from "../../shared/events-proximity";
 import type { PreferenceSummary } from "../../shared/events-preferences";
 import type { HaikuFailureReason, HaikuRunner } from "./haiku";
 import { RAW_CANDIDATES_JSON_SCHEMA, rawCandidateSchema } from "./normalize";
@@ -81,10 +82,12 @@ function categoryScore(c: EventCategory, hs: PlanInput["households"]): number {
 export const TICKETED_CATEGORY_KEY = "ticketed-shows";
 const TICKETED_CATEGORIES: EventCategory[] = ["music-performance", "arts-culture", "family-entertainment"];
 
+export const CLOSE_CATEGORY_KEY = "close-to-home";
+
 const keyFor = (cats: EventCategory[]): string => [...cats].sort().join("+");
 
 export function planSearchTasks(input: PlanInput): SearchTask[] {
-  const maxTasks = input.maxTasks ?? 11;
+  const maxTasks = input.maxTasks ?? 13;
   const hs = input.households;
   if (hs.length === 0 || maxTasks <= 0) return [];
 
@@ -104,10 +107,14 @@ export function planSearchTasks(input: PlanInput): SearchTask[] {
   const g0 = groups[0];
   // Priority order: focus first (general, then top specific groups), then later windows.
   const ticketed = { key: TICKETED_CATEGORY_KEY, categories: TICKETED_CATEGORIES.filter((c) => !avoided(c)) };
+  const close = { key: CLOSE_CATEGORY_KEY, categories: EVENT_CATEGORIES.filter((c) => !avoided(c)) };
+  const closeG = close.categories.length > 0 ? close : undefined;
   const maxTicketPrice = Math.max(...hs.map((h) => h.preferences.maxTicketPrice));
   const order: { w: WindowKey; g: { key: string; categories: EventCategory[] } | undefined }[] = [
     { w: "focus", g: g0 },
+    { w: "focus", g: closeG },
     { w: "near", g: ticketed.categories.length > 0 ? ticketed : undefined },
+    { w: "near", g: closeG },
     { w: "focus", g: specificGroups[0] },
     { w: "focus", g: specificGroups[1] },
     { w: "near", g: g0 },
@@ -168,8 +175,11 @@ export function buildSearchPrompt(
 ): string {
   const place = [area.city, area.region, area.country].filter((p): p is string => Boolean(p)).map(oneLine).join(", ");
   const known = knownEvents.slice(0, MAX_KNOWN);
+  const isClose = task.categoryKey === CLOSE_CATEGORY_KEY;
   const lines = [
-    `Find real, upcoming family-friendly events near ${place} (within ${area.radiusKm} km).`,
+    isClose
+      ? `Find real, upcoming family-friendly things to do in ${place} itself or within about ${CLOSE_TO_HOME_MILES} miles (${Math.round(CLOSE_TO_HOME_KM)} km) of it.`
+      : `Find real, upcoming family-friendly events near ${place} (within ${area.radiusKm} km).`,
     `Date range: ${task.fromDate} to ${task.toDate} (inclusive).`,
     `Categories to cover: ${task.categories.join(", ")}.`,
   ];
@@ -181,6 +191,15 @@ export function buildSearchPrompt(
     if (task.maxTicketPrice !== undefined) {
       lines.push(`Price ceiling: skip events whose cheapest ticket costs more than ${task.maxTicketPrice}.`);
     }
+  }
+  if (isClose) {
+    lines.push(
+      "Focus: close to home. Besides events, include what local businesses and places offer in the date range:",
+      "- classes, courses and workshops (art, music, dance, swimming, sports, martial arts, STEM, cooking, languages), including drop-in sessions, free trial classes and new session or term starts;",
+      "- programs run by local businesses (bookstores, cafes, farms, garden centres, studios, gyms, play spaces) and by the library, parks and recreation, and community centres;",
+      "- attractions near home (farms, nature centres, museums, pools, play spaces) with what they offer in the date range; a place that is simply open is one candidate covering the date range, with its opening hours in recurrenceText.",
+      `For a class or course, list its upcoming session dates in occurrences (or put the first session in start and the pattern in recurrenceText, for example "Saturdays 10:00-11:00 for 6 weeks"), with the price and the registration link. Use the business or venue as organizerName and give the venue street address. Skip anything more than about ${CLOSE_TO_HOME_MILES} miles (${Math.round(CLOSE_TO_HOME_KM)} km) outside ${area.city}.`,
+    );
   }
   lines.push(
     "",
