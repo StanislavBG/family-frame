@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { HouseholdAddress } from "../../shared/household";
 import { getGeocode, putGeocode, type EventsDb } from "./db";
+import { canonicalCity, canonicalCountry } from "../../shared/events-proximity";
 
 export interface LatLon {
   lat: number;
@@ -130,44 +131,6 @@ export function tripTypeFor(minutes: number): "local" | "day-trip" | "weekend" |
   if (minutes < TRIP_DRIVE_LIMITS.dayTrip) return "day-trip";
   if (minutes < TRIP_DRIVE_LIMITS.weekend) return "weekend";
   return null;
-}
-
-function norm(s: string | undefined): string {
-  return (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-const US_STATES = new Set([
-  "alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut", "delaware",
-  "district of columbia", "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa",
-  "kansas", "kentucky", "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota",
-  "mississippi", "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey",
-  "new mexico", "new york", "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
-  "pennsylvania", "rhode island", "south carolina", "south dakota", "tennessee", "texas", "utah",
-  "vermont", "virginia", "washington", "west virginia", "wisconsin", "wyoming",
-]);
-
-const COUNTRY_ALIASES: Record<string, string> = {
-  us: "us", usa: "us", "u.s.": "us", "u.s.a.": "us", "united states": "us", "united states of america": "us",
-  uk: "gb", gb: "gb", "united kingdom": "gb", "great britain": "gb", england: "gb",
-  bulgaria: "bg",
-};
-
-function canonicalCountry(country: string): string {
-  const c = norm(country);
-  return COUNTRY_ALIASES[c] ?? c;
-}
-
-/** Drops a trailing ", <region>" / ", <2-3 letter code>" / ", <US state name>" from a normalised city. */
-function canonicalCity(city: string, region: string): string {
-  const n = norm(city);
-  const comma = n.lastIndexOf(",");
-  if (comma < 0) return n;
-  const suffix = n.slice(comma + 1).trim();
-  const r = norm(region);
-  if ((r && suffix === r) || /^[a-z]{2,3}$/.test(suffix) || US_STATES.has(suffix)) {
-    return n.slice(0, comma).trim();
-  }
-  return n;
 }
 
 /** Groups households for shared searches: canonical '<city>|<country>' (region is dropped on purpose). */
