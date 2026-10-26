@@ -113,6 +113,7 @@ test("new candidate is published and recorded locally", async () => {
   assert.equal(stats.published, 1);
   assert.equal(f.puts.length, 1);
   assert.equal(listRecommendationsForHousehold(db, "h1").length, 1);
+  assert.equal(stats.closeToHome, 1);
 });
 
 test("duplicate candidate is merged and not re-published", async () => {

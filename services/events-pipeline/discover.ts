@@ -64,6 +64,7 @@ export interface DiscoverStats {
   searchFailures: Record<string, number>;
   skippedByReason: Record<string, number>;
   ranked: number;
+  closeToHome: number;
   geocodeHits: number;
   geocodeMisses: number;
   phaseMs: { prepare: number; search: number; rank: number; explain: number; publish: number };
@@ -128,6 +129,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     searchFailures: {},
     skippedByReason: {},
     ranked: 0,
+    closeToHome: 0,
     geocodeHits: 0,
     geocodeMisses: 0,
     phaseMs: { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 },
@@ -331,6 +333,11 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         events,
         household: {
           ...(a.lat !== null && a.lon !== null ? { lat: a.lat, lon: a.lon } : {}),
+          place: {
+            city: a.h.address.city,
+            ...(a.h.address.region ? { region: a.h.address.region } : {}),
+            country: a.h.address.country,
+          },
           memberAges: a.h.memberAges,
           preferences: a.state.preferences,
           learned: a.learned,
@@ -345,6 +352,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
       });
       stats.skipped += ranked.skipped.length;
       stats.ranked += ranked.picks.length;
+      stats.closeToHome += ranked.picks.filter((p) => p.closeToHome).length;
       for (const sk of ranked.skipped) bump(stats.skippedByReason, sk.reason.endsWith(" window full") ? "window full" : sk.reason);
       const explainStart = clock();
       phaseRaw.rank += explainStart - rankStart;

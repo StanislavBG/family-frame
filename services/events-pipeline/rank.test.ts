@@ -264,3 +264,60 @@ test("ticketed events: over limit skipped, within limit kept under free budget, 
   assert.ok(reasons(within).includes("Ticketed show, from USD 40"));
   assert.ok(reasons(noPrice).includes("Ticketed show"));
 });
+
+const homePlace = { city: "Portland", region: "OR", country: "United States" };
+const withPlace = (events: FfEvent[], over: Partial<RankInput> = {}): RankInput => {
+  const base = input(events, over);
+  return { ...base, household: { ...base.household, place: homePlace } };
+};
+const far = (daysAhead: number, over: Partial<FfEvent> = {}): FfEvent => {
+  const e = ev(daysAhead, over);
+  return { ...e, location: { ...e.location, city: "Salem", region: "OR" } };
+};
+const near = (daysAhead: number, over: Partial<FfEvent> = {}): FfEvent => ev(daysAhead, over);
+
+test("close to home: focus day with 3 known accepts 2 close picks, then day full", () => {
+  const known = [0, 1, 2].map((i) => ({ title: `Other thing ${i}x`, start: ev(3).schedule.start }));
+  const day = [
+    near(3, { category: EVENT_CATEGORIES[0] }),
+    near(3, { category: EVENT_CATEGORIES[1] }),
+    near(3, { category: EVENT_CATEGORIES[2] }),
+    far(3, { category: EVENT_CATEGORIES[3] }),
+  ];
+  const r = rankForHousehold(
+    withPlace(day, { state: { knownEventIds: [], knownFingerprints: [], busy: [], known } }),
+  );
+  assert.equal(r.picks.length, 2);
+  assert.ok(r.picks.every((p) => p.closeToHome));
+  assert.equal(r.skipped.filter((s) => s.reason === "day full").length, 2);
+});
+
+test("close to home: later day takes 1 + 1", () => {
+  const a = near(30, { category: EVENT_CATEGORIES[0] });
+  const b = near(30, { category: EVENT_CATEGORIES[1] });
+  const c = near(30, { category: EVENT_CATEGORIES[2] });
+  const f = far(30, { category: EVENT_CATEGORIES[3] });
+  const r = rankForHousehold(withPlace([a, b, c, f]));
+  assert.equal(r.picks.length, 2);
+  assert.ok(r.picks.every((p) => p.closeToHome));
+  assert.equal(r.skipped.filter((s) => s.reason === "day full").length, 2);
+});
+
+test("close to home: not blocked by a same-category non-close pick", () => {
+  const f = far(3);
+  const n = near(3);
+  const r = rankForHousehold(withPlace([f, n]));
+  assert.equal(r.picks.length, 2);
+  assert.equal(r.picks.filter((p) => p.closeToHome).length, 1);
+});
+
+test("close to home: reason comes first, only for close picks", () => {
+  const n = near(3, { category: EVENT_CATEGORIES[0] });
+  const f = far(3, { category: EVENT_CATEGORIES[1] });
+  const r = rankForHousehold(withPlace([n, f]));
+  const pn = r.picks.find((p) => p.event.id === n.id);
+  const pf = r.picks.find((p) => p.event.id === f.id);
+  assert.equal(pn?.matchReasons[0], "Close to home");
+  assert.equal(pf?.closeToHome, false);
+  assert.ok(!pf?.matchReasons.includes("Close to home"));
+});

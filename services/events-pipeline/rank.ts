@@ -1,5 +1,6 @@
 import type { EventCategory, EventPreferences, FfEvent } from "../../shared/events";
 import type { PreferenceSummary } from "../../shared/events-preferences";
+import { isCloseToHome } from "../../shared/events-proximity";
 import { titleSimilarity } from "./normalize";
 
 // Pure scorer: picks which repository events to recommend to one household.
@@ -23,6 +24,14 @@ export interface RankLimits {
   perDayMax?: number;
   /** Same, for the later window. */
   laterPerDayMax?: number;
+  /** Extra per-day slots only close-to-home candidates may use in the focus window. */
+  closeExtraPerDay?: number;
+  /** Same, for the later window. */
+  laterCloseExtraPerDay?: number;
+  /** Max close-to-home picks in the focus window (counted apart from maxFocus). */
+  maxCloseFocus?: number;
+  /** Same, for the later window (apart from maxLater). */
+  maxCloseLater?: number;
 }
 
 export interface RankInput {
@@ -30,6 +39,8 @@ export interface RankInput {
   household: {
     lat?: number;
     lon?: number;
+    /** City, region and country only; never the street address. */
+    place?: { city: string; region?: string; country: string };
     memberAges: number[];
     preferences: EventPreferences;
     learned: PreferenceSummary;
@@ -50,6 +61,7 @@ export interface RankPick {
   score: number;
   distanceKm?: number;
   matchReasons: string[];
+  closeToHome: boolean;
 }
 
 export interface RankResult {
@@ -210,6 +222,10 @@ export function rankForHousehold(input: RankInput): RankResult {
   const maxLater = input.limits?.maxLater ?? 20;
   const perDayMax = input.limits?.perDayMax ?? 3;
   const laterPerDayMax = input.limits?.laterPerDayMax ?? 1;
+  const closeExtraPerDay = input.limits?.closeExtraPerDay ?? 2;
+  const laterCloseExtraPerDay = input.limits?.laterCloseExtraPerDay ?? 1;
+  const maxCloseFocus = input.limits?.maxCloseFocus ?? 28;
+  const maxCloseLater = input.limits?.maxCloseLater ?? 15;
   const { preferences: prefs, learned, memberAges } = household;
   const nowMs = now.getTime();
   const knownIds = new Set(state.knownEventIds);
@@ -282,6 +298,13 @@ export function rankForHousehold(input: RankInput): RankResult {
       continue;
     }
 
+    const closeToHome = isCloseToHome({
+      distanceKm,
+      online: event.location.online,
+      tripIdea: false,
+      eventPlace: event.location,
+      home: household.place ?? null,
+    });
     const reasons: string[] = [];
     // Category
     const catW = learned.categoryWeights[event.category as EventCategory] ?? 0;
@@ -330,11 +353,12 @@ export function rankForHousehold(input: RankInput): RankResult {
     const score = base + (focus ? FOCUS_BONUS : 0);
     if (focus) reasons.push("Happening in the next two weeks");
     if (reasons.length === 0) reasons.push("A good all-round fit for your household");
+    if (closeToHome) reasons.unshift("Close to home");
 
     scored.push({
       focus,
       day: dayInZone(slot.startMs, event.schedule.timezone),
-      pick: { event, score, distanceKm, matchReasons: reasons.slice(0, 5) },
+      pick: { event, score, distanceKm, matchReasons: reasons.slice(0, 5), closeToHome },
     });
   }
 
@@ -342,7 +366,7 @@ export function rankForHousehold(input: RankInput): RankResult {
 
   const picks: RankPick[] = [];
   const pickedFps = new Set<string>();
-  const counts = { focus: 0, later: 0 };
+  const counts = { focus: 0, later: 0, closeFocus: 0, closeLater: 0 };
   const perCategory = new Map<string, number>();
   const perDay = new Map<string, number>();
   const knownTitles: string[] = [];
@@ -368,23 +392,28 @@ export function rankForHousehold(input: RankInput): RankResult {
       skipped.push({ eventId: event.id, reason: "same series as a higher-ranked pick" });
       continue;
     }
-    if (counts[window] >= (focus ? maxFocus : maxLater)) {
+    const close = pick.closeToHome;
+    const countKey = close ? (focus ? "closeFocus" : "closeLater") : window;
+    const windowMax = close ? (focus ? maxCloseFocus : maxCloseLater) : focus ? maxFocus : maxLater;
+    if (counts[countKey] >= windowMax) {
       skipped.push({ eventId: event.id, reason: `${window} window full` });
       continue;
     }
-    if ((perDay.get(day) ?? 0) >= (focus ? perDayMax : laterPerDayMax)) {
+    const baseDayMax = focus ? perDayMax : laterPerDayMax;
+    const dayMax = close ? baseDayMax + (focus ? closeExtraPerDay : laterCloseExtraPerDay) : baseDayMax;
+    if ((perDay.get(day) ?? 0) >= dayMax) {
       skipped.push({ eventId: event.id, reason: "day full" });
       continue;
     }
     // Focus: one per category per day. Later: MAX_PER_CATEGORY across the window.
-    const catKey = focus ? `focus:${day}:${event.category}` : `later:${event.category}`;
+    const catKey = focus ? `focus:${day}:${event.category}${close ? ":close" : ""}` : `later:${event.category}`;
     if ((perCategory.get(catKey) ?? 0) >= (focus ? 1 : MAX_PER_CATEGORY)) {
       skipped.push({ eventId: event.id, reason: "category variety cap" });
       continue;
     }
     perCategory.set(catKey, (perCategory.get(catKey) ?? 0) + 1);
     perDay.set(day, (perDay.get(day) ?? 0) + 1);
-    counts[window] += 1;
+    counts[countKey] += 1;
     pickedFps.add(event.fingerprint);
     pickedTitles.push(event.title);
     picks.push(pick);
