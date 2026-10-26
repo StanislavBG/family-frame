@@ -127,3 +127,42 @@ test("status shape", async () => {
     counts: { new: 0, going: 0, interested: 0, changed: 0 },
   });
 });
+
+function closeItem(distanceKm: number | undefined, city: string, extra: { trip?: boolean } = {}) {
+  return {
+    eventId: "e1",
+    rec: { distanceKm, trip: extra.trip ? { kind: "day" } : undefined },
+    event: { location: { city, country: "US", online: false } },
+  };
+}
+
+const HOME = { eventsSharing: { enabled: true }, address: { line1: "1 Main St", city: "Portland", country: "US" } };
+
+async function closeFor(item: any, profile: any) {
+  const { routes } = setup({ listRecommendations: async () => [item], getRecommendation: async () => item }, profile);
+  const list = await call(routes, "GET /api/events/items");
+  const one = await call(routes, "GET /api/events/items/:eventId");
+  assert.equal(list.body[0].closeToHome, one.body.closeToHome);
+  assert.equal(JSON.stringify(list.body).includes("1 Main St"), false);
+  return list.body[0].closeToHome;
+}
+
+test("closeToHome: 5 km true", async () => {
+  assert.equal(await closeFor(closeItem(5, "Elsewhere"), HOME), true);
+});
+
+test("closeToHome: 20 km in the household's own city true", async () => {
+  assert.equal(await closeFor(closeItem(20, "Portland"), HOME), true);
+});
+
+test("closeToHome: 20 km in another city false", async () => {
+  assert.equal(await closeFor(closeItem(20, "Salem"), HOME), false);
+});
+
+test("closeToHome: trip idea false", async () => {
+  assert.equal(await closeFor(closeItem(5, "Portland", { trip: true }), HOME), false);
+});
+
+test("closeToHome: no address and 5 km true", async () => {
+  assert.equal(await closeFor(closeItem(5, "Salem"), { eventsSharing: { enabled: false } }), true);
+});

@@ -3,7 +3,8 @@ import { ZodError } from "zod";
 import { asyncHandler } from "../middleware";
 import { eventsService, EventsError, type EventsService } from "../events-service";
 import { householdProfileService, type HouseholdProfileService } from "../household-profile-service";
-import { isAddressComplete } from "@shared/household";
+import { isAddressComplete, type HouseholdProfile } from "@shared/household";
+import { isCloseToHome } from "@shared/events-proximity";
 
 type EventsHandler = (req: Request, res: Response, userId: string, username: string) => Promise<void>;
 
@@ -53,6 +54,19 @@ function queryNumber(value: unknown): number | undefined {
   return n;
 }
 
+// Adds only the derived boolean; the address itself never reaches the response.
+function withCloseToHome<T extends { rec: any; event: any }>(item: T, profile: HouseholdProfile) {
+  const address = profile.address;
+  const closeToHome = isCloseToHome({
+    distanceKm: item.rec.distanceKm,
+    online: item.event.location.online,
+    tripIdea: item.rec.trip != null,
+    eventPlace: item.event.location,
+    home: address ? { city: address.city, region: address.region, country: address.country } : null,
+  });
+  return { ...item, closeToHome };
+}
+
 export function registerEventsRoutes(
   app: Express,
   service: EventsService = eventsService,
@@ -100,15 +114,23 @@ export function registerEventsRoutes(
   }));
 
   app.get("/api/events/items", eventsHandler(async (req, res, userId) => {
-    res.json(await service.listRecommendations(userId, {
-      from: queryDate(req.query.from, "from"),
-      to: queryDate(req.query.to, "to"),
-      includeHidden: req.query.include === "all",
-    }));
+    const [items, profile] = await Promise.all([
+      service.listRecommendations(userId, {
+        from: queryDate(req.query.from, "from"),
+        to: queryDate(req.query.to, "to"),
+        includeHidden: req.query.include === "all",
+      }),
+      profiles.getProfile(userId),
+    ]);
+    res.json(items.map((item) => withCloseToHome(item, profile)));
   }));
 
   app.get("/api/events/items/:eventId", eventsHandler(async (req, res, userId) => {
-    res.json(await service.getRecommendation(userId, req.params.eventId));
+    const [item, profile] = await Promise.all([
+      service.getRecommendation(userId, req.params.eventId),
+      profiles.getProfile(userId),
+    ]);
+    res.json(withCloseToHome(item, profile));
   }));
 
   app.post("/api/events/items/:eventId/response", eventsHandler(async (req, res, userId, username) => {
