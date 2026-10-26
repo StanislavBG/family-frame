@@ -15,6 +15,7 @@ import {
   type FfEvent,
   type HouseholdResponse,
   type VisitPlan,
+  feedbackEntrySchema,
 } from "@shared/events";
 import { dayWindows, suggestVisit, toMinutes, visitToPlan, DEFAULT_VISIT_PREFS, type DayWindow, type VisitPrefs } from "@shared/events-visit";
 
@@ -528,7 +529,14 @@ export function createEventsService(deps: EventsDeps) {
       const limit = Math.min(Math.max(Math.floor(opts.limit ?? FEEDBACK_DEFAULT_LIMIT) || FEEDBACK_DEFAULT_LIMIT, 1), FEEDBACK_MAX_LIMIT);
       const since = opts.since ? Date.parse(opts.since) : undefined;
       const raw = await deps.get(feedbackPath(userId));
-      const entries: FeedbackEntry[] = raw && typeof raw === "object" ? (Object.values(raw) as FeedbackEntry[]) : [];
+      const entries: FeedbackEntry[] = [];
+      if (raw && typeof raw === "object") {
+        for (const [key, value] of Object.entries(raw)) {
+          const parsed = feedbackEntrySchema.safeParse(value);
+          if (parsed.success) entries.push(parsed.data);
+          else console.warn(`[events] invalid feedback entry ${key}; skipping`);
+        }
+      }
       return entries
         .filter((e) => e && (since === undefined || Date.parse(e.at) > since))
         .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))

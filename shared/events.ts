@@ -398,11 +398,11 @@ export const feedbackEntrySchema = z
       .object({
         title: z.string().max(200),
         category: z.enum(EVENT_CATEGORIES),
-        tags: z.array(z.string().max(40)).max(EVENTS_LIMITS.maxTags),
+        tags: z.array(z.string().max(40)).max(EVENTS_LIMITS.maxTags).default([]),
         isFree: z.boolean(),
         distanceKm: z.number().optional(),
         weekday: z.number().int().min(0).max(6),
-        ageBands: z.array(z.enum(AGE_BANDS)).max(8),
+        ageBands: z.array(z.enum(AGE_BANDS)).max(8).default([]),
       })
       .strict(),
   })
