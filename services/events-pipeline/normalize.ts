@@ -276,6 +276,14 @@ export function deriveAdmission(
   return "paid-entry";
 }
 
+/** Clip to max chars at a word boundary, ending with an ellipsis. */
+function clipText(text: string | undefined, max: number): string | undefined {
+  if (text === undefined || text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const sp = cut.lastIndexOf(" ");
+  return `${(sp > 0 ? cut.slice(0, sp) : cut).trimEnd()}\u2026`;
+}
+
 export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): NormalizeResult {
   const parsed = rawCandidateSchema.safeParse(raw);
   if (!parsed.success) {
@@ -288,18 +296,41 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
   const tz = opt(c.timezone) ?? opts.defaultTimezone;
   if (!validTimezone(tz)) return { ok: false, reason: `invalid timezone: ${tz}` };
 
-  const start = c.start.trim();
-  const end = c.end?.trim();
-  const startMs = instantMs(start, tz);
+  let start = c.start.trim();
+  let end = c.end?.trim() || undefined;
+  let startMs = instantMs(start, tz);
   if (Number.isNaN(startMs)) return { ok: false, reason: "invalid start date" };
   if (end !== undefined && Number.isNaN(Date.parse(end))) return { ok: false, reason: "invalid end date" };
 
   const allDay = c.allDay ?? start.length <= 10;
   const nowMs = opts.now.getTime();
-  const startsInPast = allDay
-    ? localDate(start, tz) < localDate(nowIso, tz)
-    : startMs < nowMs;
-  if (startsInPast) return { ok: false, reason: "start date is in the past" };
+  const today = localDate(nowIso, tz);
+  /** True when the window [s, e] (e optional) has not fully passed. */
+  const notOver = (s: string, e: string | undefined): boolean => {
+    const last = e ?? s;
+    if (allDay) return localDate(last, tz) >= today;
+    return instantMs(last, tz) >= nowMs;
+  };
+  let occurrences = (c.occurrences ?? []).map((o) => ({
+    start: o.start.trim(),
+    ...(o.end ? { end: o.end.trim() } : {}),
+  }));
+  const startsInPast = allDay ? localDate(start, tz) < today : startMs < nowMs;
+  if (startsInPast) {
+    const upcoming = occurrences.filter(
+      (o) => !Number.isNaN(instantMs(o.start, tz)) && notOver(o.start, o.end),
+    );
+    if (upcoming.length > 0) {
+      occurrences = upcoming;
+      start = upcoming[0].start;
+      end = upcoming[0].end;
+      startMs = instantMs(start, tz);
+    } else if (end !== undefined && notOver(end, undefined)) {
+      // ongoing window: keep original start and end
+    } else {
+      return { ok: false, reason: "start date is in the past" };
+    }
+  }
   if (startMs > nowMs + MAX_DAYS_AHEAD * DAY_MS) {
     return { ok: false, reason: `start is more than ${MAX_DAYS_AHEAD} days ahead` };
   }
@@ -320,6 +351,7 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
   const currency = c.currency?.trim().toUpperCase();
   const tags = Array.from(new Set((c.tags ?? []).map(cleanText).filter(Boolean))).slice(0, EVENTS_LIMITS.maxTags);
   const organizerName = opt(c.organizerName);
+  const recurrenceText = clipText(opt(c.recurrenceText), 200);
   const sourceUrls = Array.from(new Set(c.sourceUrls));
 
   const event: FfEvent = {
@@ -336,11 +368,8 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
       start,
       ...(end ? { end } : {}),
       allDay,
-      ...(opt(c.recurrenceText) ? { recurrenceText: opt(c.recurrenceText) } : {}),
-      occurrences: (c.occurrences ?? []).map((o) => ({
-        start: o.start.trim(),
-        ...(o.end ? { end: o.end.trim() } : {}),
-      })),
+      ...(recurrenceText ? { recurrenceText } : {}),
+      occurrences,
     },
     location: {
       ...(opt(c.venueName) ? { venueName: opt(c.venueName) } : {}),

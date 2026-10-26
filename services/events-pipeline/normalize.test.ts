@@ -113,3 +113,51 @@ test("normalized candidates carry cost.admission", () => {
     "ticketed",
   );
 });
+
+test("past start with an upcoming occurrence moves to the first upcoming occurrence", () => {
+  const e = ok({
+    ...base,
+    start: "2026-10-01T10:00:00-07:00",
+    end: "2026-10-01T11:00:00-07:00",
+    occurrences: [
+      { start: "2026-10-01T10:00:00-07:00", end: "2026-10-01T11:00:00-07:00" },
+      { start: "2026-10-15T10:00:00-07:00", end: "2026-10-15T11:00:00-07:00" },
+      { start: "2026-10-22T10:00:00-07:00" },
+    ],
+  });
+  assert.equal(e.schedule.start, "2026-10-15T10:00:00-07:00");
+  assert.equal(e.schedule.end, "2026-10-15T11:00:00-07:00");
+  assert.equal(e.schedule.occurrences.length, 2);
+  assert.equal(ffEventSchema.safeParse(e).success, true);
+});
+
+test("past start with no upcoming occurrence but a future end is kept as an ongoing window", () => {
+  const e = ok({ ...base, start: "2026-09-20T10:00:00-07:00", end: "2026-11-01T18:00:00-07:00" });
+  assert.equal(e.schedule.start, "2026-09-20T10:00:00-07:00");
+  assert.equal(e.schedule.end, "2026-11-01T18:00:00-07:00");
+  assert.equal(ffEventSchema.safeParse(e).success, true);
+});
+
+test("start, end and occurrences all in the past are rejected", () => {
+  const r = normalizeCandidate(
+    {
+      ...base,
+      start: "2026-09-20T10:00:00-07:00",
+      end: "2026-09-21T10:00:00-07:00",
+      occurrences: [{ start: "2026-09-27T10:00:00-07:00", end: "2026-09-27T11:00:00-07:00" }],
+    },
+    opts,
+  );
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.reason, "start date is in the past");
+});
+
+test("recurrenceText over 200 characters is clipped at a word boundary with an ellipsis", () => {
+  const e = ok({ ...base, recurrenceText: "Every Saturday and Sunday morning ".repeat(7) });
+  const t = e.schedule.recurrenceText ?? "";
+  assert.ok(t.length <= 200 && t.length > 150);
+  assert.ok(t.endsWith("\u2026"));
+  assert.ok(!t.slice(0, -1).endsWith(" "));
+  assert.match(t.slice(0, -1), /(Saturday|Sunday|morning|Every|and)$/);
+  assert.equal(ffEventSchema.safeParse(e).success, true);
+});
