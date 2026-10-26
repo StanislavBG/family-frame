@@ -63,6 +63,8 @@ Erase: `DELETE /api/events/data` removes `eventRecs`, `eventFeedback`, `eventPre
 
 Per-household wrapper (`recommendationInputSchema`): `event`, `whyForHousehold`, `whyForChildren?`, `highlights[]`, `tips[]`, `matchScore` 0-1, `matchReasons[]`, `distanceKm?`, `travelMinutes?`, `tripType?`, `driveMinutes?`, `trip?`. Batches of up to 50 per PUT. Household response states: `new`, `interested`, `going`, `maybe`, `not-interested`, `dismissed`. `SAMPLE_EVENT` in `shared/events.ts` is a full example. Unchanged re-publishes are no-ops; `new` and `dismissed` recommendations are pruned 30 days after the event ended.
 
+Close to home (`closeToHome`, boolean on household items): true when the event is not online, not a trip idea, and either within 5 miles (8.05 km, `CLOSE_TO_HOME_MILES` / `CLOSE_TO_HOME_KM`) of home or in the household's own city. The rule lives in `shared/events-proximity.ts` (`isCloseToHome`; city names are compared canonically, ignoring case, accents and a trailing region). It is derived at read time by `GET /api/events/items` and `GET /api/events/items/:eventId` from the household's city and country, so it is never stored and the street address is not involved. The app shows a "Close to home" chip and filter.
+
 Trip fields (`shared/events.ts`): `tripType` is `local`, `day-trip` or `weekend`; `driveMinutes` (0-600) is the estimated drive from the household. `trip` (`tripSchema`) is present only on trip ideas and must match `tripType`: `type` (`day-trip` or `weekend`), `driveMinutes`, `nights` (weekend 1-2, day trip 0), `itinerary[]` (1-3 days, each a `label` and 1-10 timed `items` of kind drive, activity, meal, rest, lodging or other), `lodging[]` (weekend 1-3 options with name, area, `priceText` and https `url`; day trips have none) and optional `bestFor`. Trips are research only: the pipeline never books anything, it links to pages the household can open.
 
 Planned visit (`plan.visit`, `visitPlanSchema`): `{start, end}` as local wall-clock times without an offset (`YYYY-MM-DDTHH:MM:SS`), on the same date, end after start, at most 12 hours. It is the part of the day the household intends to go. The server also rejects a visit on a day the event does not run or outside that day's known opening hours (400).
@@ -130,7 +132,7 @@ Implemented in `server/events-service.ts` using `calendar-service.ts`.
 
 ## 7. Preference learning
 
-Every response and feedback appends to `eventFeedback/<uid>` (id, `at`, `eventId`, `signal`, optional reason, and a `snapshot` of title, category, tags, `isFree`, distance, weekday, age bands). The log is the audit trail; weights are recomputed from it by `aggregatePreferences` in `shared/events-preferences.ts`.
+Every response and feedback appends to `eventFeedback/<uid>` (id, `at`, `eventId`, `signal`, optional reason, and a `snapshot` of title, category, tags, `isFree`, distance, weekday, age bands). Entries are stored as RTDB objects, and RTDB drops empty arrays (an empty `tags` or `ageBands` comes back missing). So `listFeedback` in `server/events-service.ts` reads every entry through `feedbackEntrySchema` (which defaults the arrays) and skips, with a warning, any entry that still fails. Never read the raw RTDB value as a `FeedbackEntry`; the 2026-10-16 outage came from doing that. The log is the audit trail; weights are recomputed from it by `aggregatePreferences` in `shared/events-preferences.ts`.
 
 | Signal | Weight |
 | --- | --- |
@@ -164,7 +166,10 @@ Known events and the household's busy intervals are passed in so searches avoid 
 
 Search and ranking:
 
-- Search plans up to 11 searches per household (`planSearchTasks`), each asking for up to 25 candidates, capped by `--max-sessions`.
+- Search plans up to 13 searches per household (`planSearchTasks`), each asking for up to 25 candidates, capped by `--max-sessions`.
+- Close-to-home search (`CLOSE_CATEGORY_KEY` = `close-to-home` in `search.ts`): one task in the `focus` window and one in the `near` window, covering every category the households do not all avoid. The prompt asks for family-friendly things to do in the household's city or within about 5 miles (8 km) of it: events, plus what local businesses and attractions offer in the date range (classes and courses with session dates or a `recurrenceText` pattern, price and registration link; farms, nature centres, museums, pools and play spaces). A place that is simply open is one candidate covering the date range, with opening hours in `recurrenceText`. The business or venue is the organizer, and anything over about 5 miles outside the city is skipped.
+- Ongoing candidates (`normalize.ts`): a candidate whose start is in the past is kept when it has an upcoming occurrence (the start moves to it) or when its `end` is still in the future (an ongoing window keeps its original start and end). Otherwise it is rejected as `start date is in the past`. `recurrenceText` is clipped to 200 characters at a word boundary, ending in an ellipsis.
+- Ranking allowance (`rank.ts`): close-to-home candidates (`isCloseToHome`, with the geocoded distance) get extra slots on top of the normal 3 per day: +2 per day in the focus window and +1 per day later (`closeExtraPerDay`, `laterCloseExtraPerDay`). They also have their own caps, 28 in the focus window and 15 later (`maxCloseFocus`, `maxCloseLater`), counted apart from the normal 42 and later cap, and their own per-category counter. Their match reasons start with "Close to home".
 - Ranking targets up to 3 picks per day in the 14-day focus window and 1 per day later. The count includes the household's active recommendations (withdrawn ones and responses of not-interested or dismissed are excluded), so a day already full is skipped.
 - Same-series dedupe: a candidate whose title is at least 0.6 similar to an already picked or known recommendation is dropped.
 - Events without coordinates are geocoded in `discover.ts` from the event's own public location (venue, address, city, region, country) only, never the household address. A miss or error keeps the event unchanged (`geocodeHits` / `geocodeMisses` in the run stats).
@@ -205,7 +210,7 @@ Dry run: add `--dry-run` to search and rank without publishing (`refresh --dry-r
 
 The report contains no address, coordinates, profile or tokens.
 
-Run stats (`runs.stats_json`, also the printed JSON line) carry: `haiku` (`sessions`, `costUsd`), `normalizeRejected` (+ `normalizeRejectReasons`), `searchFailures` and `skippedByReason` (counts by reason), `ranked`, and `phaseMs` (`prepare`, `search`, `rank`, `explain`, `publish`, in milliseconds). A non-dry `all` run also carries `pruned`: counts of local rows removed by `pruneLocalState` (`events`, `recommendations`, `searchLog`, `runs`).
+Run stats (`runs.stats_json`, also the printed JSON line) carry: `haiku` (`sessions`, `costUsd`), `normalizeRejected` (+ `normalizeRejectReasons`), `searchFailures` and `skippedByReason` (counts by reason), `ranked`, `closeToHome` (ranked picks that are close to home) and `phaseMs` (`prepare`, `search`, `rank`, `explain`, `publish`, in milliseconds). A non-dry `all` run also carries `pruned`: counts of local rows removed by `pruneLocalState` (`events`, `recommendations`, `searchLog`, `runs`).
 
 Local retention (`pruneLocalState` in `db.ts`, once per daily `all` run): events and their recommendations are deleted 30 days after the event ended (or started, when it has no end), the search log after 30 days and run history after 90 days.
 

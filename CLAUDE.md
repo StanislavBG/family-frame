@@ -280,6 +280,8 @@ Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`,
 - `shared/events-profile.ts` - household life stages and profile lines from member ages only (`householdProfile`, `PROFILE_GUIDANCE`); profile and preferences are hints, not filters.
 - `services/events-pipeline/trips.ts` + `trips-run.ts` - trip ideas (day trip, weekend; research only, no booking): max 3 active per household, one new per `all` run, kept out of the shared events table; drive limits in `geo.ts`.
 - Month view day panel: `client/src/components/events/events-day-panel.tsx` (`EventsDayPanel`), the full list for the day selected in the month view, rendered by `pages/events.tsx`.
+- Close to home tag: `shared/events-proximity.ts` (`isCloseToHome`: not online, not a trip, within 5 miles / 8.05 km or in the household's city); `server/apps/events.ts` derives `closeToHome` at read time on `GET /api/events/items*` (never stored); the UI shows a "Close to home" chip and filter; the pipeline adds a `close-to-home` search task (focus and near windows, `search.ts`) and `rank.ts` gives those picks +2 per focus day and +1 per later day with their own caps. Details in `docs/events.md`.
+- Feedback entries live in RTDB as objects where empty arrays vanish: read them only through `feedbackEntrySchema` in `listFeedback` (`server/events-service.ts`), never as a raw `FeedbackEntry` (cause of the 2026-10-16 outage).
 
 ### Calendar Day view
 - Route `/calendar/day/YYYY-MM-DD`; calendar is a nested app, so absolute links use `~/` (e.g. `~/calendar/day/...`).
