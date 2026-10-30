@@ -39,6 +39,12 @@ describe("buildDataRecordsUrl", () => {
       "/api/data/records/school?emailId=e+1&offset=0",
     );
   });
+
+  it("appends sortField and sortDir after offset", () => {
+    expect(buildDataRecordsUrl("school", { offset: 2, sortField: "stats.wait", sortDir: "asc" })).toBe(
+      "/api/data/records/school?offset=2&sortField=stats.wait&sortDir=asc",
+    );
+  });
 });
 
 describe("mediaUrl", () => {

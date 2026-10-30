@@ -25,6 +25,8 @@ export interface DataRecordsParams {
   personId?: string;
   limit?: number;
   offset?: number;
+  sortField?: string;
+  sortDir?: "asc" | "desc";
 }
 
 export type MediaKind = "image" | "pdf";
@@ -124,6 +126,8 @@ export function buildDataRecordsUrl(schemaId: string, params: DataRecordsParams 
     ["personId", params.personId || undefined],
     ["limit", params.limit],
     ["offset", params.offset],
+    ["sortField", params.sortField],
+    ["sortDir", params.sortDir],
   ]);
 }
 

@@ -13,7 +13,7 @@ import { mediaImporter, type MediaImporter } from "./media-import";
 import { mailRehoster, type MailRehoster } from "./mail-rehost";
 import { API_TOKEN_SCOPES } from "./api-tokens";
 import { insertDataRecordSchema, insertEmailSchema, DATA_LIMITS, MAIL_LIMITS, SCHEMA_ID_PATTERN, PERSON_IDS_MAX } from "@shared/agent-data";
-import { PERSON_VIEW_JSON_SCHEMA, getFieldPath, type PersonView } from "@shared/person-views";
+import { PERSON_VIEW_JSON_SCHEMA, FIELD_PATH_PATTERN, getFieldPath, type PersonView } from "@shared/person-views";
 import { EventType, type EventTypeValue, type InsertCalendarEvent } from "@shared/schema";
 
 export interface McpContext {
@@ -446,16 +446,18 @@ export function buildFamilyFrameMcpServer(
   server.registerTool(
     "data_list_records",
     {
-      description: "List records for a schema, newest-updated first. Optionally filter by emailId or personId (person id or name; see list_people); page with limit and offset.",
+      description: "List records for a schema. Default order: newest-updated first (ff-person-day by date, ff-person-week by weekStart). sortField (dotted data path) orders by that data field before limit/offset; sortDir asc or desc, default desc; records missing the field come last. Optionally filter by emailId or personId (person id or name; see list_people); page with limit and offset.",
       inputSchema: {
         schemaId: schemaIdField,
         emailId: z.string().optional(),
         personId: z.string().optional(),
         limit: z.number().int().min(1).max(DATA_LIMITS.listLimitMax).optional(),
         offset: z.number().int().min(0).optional(),
+        sortField: z.string().max(100).regex(new RegExp(FIELD_PATH_PATTERN)).optional(),
+        sortDir: z.enum(["asc", "desc"]).optional(),
       },
     },
-    async ({ schemaId, ...opts }: { schemaId: string; emailId?: string; personId?: string; limit?: number; offset?: number }) =>
+    async ({ schemaId, ...opts }: { schemaId: string; emailId?: string; personId?: string; limit?: number; offset?: number; sortField?: string; sortDir?: "asc" | "desc" }) =>
       run(DATA_READ, async () => {
         const personId = await resolveOptionalPerson(opts.personId);
         return data.listRecords(ctx.userId, schemaId, { ...opts, personId });
