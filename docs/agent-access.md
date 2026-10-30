@@ -65,7 +65,7 @@ Dataset tools (`data:read` or `data:write` for reads; `data:write` for writes):
 | `data_get_schema` | `data:read` | `schemaId`. |
 | `data_delete_schema` | `data:write` | `schemaId`. Deletes the schema and all of its records. |
 | `data_put_records` | `data:write` | `schemaId`, `records` (1-100 of `{id, data, emailIds?, personIds?}`). |
-| `data_list_records` | `data:read` | `schemaId`, `emailId`, `personId`, `limit` (1-500), `offset`. |
+| `data_list_records` | `data:read` | `schemaId`, `emailId`, `personId`, `limit` (1-500), `offset`, `sortField` (dotted data path), `sortDir` (`asc` or `desc`, default `desc`). Sorting happens before `limit` and `offset`; records missing the field come last. |
 | `data_get_record` | `data:read` | `schemaId`, `recordId`. |
 | `data_delete_record` | `data:write` | `schemaId`, `recordId`. |
 
@@ -154,7 +154,7 @@ Records:
 | Route | Purpose |
 | --- | --- |
 | `POST /api/data/records/:schemaId` | Upsert by id. Body `{ "records": [{ "id", "data", "emailIds"?, "personIds"? }] }`. |
-| `GET /api/data/records/:schemaId` | List, newest-updated first (`ff-person-day` by `date` desc, `ff-person-week` by `weekStart` desc). Query: `emailId`, `limit` (default 100, max 500), `offset`. |
+| `GET /api/data/records/:schemaId` | List, newest-updated first (`ff-person-day` by `date` desc, `ff-person-week` by `weekStart` desc). Query: `emailId`, `personId`, `limit` (default 100, max 500), `offset`, `sortField` (dotted data path), `sortDir` (`asc` or `desc`, default `desc`). Sorting is applied before `limit` and `offset`; 400 for an invalid `sortField`, an invalid `sortDir`, or `sortDir` without `sortField`. |
 | `GET /api/data/records/:schemaId/:recordId` | One record. |
 | `DELETE /api/data/records/:schemaId/:recordId` | Delete; 204. |
 

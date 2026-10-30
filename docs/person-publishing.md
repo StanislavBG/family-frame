@@ -13,9 +13,9 @@ The People app picks one household member and filters existing stores by that pe
 | Calendar | Month grid with the person's events, a ☾ mark and photo thumbnails on days with a daily sheet, and a day panel | Calendar events with the person in `people` |
 | Photos | The person's images and PDFs | Media files with the person in `personIds` |
 | Sheets | Daily sheets: weekly nap chart (spans labelled "Nap"), dated list, and a detail card with metrics, timeline, moments, lessons and photos | `ff-person-day` records for the person |
-| More | Any other dataset records tagged with the person | Records in agent-registered datasets with the person in `personIds` |
+| More | Any other dataset records tagged with the person | Records in agent-registered datasets with the person in `personIds`, except datasets one of the person's custom views already shows |
 
-Record lists for `ff-person-day` and `ff-person-week` come back sorted by `date` / `weekStart` (newest first), so publishing every record in one bulk call is fine. Publishing upcoming weeks is fine too; they show once their week starts.
+Record lists for `ff-person-day` and `ff-person-week` come back sorted by `date` / `weekStart` (newest first), so publishing every record in one bulk call is fine. Any dataset can also be listed by a data field: `data_list_records` and `GET /api/data/records/:schemaId` take `sortField` and `sortDir` (see `docs/agent-access.md`). Publishing upcoming weeks is fine too; they show once their week starts.
 
 ## 2. Setup per household
 
@@ -226,9 +226,13 @@ All of this data is private per account. It is never shared through household co
 
 A record in any dataset you registered yourself (`data_put_schema`) that carries `personIds` shows up under that person's **More** tab, so you can publish extra per-person data without a new view. Use a schema id without the reserved `ff-` prefix.
 
+A dataset that one of the person's custom views reads (a metrics, list or chart block with `source.schemaId`) is not repeated in that person's More tab. Other people's More tabs are unaffected unless their own views read it. To order a dataset by one of its data fields, use `sortField` and `sortDir` when listing records, or on a list block (section 8).
+
 ## 8. Custom views (ff-person-view)
 
 Besides the built-in day and week sheets, a household can publish its own People sections. A record in the reserved `ff-person-view` schema describes a view: a `title`, optional `icon`, `tone` and `order`, and 1-12 `blocks` bound to datasets and series you already publish. The view appears as a section in the left nav of every person listed in the record's `personIds`; `personIds` decides whose People page shows the view (no `personIds` = not shown for anyone).
+
+Accepted `icon` names: `star`, `heart`, `book`, `music`, `trophy`, `leaf`, `sun`, `moon`, `activity`, `utensils`, `graduation-cap`, `baby`, `home`, `sparkles`, `mail`. Accepted `tone` names: `clay`, `sun`, `leaf`, `sky`, `plum`, `stone`.
 
 Block types, one example each:
 
@@ -256,9 +260,21 @@ A chart can instead read a time-series: `"source": { "seriesId": "piano-minutes"
 { "type": "text", "title": "Note", "text": "Practice before dinner." }
 ```
 
+A list block can also take these optional fields:
+
+- `urlField`: a field path whose value becomes the row's link. Only `https://` values become links, and they open in a new tab. Any other value (or a missing one) leaves a plain row.
+- `sortField`: a field path to order the rows by. The server sorts before the row `limit` is applied, so the limit keeps the top rows. Numbers, strings and booleans sort; records missing the field come last.
+- `sortDir`: `asc` or `desc`, default `desc`. `sortDir` without `sortField` is rejected.
+
+```json
+{ "type": "list", "title": "Waiting on you", "source": { "schemaId": "requests" },
+  "titleField": "subject", "subtitleField": "from", "urlField": "link",
+  "sortField": "waiting_days", "sortDir": "desc", "limit": 8 }
+```
+
 Field paths are dotted keys into the record's `data` (for example `teacher.note`).
 
-Validate first with `person_view_validate` (`{ view, person }`, needs `data:read`). It returns `{ valid: false, errors: [{ path, message }] }` for schema problems; otherwise `{ valid: true, blocks: [{ index, type, records, missingFields }] }`, where `records` is the record count (dataset sources) or point count (series; `0` if the series does not exist) and `missingFields` lists the configured paths absent from the person's newest record. Photos and text blocks report `records: null`.
+Validate first with `person_view_validate` (`{ view, person }`, needs `data:read`). It returns `{ valid: false, errors: [{ path, message }] }` for schema problems; otherwise `{ valid: true, blocks: [{ index, type, records, missingFields }] }`, where `records` is the record count (dataset sources) or point count (series; `0` if the series does not exist) and `missingFields` lists the configured paths absent from the person's newest record; for list blocks that includes the `urlField` and `sortField` paths. URL values themselves are not checked. Photos and text blocks report `records: null`.
 
 Then publish with `data_put_records`, `schemaId` `ff-person-view`:
 

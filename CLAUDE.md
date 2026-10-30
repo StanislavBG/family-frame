@@ -251,6 +251,7 @@ The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day
 - Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
 - Inbox category chips come from `GET /api/mail/kinds` (per person, all-time counts); tone = publisher `kindTone` else a stable hash (`kindChipTone` in `client/src/lib/agent-data.ts`); never hard-code kind names.
 - Custom sections come from `ff-person-view` records (`shared/person-views.ts`, `client/src/lib/person-view.ts`, `client/src/components/person/person-view-section.tsx`), validated with MCP `person_view_validate`; see `docs/person-publishing.md`.
+- List blocks support `urlField` (https only) and `sortField`/`sortDir` (server-sorted before the limit); datasets bound by a person's custom views are left out of that person's More tab (`moreSchemas`).
 - Not built (no data source yet): the design's Ask bar, "Needs you" card and photo favourite/hide/review states.
 
 ### Time-series (metrics) and Utilities
