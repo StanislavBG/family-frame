@@ -360,3 +360,71 @@ test("ff-person-view rejects unknown block type, spaced field path, and >12 bloc
   await rejects(put({ title: "T", blocks: [{ type: "list", source: { schemaId: "books" }, titleField: "my title" }] }), 400);
   await rejects(put({ title: "T", blocks: Array.from({ length: 13 }, () => ({ type: "text", text: "x" })) }), 400);
 });
+
+async function seedSort(rows: Array<{ id: string; data: any; personIds?: string[] }>) {
+  const svc = createDatasetService(makeDeps().deps);
+  await svc.putSchema("u1", "s", { title: "t", jsonSchema: {} });
+  for (const r of rows) await svc.putRecords("u1", "s", { records: [r] });
+  return svc;
+}
+const ids = (r: { records: { id: string }[] }) => r.records.map((x) => x.id);
+
+test("listRecords sortField numeric desc/asc with limit and offset", async () => {
+  const svc = await seedSort([
+    { id: "a", data: { n: 5 } }, { id: "b", data: { n: 20 } }, { id: "c", data: { n: 1 } }, { id: "d", data: { n: 12 } },
+  ]);
+  assert.deepEqual(ids(await svc.listRecords("u1", "s", { sortField: "n", sortDir: "desc", limit: 2 })), ["b", "d"]);
+  assert.deepEqual(ids(await svc.listRecords("u1", "s", { sortField: "n", sortDir: "asc", limit: 2, offset: 1 })), ["a", "d"]);
+  const all = await svc.listRecords("u1", "s", { sortField: "n", limit: 1 });
+  assert.equal(all.total, 4);
+  assert.deepEqual(ids(all), ["b"]); // sortDir defaults to desc
+});
+
+test("listRecords sortField: ISO dates, nested path, strings numeric-aware", async () => {
+  const svc = await seedSort([
+    { id: "a", data: { due: "2026-10-09", x: { y: 2 }, s: "item 10" } },
+    { id: "b", data: { due: "2026-11-01", x: { y: 9 }, s: "item 2" } },
+    { id: "c", data: { due: "2026-01-15", x: { y: 5 }, s: "item 1" } },
+  ]);
+  assert.deepEqual(ids(await svc.listRecords("u1", "s", { sortField: "due", sortDir: "asc" })), ["c", "a", "b"]);
+  assert.deepEqual(ids(await svc.listRecords("u1", "s", { sortField: "x.y" })), ["b", "c", "a"]);
+  assert.deepEqual(ids(await svc.listRecords("u1", "s", { sortField: "s", sortDir: "asc" })), ["c", "b", "a"]);
+});
+
+test("listRecords sortField: missing/null last both ways, ties by updatedAt desc, booleans", async () => {
+  const svc = await seedSort([
+    { id: "a", data: { n: 3 } }, { id: "b", data: {} }, { id: "c", data: { n: null } },
+    { id: "d", data: { n: 3 } }, { id: "e", data: { n: 7 } },
+  ]);
+  assert.deepEqual(ids(await svc.listRecords("u1", "s", { sortField: "n", sortDir: "desc" })), ["e", "d", "a", "c", "b"]);
+  assert.deepEqual(ids(await svc.listRecords("u1", "s", { sortField: "n", sortDir: "asc" })), ["d", "a", "e", "c", "b"]);
+  const bools = await seedSort([{ id: "t", data: { f: true } }, { id: "f", data: { f: false } }]);
+  assert.deepEqual(ids(await bools.listRecords("u1", "s", { sortField: "f", sortDir: "asc" })), ["f", "t"]);
+});
+
+test("listRecords sortField with personId filter and reserved schema override", async () => {
+  const svc = await seedSort([
+    { id: "a", data: { n: 1 }, personIds: ["p1"] }, { id: "b", data: { n: 9 }, personIds: ["p2"] },
+    { id: "c", data: { n: 5 }, personIds: ["p1"] },
+  ]);
+  const r = await svc.listRecords("u1", "s", { personId: "p1", sortField: "n" });
+  assert.deepEqual(ids(r), ["c", "a"]);
+  assert.equal(r.total, 2);
+  await svc.putRecords("u1", PERSON_DAY_SCHEMA_ID, {
+    records: [
+      { id: "x", data: { ...olderDay, date: "2026-10-01", title: "Alpha" } },
+      { id: "y", data: { ...olderDay, date: "2026-10-02", title: "Zulu" } },
+    ],
+  });
+  const d = await svc.listRecords("u1", PERSON_DAY_SCHEMA_ID, { sortField: "title", sortDir: "desc" });
+  assert.deepEqual(ids(d), ["y", "x"]);
+  assert.deepEqual(ids(await svc.listRecords("u1", PERSON_DAY_SCHEMA_ID, { sortField: "title", sortDir: "asc" })), ["x", "y"]);
+});
+
+test("listRecords rejects bad sort options with 400", async () => {
+  const svc = await seedSort([{ id: "a", data: { n: 1 } }]);
+  await rejects(svc.listRecords("u1", "s", { sortField: "a b" }), 400, /Invalid sortField/);
+  await rejects(svc.listRecords("u1", "s", { sortField: "a".repeat(101) }), 400, /Invalid sortField/);
+  await rejects(svc.listRecords("u1", "s", { sortField: "n", sortDir: "up" }), 400, /asc or desc/);
+  await rejects(svc.listRecords("u1", "s", { sortDir: "asc" }), 400, /requires sortField/);
+});

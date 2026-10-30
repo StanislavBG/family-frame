@@ -23,7 +23,11 @@ import {
   PERSON_WEEK_SCHEMA_ID,
   PERSON_WEEK_TITLE,
   RESERVED_SCHEMA_PREFIX,
+  FIELD_PATH_PATTERN,
+  getFieldPath,
 } from "@shared/person-views";
+
+const FIELD_PATH_RE = new RegExp(FIELD_PATH_PATTERN);
 
 const RESERVED_DATE_KEYS: Record<string, string> = {
   [PERSON_DAY_SCHEMA_ID]: "date",
@@ -51,6 +55,9 @@ export interface ListRecordsOptions {
   personId?: string;
   limit?: number;
   offset?: number;
+  // Order by a dotted data field before paging; sortDir defaults to desc (plain strings: REST passes raw query values).
+  sortField?: string;
+  sortDir?: string;
 }
 
 // CJS/ESM interop under tsx/esbuild vs the bundled build.
@@ -243,6 +250,13 @@ export function createDatasetService(deps: DatasetDeps) {
     },
 
     async listRecords(userId: string, schemaId: string, opts: ListRecordsOptions = {}) {
+      if (opts.sortField !== undefined && (opts.sortField.length > 100 || !FIELD_PATH_RE.test(opts.sortField))) {
+        throw new DatasetError("Invalid sortField", 400);
+      }
+      if (opts.sortDir !== undefined) {
+        if (opts.sortDir !== "asc" && opts.sortDir !== "desc") throw new DatasetError("sortDir must be asc or desc", 400);
+        if (opts.sortField === undefined) throw new DatasetError("sortDir requires sortField", 400);
+      }
       await loadSchema(userId, schemaId);
       const all = (await deps.get(recordsPath(userId, schemaId))) ?? {};
       let list = Object.values<any>(all).map(toRecord);
@@ -260,6 +274,26 @@ export function createDatasetService(deps: DatasetDeps) {
         }
         return desc(a.updatedAt, b.updatedAt);
       });
+      if (opts.sortField !== undefined) {
+        const field = opts.sortField;
+        const sign = opts.sortDir === "asc" ? 1 : -1;
+        const rank = (v: unknown) =>
+          typeof v === "number" && Number.isFinite(v) ? 0 : typeof v === "string" ? 1 : typeof v === "boolean" ? 2 : 3;
+        const keyed = list.map((record) => {
+          const key = getFieldPath(record.data, field);
+          return { record, key, rank: rank(key) };
+        });
+        keyed.sort((a, b) => {
+          if (a.rank === 3 || b.rank === 3) return a.rank === b.rank ? 0 : a.rank === 3 ? 1 : -1;
+          if (a.rank !== b.rank) return (a.rank - b.rank) * sign;
+          let c = 0;
+          if (a.rank === 0) c = (a.key as number) - (b.key as number);
+          else if (a.rank === 1) c = (a.key as string).localeCompare(b.key as string, "en", { numeric: true });
+          else c = Number(a.key) - Number(b.key);
+          return c * sign;
+        });
+        list = keyed.map((k) => k.record);
+      }
       const limit = Math.min(Math.max(opts.limit ?? DATA_LIMITS.listLimitDefault, 1), DATA_LIMITS.listLimitMax);
       const offset = Math.max(opts.offset ?? 0, 0);
       return { records: list.slice(offset, offset + limit), total: list.length };
