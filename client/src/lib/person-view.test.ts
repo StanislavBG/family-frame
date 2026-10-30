@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { PersonViewBlock } from "@shared/person-views";
-import { parseViewRecord, viewTabId, sortViews, buildMetricsModel, buildListModel, buildChartPoints } from "./person-view";
+import { parseViewRecord, viewTabId, sortViews, buildMetricsModel, buildListModel, buildChartPoints, httpsUrl } from "./person-view";
 
 type Rec = { id: string; data: unknown };
 const rec = (id: string, data: unknown): Rec => ({ id, data });
@@ -135,5 +135,34 @@ describe("buildChartPoints", () => {
   it("returns [] for series sources and empty records", () => {
     expect(buildChartPoints({ type: "chart", source: { seriesId: "x" } }, [rec("1", { day: "a", m: { v: 1 } })])).toEqual([]);
     expect(buildChartPoints(block, [])).toEqual([]);
+  });
+});
+
+describe("httpsUrl", () => {
+  it("accepts https and normalizes", () => {
+    expect(httpsUrl("https://mail.google.com/mail/u/0/#inbox/abc")).toBe("https://mail.google.com/mail/u/0/#inbox/abc");
+    expect(httpsUrl("https://example.com")).toBe("https://example.com/");
+  });
+  it("rejects unsafe, malformed, long and non-strings", () => {
+    for (const v of ["http://a.com", "javascript:alert(1)", "data:text/html,x", "mailto:a@b.c", "/relative", "not a url", "", "https://u:p@a.com", "https://a.com/" + "x".repeat(2048), 5, null, undefined, {}]) {
+      expect(httpsUrl(v)).toBeUndefined();
+    }
+  });
+});
+
+describe("buildListModel url", () => {
+  const block: Extract<PersonViewBlock, { type: "list" }> = { type: "list", source: { schemaId: "s" }, titleField: "t", urlField: "thread.url" };
+  it("sets url only for valid https values", () => {
+    const out = buildListModel(block, [
+      rec("1", { t: "A", thread: { url: "https://mail.google.com/x" } }),
+      rec("2", { t: "B", thread: { url: "http://mail.google.com/x" } }),
+      rec("3", { t: "C" }),
+    ]);
+    expect(out).toEqual([
+      { id: "1", title: "A", url: "https://mail.google.com/x" },
+      { id: "2", title: "B" },
+      { id: "3", title: "C" },
+    ]);
+    expect("url" in out[1]).toBe(false);
   });
 });

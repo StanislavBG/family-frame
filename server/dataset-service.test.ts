@@ -346,6 +346,13 @@ test("ff-person-view accepts icon mail and rejects unknown icon", async () => {
   await rejects(put("envelope"), 400);
 });
 
+test("ff-person-view list urlField: valid path accepted, bad path rejected", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  const put = (urlField: string) => svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, { records: [{ id: "uf", data: { title: "T", blocks: [{ type: "list", source: { schemaId: "books" }, titleField: "title", urlField }] } }] });
+  await put("thread.url");
+  await rejects(put("bad path"), 400);
+});
+
 test("ff-person-view rejects unknown block type, spaced field path, and >12 blocks", async () => {
   const svc = createDatasetService(makeDeps().deps);
   const put = (data: any) => svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, { records: [{ id: "bad", data }] });

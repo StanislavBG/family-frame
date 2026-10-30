@@ -200,6 +200,7 @@ export const PERSON_VIEW_JSON_SCHEMA = {
               titleField: FIELD_PATH,
               subtitleField: FIELD_PATH,
               dateField: FIELD_PATH,
+              urlField: FIELD_PATH,
               limit: { type: "integer", minimum: 1, maximum: 50 },
             },
             required: ["type", "source", "titleField"],
@@ -270,7 +271,7 @@ export type PersonViewIcon = (typeof PERSON_VIEW_ICONS)[number];
 
 export type PersonViewBlock =
   | { type: "metrics"; title?: string; source: { schemaId: string }; fields: { field: string; label: string; unit?: string; tone?: PersonViewTone }[] }
-  | { type: "list"; title?: string; source: { schemaId: string }; titleField: string; subtitleField?: string; dateField?: string; limit?: number }
+  | { type: "list"; title?: string; source: { schemaId: string }; titleField: string; subtitleField?: string; dateField?: string; urlField?: string; limit?: number }
   | { type: "chart"; title?: string; source: { schemaId: string; xField: string; yField: string } | { seriesId: string }; unit?: string; limit?: number }
   | { type: "photos"; title?: string; tag?: string; limit?: number }
   | { type: "text"; title?: string; text: string };

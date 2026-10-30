@@ -59,21 +59,38 @@ export function buildMetricsModel(
   return out;
 }
 
+const URL_MAX = 2048;
+
+export function httpsUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > URL_MAX) return undefined;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== "https:" || u.username !== "" || u.password !== "") return undefined;
+    return u.href;
+  } catch {
+    return undefined;
+  }
+}
+
+export type ListRow = { id: string; title: string; subtitle?: string; date?: string; url?: string };
+
 export function buildListModel(
   block: Extract<PersonViewBlock, { type: "list" }>,
   records: ViewRecord[],
-): { id: string; title: string; subtitle?: string; date?: string }[] {
-  const out: { id: string; title: string; subtitle?: string; date?: string }[] = [];
+): ListRow[] {
+  const out: ListRow[] = [];
   const limit = block.limit ?? DEFAULT_LIST_LIMIT;
   for (const r of records) {
     if (out.length >= limit) break;
     const title = scalarText(getFieldPath(r.data, block.titleField));
     if (!title) continue;
-    const item: { id: string; title: string; subtitle?: string; date?: string } = { id: r.id, title };
+    const item: ListRow = { id: r.id, title };
     const subtitle = block.subtitleField ? scalarText(getFieldPath(r.data, block.subtitleField)) : undefined;
     const date = block.dateField ? scalarText(getFieldPath(r.data, block.dateField)) : undefined;
     if (subtitle) item.subtitle = subtitle;
     if (date) item.date = date;
+    const url = block.urlField ? httpsUrl(getFieldPath(r.data, block.urlField)) : undefined;
+    if (url) item.url = url;
     out.push(item);
   }
   return out;

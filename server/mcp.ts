@@ -198,7 +198,7 @@ export function buildFamilyFrameMcpServer(
               block.type === "metrics"
                 ? block.fields.map((f) => f.field)
                 : block.type === "list"
-                  ? [block.titleField, block.subtitleField, block.dateField].filter((f): f is string => !!f)
+                  ? [block.titleField, block.subtitleField, block.dateField, block.urlField].filter((f): f is string => !!f)
                   : [source.xField, source.yField].filter((f): f is string => !!f);
             const { records, total } = await data.listRecords(ctx.userId, source.schemaId, { personId, limit: 1 });
             const newest = records[0];

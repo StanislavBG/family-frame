@@ -727,6 +727,15 @@ test("person_view_validate accepts icon mail", async () => {
   assert.equal(JSON.parse(text(r)).valid, true);
 });
 
+test("person_view_validate lists a missing list urlField", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["data:read"], service, undefined, makeViewData(), undefined, { timeSeries: makeMemoryTimeSeries() });
+  const view = { title: "Waiting", blocks: [{ type: "list", source: { schemaId: "practice" }, titleField: "minutes", urlField: "thread.url" }] };
+  const r = await client.callTool({ name: "person_view_validate", arguments: { view, person: "Grandma" } });
+  assert.ok(!r.isError, text(r));
+  assert.deepEqual(JSON.parse(text(r)).blocks[0].missingFields, ["thread.url"]);
+});
+
 test("person_view_validate is refused without data:read", async () => {
   const { service } = makeFakeService();
   const client = await connect(["mail:read"], service, undefined, makeViewData());
