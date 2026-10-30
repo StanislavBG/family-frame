@@ -1,11 +1,19 @@
 // Pure logic behind custom People sections (`ff-person-view` records): parsing, ordering and
 // turning fetched dataset records into display models. Keep logic here, not in components.
-import { getFieldPath, type PersonView, type PersonViewBlock } from "@shared/person-views";
+import {
+  getFieldPath,
+  RESERVED_SCHEMA_PREFIX,
+  type PersonView,
+  type PersonViewBlock,
+} from "@shared/person-views";
 import type { TimePoint } from "@shared/time-series";
 import { TILE_CYCLE, type SatchelTone } from "@/components/person/satchel";
 
 export type ViewRecord = { id: string; data: unknown };
 export type ParsedView = PersonView & { id: string };
+
+/** How many view records the People nav and More tab load per person. */
+export const VIEW_RECORD_LIMIT = 20;
 
 const DEFAULT_ORDER = 50;
 const DEFAULT_LIST_LIMIT = 10;
@@ -31,6 +39,31 @@ export function sortViews<T extends { title: string; order?: number }>(views: T[
   return [...views].sort(
     (a, b) => (a.order ?? DEFAULT_ORDER) - (b.order ?? DEFAULT_ORDER) || a.title.localeCompare(b.title),
   );
+}
+
+/** SchemaIds read by metrics, list and chart blocks of the given views. Never throws. */
+export function viewSourceSchemaIds(views: PersonView[]): Set<string> {
+  const ids = new Set<string>();
+  if (!Array.isArray(views)) return ids;
+  for (const view of views) {
+    const blocks = (view as { blocks?: unknown } | null)?.blocks;
+    if (!Array.isArray(blocks)) continue;
+    for (const block of blocks) {
+      if (block === null || typeof block !== "object") continue;
+      const { type, source } = block as { type?: unknown; source?: unknown };
+      if (type !== "metrics" && type !== "list" && type !== "chart") continue;
+      if (source === null || typeof source !== "object") continue;
+      const schemaId = (source as { schemaId?: unknown }).schemaId;
+      if (typeof schemaId === "string" && schemaId !== "") ids.add(schemaId);
+    }
+  }
+  return ids;
+}
+
+/** Schemas that belong in the More tab: not reserved and not read by one of the views. */
+export function moreSchemas<T extends { id: string }>(schemas: T[], views: PersonView[]): T[] {
+  const bound = viewSourceSchemaIds(views);
+  return schemas.filter((s) => !s.id.startsWith(RESERVED_SCHEMA_PREFIX) && !bound.has(s.id));
 }
 
 function scalarText(value: unknown): string | undefined {

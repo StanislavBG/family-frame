@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { PersonViewBlock } from "@shared/person-views";
-import { parseViewRecord, viewTabId, sortViews, buildMetricsModel, buildListModel, buildChartPoints, httpsUrl } from "./person-view";
+import type { PersonView, PersonViewBlock } from "@shared/person-views";
+import { parseViewRecord, viewTabId, sortViews, buildMetricsModel, buildListModel, buildChartPoints, httpsUrl, viewSourceSchemaIds, moreSchemas, VIEW_RECORD_LIMIT } from "./person-view";
 
 type Rec = { id: string; data: unknown };
 const rec = (id: string, data: unknown): Rec => ({ id, data });
@@ -164,5 +164,50 @@ describe("buildListModel url", () => {
       { id: "3", title: "C" },
     ]);
     expect("url" in out[1]).toBe(false);
+  });
+});
+
+describe("viewSourceSchemaIds / moreSchemas", () => {
+  const view = (blocks: unknown[]): PersonView => ({ title: "v", blocks: blocks as PersonViewBlock[] });
+  it("collects metrics, list and chart schema sources", () => {
+    const ids = viewSourceSchemaIds([
+      view([
+        { type: "metrics", source: { schemaId: "m" }, fields: [] },
+        { type: "list", source: { schemaId: "l" }, titleField: "t" },
+        { type: "chart", source: { schemaId: "c", xField: "x", yField: "y" } },
+      ]),
+    ]);
+    expect([...ids].sort()).toEqual(["c", "l", "m"]);
+  });
+  it("ignores series charts, photos and text", () => {
+    const ids = viewSourceSchemaIds([
+      view([
+        { type: "chart", source: { seriesId: "s" } },
+        { type: "photos" },
+        { type: "text", text: "x" },
+      ]),
+    ]);
+    expect(ids.size).toBe(0);
+  });
+  it("dedupes across views and handles empty views", () => {
+    const b = { type: "list", source: { schemaId: "l" }, titleField: "t" };
+    expect(viewSourceSchemaIds([view([b]), view([b])]).size).toBe(1);
+    expect(viewSourceSchemaIds([]).size).toBe(0);
+  });
+  it("ignores malformed blocks without throwing", () => {
+    const ids = viewSourceSchemaIds([
+      view([null, 5, {}, { type: "list" }, { type: "list", source: null }, { type: "metrics", source: { schemaId: 3 } }]),
+      { title: "x" } as unknown as PersonView,
+      null as unknown as PersonView,
+    ]);
+    expect(ids.size).toBe(0);
+  });
+  it("moreSchemas drops ff- and bound ids and keeps order", () => {
+    const schemas = [{ id: "z" }, { id: "ff-person-view" }, { id: "bound" }, { id: "a" }];
+    const views = [view([{ type: "list", source: { schemaId: "bound" }, titleField: "t" }])];
+    expect(moreSchemas(schemas, views).map((s) => s.id)).toEqual(["z", "a"]);
+  });
+  it("exports the record limit", () => {
+    expect(VIEW_RECORD_LIMIT).toBe(20);
   });
 });

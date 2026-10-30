@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { Layers } from "lucide-react";
 import type { Person } from "@shared/schema";
 import type { DataSchema } from "@shared/agent-data";
-import { RESERVED_SCHEMA_PREFIX } from "@shared/person-views";
+import { PERSON_VIEW_SCHEMA_ID } from "@shared/person-views";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { buildDataRecordsUrl, useDataSchemas, type DataRecordsResponse } from "@/lib/agent-data";
+import {
+  buildDataRecordsUrl,
+  useDataRecords,
+  useDataSchemas, type DataRecordsResponse,
+} from "@/lib/agent-data";
+import { VIEW_RECORD_LIMIT, moreSchemas, parseViewRecord, type ParsedView } from "@/lib/person-view";
 import { queryKeys } from "@/lib/api";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -110,9 +115,18 @@ function newestFirst(records: RecordItem[]): RecordItem[] {
 
 export default function PersonMore({ person }: { person: Person }) {
   const schemasQuery = useDataSchemas();
-  const schemas: DataSchema[] = (schemasQuery.data ?? []).filter(
-    (s) => !s.id.startsWith(RESERVED_SCHEMA_PREFIX),
+  const viewRecords = useDataRecords(PERSON_VIEW_SCHEMA_ID, {
+    personId: person.id,
+    limit: VIEW_RECORD_LIMIT,
+  });
+  const views = useMemo(
+    () =>
+      (viewRecords.data?.records ?? [])
+        .map((r) => parseViewRecord(r))
+        .filter((v): v is ParsedView => v !== null),
+    [viewRecords.data],
   );
+  const schemas: DataSchema[] = moreSchemas(schemasQuery.data ?? [], views);
 
   const recordQueries = useQueries({
     queries: schemas.map((s) => {
@@ -124,7 +138,7 @@ export default function PersonMore({ person }: { person: Person }) {
     }),
   });
 
-  if (schemasQuery.isLoading || (schemas.length > 0 && recordQueries.every((q) => q.isLoading))) {
+  if (schemasQuery.isLoading || viewRecords.isLoading || (schemas.length > 0 && recordQueries.every((q) => q.isLoading))) {
     return (
       <div className="p-6 space-y-4" data-testid="person-more-loading">
         <Skeleton className="h-8 w-48" />
