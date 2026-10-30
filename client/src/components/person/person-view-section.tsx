@@ -78,6 +78,7 @@ function ListBlock({
   const { data, isLoading } = useDataRecords(block.source.schemaId, {
     personId: person.id,
     limit: block.limit ?? 10,
+    ...(block.sortField ? { sortField: block.sortField, sortDir: block.sortDir === "asc" ? "asc" : "desc" } : {}),
   });
   const items = useMemo(() => buildListModel(block, data?.records ?? []), [block, data]);
   const status = statusOf(isLoading, items.length > 0);

@@ -353,6 +353,15 @@ test("ff-person-view list urlField: valid path accepted, bad path rejected", asy
   await rejects(put("bad path"), 400);
 });
 
+test("ff-person-view list sortField/sortDir validation", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  const put = (extra: Record<string, unknown>) => svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, { records: [{ id: "sf", data: { title: "T", blocks: [{ type: "list", source: { schemaId: "books" }, titleField: "title", ...extra }] } }] });
+  await put({ sortField: "waiting_days", sortDir: "desc" });
+  await rejects(put({ sortDir: "desc" }), 400);
+  await rejects(put({ sortField: "waiting_days", sortDir: "up" }), 400);
+  await rejects(put({ sortField: "a b" }), 400);
+});
+
 test("ff-person-view rejects unknown block type, spaced field path, and >12 blocks", async () => {
   const svc = createDatasetService(makeDeps().deps);
   const put = (data: any) => svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, { records: [{ id: "bad", data }] });
