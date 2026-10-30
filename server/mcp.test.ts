@@ -335,6 +335,19 @@ test("mail-only token is denied data_put_records", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("data_list_records passes sortField and sortDir; bad sortField is refused", async () => {
+  const { service } = makeFakeService();
+  const { data, calls } = makeFakeData();
+  const client = await connect(["data:read"], service, undefined, data);
+  const ok = await client.callTool({ name: "data_list_records", arguments: { schemaId: "s1", sortField: "stats.wait", sortDir: "asc" } });
+  assert.ok(!ok.isError);
+  assert.equal(calls[0].args[2].sortField, "stats.wait");
+  assert.equal(calls[0].args[2].sortDir, "asc");
+  const bad = await client.callTool({ name: "data_list_records", arguments: { schemaId: "s1", sortField: "a b" } }).then((r) => r, () => ({ isError: true }));
+  assert.equal(bad.isError, true);
+  assert.equal(calls.length, 1);
+});
+
 test("data:read token can list records but not put schemas; DatasetError is isError", async () => {
   const { service } = makeFakeService();
   const { data, calls } = makeFakeData();

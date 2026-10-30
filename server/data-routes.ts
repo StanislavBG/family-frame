@@ -60,6 +60,8 @@ export function registerDataRoutes(app: Express, service: DatasetService = datas
       personId: queryString(req.query.personId),
       limit: queryNumber(req.query.limit),
       offset: queryNumber(req.query.offset),
+      sortField: queryString(req.query.sortField),
+      sortDir: queryString(req.query.sortDir),
     }));
   }));
 
