@@ -12,7 +12,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { PERSON_VIEW_SCHEMA_ID, RESERVED_SCHEMA_PREFIX } from "@shared/person-views";
+import { PERSON_VIEW_SCHEMA_ID } from "@shared/person-views";
 import type { Person } from "@shared/schema";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,14 @@ import PersonPhotos from "@/components/person/person-photos";
 import PersonSheets from "@/components/person/person-sheets";
 import PersonMore from "@/components/person/person-more";
 import { PersonViewSection } from "@/components/person/person-view-section";
-import { parseViewRecord, sortViews, viewTabId, type ParsedView } from "@/lib/person-view";
+import {
+  VIEW_RECORD_LIMIT,
+  moreSchemas,
+  parseViewRecord,
+  sortViews,
+  viewTabId,
+  type ParsedView,
+} from "@/lib/person-view";
 
 // Order and colours follow the Satchel design's left nav.
 const TABS = [
@@ -66,8 +73,6 @@ const TABS = [
 ] as const satisfies readonly { tone: SatchelTone; [key: string]: unknown }[];
 
 type TabId = (typeof TABS)[number]["id"];
-
-const VIEW_RECORD_LIMIT = 20;
 
 interface PersonNavInfo {
   tabs: TabId[];
@@ -92,9 +97,19 @@ function usePersonTabs(personId: string): PersonNavInfo {
   const { data: schemas } = useDataSchemas();
   const viewRecords = useDataRecords(PERSON_VIEW_SCHEMA_ID, { personId, limit: VIEW_RECORD_LIMIT });
 
+  const views = useMemo(
+    () =>
+      sortViews(
+        (viewRecords.data?.records ?? [])
+          .map((r) => parseViewRecord(r))
+          .filter((v): v is ParsedView => v !== null),
+      ),
+    [viewRecords.data],
+  );
+
   const customSchemaIds = useMemo(
-    () => (schemas ?? []).map((s) => s.id).filter((id) => !id.startsWith(RESERVED_SCHEMA_PREFIX)),
-    [schemas],
+    () => moreSchemas(schemas ?? [], views).map((s) => s.id),
+    [schemas, views],
   );
   const customRecords = useQueries({
     queries: customSchemaIds.map((schemaId) => {
@@ -107,23 +122,15 @@ function usePersonTabs(personId: string): PersonNavInfo {
     }),
   });
 
-  const views = useMemo(
-    () =>
-      sortViews(
-        (viewRecords.data?.records ?? [])
-          .map((r) => parseViewRecord(r))
-          .filter((v): v is ParsedView => v !== null),
-      ),
-    [viewRecords.data],
-  );
-
   const tabs: TabId[] = ["dashboard", "calendar"];
   if ((mail.data?.emails.length ?? 0) > 0) tabs.push("inbox");
   if ((media.data?.total ?? 0) > 0) tabs.push("photos");
   if ((days.data?.records.length ?? 0) > 0 || (weeks.data?.records.length ?? 0) > 0) {
     tabs.push("sheets");
   }
-  if (customRecords.some((q) => (q.data?.records.length ?? 0) > 0)) tabs.push("more");
+  if (!viewRecords.isLoading && customRecords.some((q) => (q.data?.records.length ?? 0) > 0)) {
+    tabs.push("more");
+  }
 
   const counts: PersonNavInfo["counts"] = {};
   const unreadCount = unread.data?.emails.length ?? 0;
