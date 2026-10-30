@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Inbox } from "lucide-react";
+import { ExternalLink, Inbox } from "lucide-react";
 import type { Person } from "@shared/schema";
 import type { PersonView, PersonViewBlock } from "@shared/person-views";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,15 +87,40 @@ function ListBlock({
   return (
     <BlockCard title={block.title} testId="person-view-list">
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {items.map((item) => (
-          <li key={item.id} className={cn("flex items-baseline justify-between gap-4 rounded-xl px-3 py-2", SATCHEL_TONES.stone.bg)}>
-            <div className="min-w-0">
-              <div className={cn("truncate text-base font-semibold", SATCHEL_TONES.stone.fg)}>{item.title}</div>
-              {item.subtitle && <div className={cn("truncate text-sm", MUTED)}>{item.subtitle}</div>}
-            </div>
-            {item.date && <span className={cn("flex-none text-sm", MUTED)}>{item.date}</span>}
-          </li>
-        ))}
+        {items.map((item) => {
+          const rowClass = cn("flex items-baseline justify-between gap-4 rounded-xl px-3 py-2", SATCHEL_TONES.stone.bg);
+          const body = (
+            <>
+              <div className="min-w-0">
+                <div className={cn("truncate text-base font-semibold", SATCHEL_TONES.stone.fg)}>{item.title}</div>
+                {item.subtitle && <div className={cn("truncate text-sm", MUTED)}>{item.subtitle}</div>}
+              </div>
+              {item.date && <span className={cn("flex-none text-sm", MUTED)}>{item.date}</span>}
+            </>
+          );
+          if (!item.url) {
+            return (
+              <li key={item.id} className={rowClass}>
+                {body}
+              </li>
+            );
+          }
+          return (
+            <li key={item.id}>
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="person-view-list-link"
+                className={cn(rowClass, "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
+              >
+                {body}
+                <ExternalLink className={cn("h-4 w-4 flex-none self-center", MUTED)} aria-hidden="true" />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </BlockCard>
   );
