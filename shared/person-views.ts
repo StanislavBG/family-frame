@@ -142,7 +142,7 @@ export const PERSON_WEEK_DESCRIPTION =
 
 export const FIELD_PATH_PATTERN = "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+){0,5}$";
 export const PERSON_VIEW_BLOCK_TYPES = ["metrics", "list", "chart", "photos", "text"] as const;
-const PERSON_VIEW_ICONS = ["star", "heart", "book", "music", "trophy", "leaf", "sun", "moon", "activity", "utensils", "graduation-cap", "baby", "home", "sparkles"] as const;
+export const PERSON_VIEW_ICONS = ["star", "heart", "book", "music", "trophy", "leaf", "sun", "moon", "activity", "utensils", "graduation-cap", "baby", "home", "sparkles", "mail"] as const;
 const PERSON_VIEW_TONES = ["clay", "sun", "leaf", "sky", "plum", "stone"] as const;
 
 const FIELD_PATH = { type: "string", pattern: FIELD_PATH_PATTERN, maxLength: 100 } as const;

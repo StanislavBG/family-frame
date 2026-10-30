@@ -719,6 +719,14 @@ test("person_view_validate reports record counts and missing fields", async () =
   assert.equal(unknown.isError, true);
 });
 
+test("person_view_validate accepts icon mail", async () => {
+  const { service } = makeFakeService();
+  const client = await connect(["data:read"], service, undefined, makeViewData(), undefined, { timeSeries: makeMemoryTimeSeries() });
+  const r = await client.callTool({ name: "person_view_validate", arguments: { view: { title: "Email", icon: "mail", blocks: [{ type: "text", text: "Hello" }] }, person: "Grandma" } });
+  assert.ok(!r.isError, text(r));
+  assert.equal(JSON.parse(text(r)).valid, true);
+});
+
 test("person_view_validate is refused without data:read", async () => {
   const { service } = makeFakeService();
   const client = await connect(["mail:read"], service, undefined, makeViewData());

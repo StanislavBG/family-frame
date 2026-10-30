@@ -339,6 +339,13 @@ test("ff-person-view accepts one block of each type", async () => {
   assert.equal((await svc.getRecord("u1", PERSON_VIEW_SCHEMA_ID, "v1")).data.title, "Soccer");
 });
 
+test("ff-person-view accepts icon mail and rejects unknown icon", async () => {
+  const svc = createDatasetService(makeDeps().deps);
+  const put = (icon: string) => svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, { records: [{ id: "ic", data: { title: "Email", icon, blocks: [{ type: "text", text: "x" }] } }] });
+  await put("mail");
+  await rejects(put("envelope"), 400);
+});
+
 test("ff-person-view rejects unknown block type, spaced field path, and >12 blocks", async () => {
   const svc = createDatasetService(makeDeps().deps);
   const put = (data: any) => svc.putRecords("u1", PERSON_VIEW_SCHEMA_ID, { records: [{ id: "bad", data }] });

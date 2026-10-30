@@ -2,26 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRoute } from "wouter";
 import {
-  Activity,
   ArrowLeft,
-  Baby,
-  BookOpen,
   CalendarDays,
   Database,
-  GraduationCap,
-  Heart,
-  House,
   Image,
-  Leaf,
   Mail,
   Moon,
-  Music,
-  Sparkles,
-  Star,
   Sun,
-  Trophy,
   UserRound,
-  Utensils,
   type LucideIcon,
 } from "lucide-react";
 import { PERSON_VIEW_SCHEMA_ID, RESERVED_SCHEMA_PREFIX } from "@shared/person-views";
@@ -32,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/lib/api";
+import { viewIcon } from "@/lib/person-view-icons";
 import {
   buildDataRecordsUrl,
   useDataRecords,
@@ -77,24 +66,6 @@ const TABS = [
 ] as const satisfies readonly { tone: SatchelTone; [key: string]: unknown }[];
 
 type TabId = (typeof TABS)[number]["id"];
-
-/** Lucide icon per `ff-person-view` icon name; unknown or missing falls back to Sparkles. */
-const VIEW_ICONS: Record<string, LucideIcon> = {
-  star: Star,
-  heart: Heart,
-  book: BookOpen,
-  music: Music,
-  trophy: Trophy,
-  leaf: Leaf,
-  sun: Sun,
-  moon: Moon,
-  activity: Activity,
-  utensils: Utensils,
-  "graduation-cap": GraduationCap,
-  baby: Baby,
-  home: House,
-  sparkles: Sparkles,
-};
 
 const VIEW_RECORD_LIMIT = 20;
 
@@ -264,7 +235,7 @@ function PersonView({ person, people, tab }: { person: Person; people: Person[];
     ...nav.views.map((v) => ({
       id: viewTabId(v.id),
       label: v.title,
-      icon: VIEW_ICONS[v.icon ?? ""] ?? Sparkles,
+      icon: viewIcon(v.icon),
       tone: (v.tone ?? "stone") as SatchelTone,
       count: undefined,
     })),
