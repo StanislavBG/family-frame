@@ -28,7 +28,6 @@ import {
   useMailMessages,
   useMediaList,
   usePersonDays,
-  usePersonWeeks,
   type DataRecordsResponse,
 } from "@/lib/agent-data";
 import { apiRequest } from "@/lib/queryClient";
@@ -93,7 +92,6 @@ function usePersonTabs(personId: string): PersonNavInfo {
   const unread = useMailMessages({ personId, unreadOnly: true, limit: UNREAD_COUNT_LIMIT });
   const media = useMediaList({ personId, kind: "image", limit: 1 });
   const days = usePersonDays(personId, { limit: 1 });
-  const weeks = usePersonWeeks(personId, { limit: 1 });
   const { data: schemas } = useDataSchemas();
   const viewRecords = useDataRecords(PERSON_VIEW_SCHEMA_ID, { personId, limit: VIEW_RECORD_LIMIT });
 
@@ -125,9 +123,7 @@ function usePersonTabs(personId: string): PersonNavInfo {
   const tabs: TabId[] = ["dashboard", "calendar"];
   if ((mail.data?.emails.length ?? 0) > 0) tabs.push("inbox");
   if ((media.data?.total ?? 0) > 0) tabs.push("photos");
-  if ((days.data?.records.length ?? 0) > 0 || (weeks.data?.records.length ?? 0) > 0) {
-    tabs.push("sheets");
-  }
+  if ((days.data?.records.length ?? 0) > 0) tabs.push("sheets");
   if (!viewRecords.isLoading && customRecords.some((q) => (q.data?.records.length ?? 0) > 0)) {
     tabs.push("more");
   }
@@ -144,7 +140,6 @@ function usePersonTabs(personId: string): PersonNavInfo {
     !mail.isLoading &&
     !media.isLoading &&
     !days.isLoading &&
-    !weeks.isLoading &&
     !viewRecords.isLoading &&
     schemas !== undefined &&
     customRecords.every((q) => !q.isLoading);

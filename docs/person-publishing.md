@@ -12,8 +12,10 @@ The People app picks one household member and filters existing stores by that pe
 | Inbox | Emails about the person | Mailbox emails with the person in `personIds` |
 | Calendar | Month grid with the person's events, a ☾ mark and photo thumbnails on days with a daily sheet, and a day panel | Calendar events with the person in `people` |
 | Photos | The person's images and PDFs | Media files with the person in `personIds` |
-| Sheets | Daily sheets: weekly nap chart (spans labelled "Nap"), dated list, and a detail card with metrics, timeline, moments, lessons and photos | `ff-person-day` records for the person |
+| Daily sheets | Daily sheets: weekly nap chart (spans labelled "Nap"), dated list, and a detail card with metrics, timeline, moments, lessons and photos | `ff-person-day` records for the person |
 | More | Any other dataset records tagged with the person | Records in agent-registered datasets with the person in `personIds`, except datasets one of the person's custom views already shows |
+
+Week records feed the Dashboard, not Daily sheets: a person with `ff-person-week` records and no `ff-person-day` records has no Daily sheets section.
 
 Record lists for `ff-person-day` and `ff-person-week` come back sorted by `date` / `weekStart` (newest first), so publishing every record in one bulk call is fine. Any dataset can also be listed by a data field: `data_list_records` and `GET /api/data/records/:schemaId` take `sortField` and `sortDir` (see `docs/agent-access.md`). Publishing upcoming weeks is fine too; they show once their week starts.
 
