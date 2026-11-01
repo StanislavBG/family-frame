@@ -275,6 +275,10 @@ function dayNumber(dateKey: string): number {
   return Math.round(Date.UTC(y, m - 1, d) / 86400000);
 }
 
+function addDaysKey(iso: string, n: number): string {
+  return new Date((dayNumber(iso) + n) * 86400000).toISOString().slice(0, 10);
+}
+
 type ScheduleLike = Pick<FfEvent["schedule"], "timezone" | "start" | "end" | "allDay" | "occurrences">;
 
 function startDates(item: { event: { schedule: ScheduleLike } }): string[] {
@@ -291,17 +295,38 @@ function startDates(item: { event: { schedule: ScheduleLike } }): string[] {
 export function groupForAgenda<T extends { event: { schedule: ScheduleLike } }>(
   items: T[],
   todayIso: string,
-): { next14: { date: string; items: T[] }[]; later: T[] } {
+  allowed?: (date: string) => boolean,
+): { next14: { date: string; items: T[] }[]; later: T[]; dates: Map<T, string> } {
   const today = dayNumber(todayIso);
   const dated: { date: string; item: T }[] = [];
+  const dates = new Map<T, string>();
   for (const item of items) {
     const { schedule } = item.event;
-    let date = startDates(item).find((d) => d >= todayIso);
-    if (!date) {
-      const end = schedule.end ? dateKeyInZone(schedule.end, schedule.timezone) : undefined;
-      if (end && end >= todayIso) date = todayIso;
+    const starts = startDates(item);
+    const end = schedule.end ? dateKeyInZone(schedule.end, schedule.timezone) : undefined;
+    let date: string | undefined;
+    if (!allowed) {
+      date = starts.find((d) => d >= todayIso);
+      if (!date && end && end >= todayIso) date = todayIso;
+    } else {
+      date = starts.find((d) => d >= todayIso && allowed(d));
+      if (!date && end && end >= todayIso) {
+        // Ongoing window: walk from today (or its start) to its end, at most 14 days.
+        const first = starts[0] && starts[0] > todayIso ? starts[0] : todayIso;
+        for (let i = 0; i < 14; i++) {
+          const d = addDaysKey(first, i);
+          if (d > end) break;
+          if (allowed(d)) {
+            date = d;
+            break;
+          }
+        }
+      }
     }
-    if (date) dated.push({ date, item });
+    if (date) {
+      dated.push({ date, item });
+      dates.set(item, date);
+    }
   }
   dated.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
@@ -316,7 +341,7 @@ export function groupForAgenda<T extends { event: { schedule: ScheduleLike } }>(
       later.push(item);
     }
   }
-  return { next14, later };
+  return { next14, later, dates };
 }
 
 /**

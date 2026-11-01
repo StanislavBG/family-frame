@@ -47,6 +47,30 @@ describe("groupForAgenda", () => {
     expect(g.later.map((i) => i.id)).toEqual(["m"]);
   });
 
+  it("places items on their first allowed day and drops them when none", () => {
+    const sat = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay() === 6;
+    // today 2026-10-10 is a Saturday; Oct 12 is Monday.
+    const mon = item("mon", "2026-10-12T10:00:00Z", {
+      occurrences: [{ start: "2026-10-12T10:00:00Z" }, { start: "2026-10-17T10:00:00Z" }],
+    });
+    const onlyMon = item("onlyMon", "2026-10-12T10:00:00Z");
+    const g = groupForAgenda([mon, onlyMon], today, sat);
+    expect(g.next14.map((d) => [d.date, d.items.map((i) => i.id)])).toEqual([["2026-10-17", ["mon"]]]);
+    expect(g.dates.get(mon)).toBe("2026-10-17");
+    expect(g.later).toEqual([]);
+  });
+
+  it("walks an ongoing window to its first allowed day, at most 14 days", () => {
+    const sat = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay() === 6;
+    const running = item("r", "2026-10-08T10:00:00Z", { end: "2026-10-30T10:00:00Z" });
+    const short = item("s", "2026-10-08T10:00:00Z", { end: "2026-10-12T10:00:00Z" });
+    const far = item("f", "2026-10-08T10:00:00Z", { end: "2026-12-30T10:00:00Z" });
+    const g = groupForAgenda([running, short, far], "2026-10-12", sat);
+    expect(g.next14.map((d) => [d.date, d.items.map((i) => i.id)])).toEqual([["2026-10-17", ["r", "f"]]]);
+    const never = (): boolean => false;
+    expect(groupForAgenda([far], "2026-10-12", never).next14).toEqual([]);
+  });
+
   it("uses the event timezone for the day", () => {
     // 2026-10-23T20:00Z is already Oct 24 in Auckland (day 14).
     const g = groupForAgenda([item("nz", "2026-10-23T20:00:00Z", { timezone: "Pacific/Auckland" })], today);

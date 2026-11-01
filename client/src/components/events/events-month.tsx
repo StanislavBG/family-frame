@@ -17,6 +17,8 @@ interface EventsMonthProps {
   /** Selected day (YYYY-MM-DD); gets a ring in the grid. */
   selectedDate: string;
   onSelectDate: (iso: string) => void;
+  /** When set, cells for days it rejects show no event chips. */
+  isDayShown?: (iso: string) => boolean;
 }
 
 function parseMonth(monthIso: string): { year: number; month: number } {
@@ -81,6 +83,7 @@ export function EventsMonth({
   weekStartsMonday,
   selectedDate,
   onSelectDate,
+  isDayShown,
 }: EventsMonthProps) {
   const todayIso = useToday();
   const { year, month } = parseMonth(monthIso);
@@ -88,10 +91,15 @@ export function EventsMonth({
 
   const days = useMemo(() => {
     const map = new Map<string, ReturnType<typeof eventDayEntries<EventItem>>>();
-    for (const c of cells) map.set(c.iso, eventDayEntries(items, c.iso));
+    for (const c of cells) {
+      map.set(
+        c.iso,
+        !isDayShown || isDayShown(c.iso) ? eventDayEntries(items, c.iso) : { sessions: [], open: [] },
+      );
+    }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, monthIso, weekStartsMonday]);
+  }, [items, monthIso, weekStartsMonday, isDayShown]);
 
   const select = (iso: string) => {
     onSelectDate(iso);

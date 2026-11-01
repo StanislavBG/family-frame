@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { queryKeys } from "@/lib/api";
+import { SAMPLE_EVENT } from "@shared/events";
 import { DEFAULT_BROWSE, DEFAULT_FILTERS, type EventsBrowse } from "@/lib/events-filters";
 
 // Server rendering always reads the hook's initial snapshot, so stand in a controllable value.
@@ -15,7 +16,7 @@ vi.mock("@/hooks/use-session-state", () => ({
 // Vitest's esbuild transform uses the classic JSX runtime, which needs a global React.
 (globalThis as { React?: typeof React }).React = React;
 vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
-const { default: EventsPage } = await import("./events");
+const { default: EventsPage, AgendaCard } = await import("./events");
 
 // A withdrawn item keeps the page on the Overview without needing a full event fixture.
 const withdrawn = { eventId: "e1", withdrawn: true, response: "going", rec: {}, event: { category: "parks-outdoors" } };
@@ -68,5 +69,42 @@ describe("Events page filters", () => {
     expect(has(render(two), "events-filter-clear")).toBe(false);
     stored.value = { ...DEFAULT_BROWSE, filters: { ...DEFAULT_FILTERS, cost: "free" } } satisfies EventsBrowse;
     expect(has(render(two), "events-filter-clear")).toBe(true);
+  });
+});
+
+describe("Events page days", () => {
+  beforeEach(() => {
+    stored.value = null;
+  });
+
+  it("AgendaCard badge shows the group day, not the start", () => {
+    const item = {
+      eventId: "e2",
+      response: "none",
+      rec: {},
+      event: {
+        ...SAMPLE_EVENT,
+        schedule: { ...SAMPLE_EVENT.schedule, timezone: "UTC", start: "2026-10-12T10:00:00Z", occurrences: [] },
+      },
+    } as never;
+    const html = renderToStaticMarkup(
+      React.createElement(Router, { ssrPath: "/" }, React.createElement(AgendaCard, { item, date: "2026-11-21" })),
+    );
+    expect(html).toContain('uppercase">Nov</span>');
+    expect(html).toContain(">21</span>");
+    expect(html).not.toContain('uppercase">Oct</span>');
+  });
+
+  it("renders Month view with a disallowed selected day", () => {
+    stored.value = {
+      ...DEFAULT_BROWSE,
+      view: "month",
+      selectedDate: "2026-10-12",
+      month: "2026-10-01",
+      filters: { ...DEFAULT_FILTERS, when: "weekends" },
+    } satisfies EventsBrowse;
+    const html = render(two);
+    expect(has(html, "events-month")).toBe(true);
+    expect(has(html, "events-month-cell-2026-10-12")).toBe(true);
   });
 });

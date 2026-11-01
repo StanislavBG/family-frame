@@ -42,6 +42,7 @@ import {
   DEFAULT_FILTERS,
   FILTER_LABELS,
   activeFilterCount,
+  dayAllowed,
   kindCounts,
   matchesFilters,
   parseBrowse,
@@ -64,10 +65,10 @@ const RESPONSE_LABELS: Record<string, string> = {
   dismissed: "Dismissed",
 };
 
-function AgendaCard({ item }: { item: EventItem }) {
+export function AgendaCard({ item, date }: { item: EventItem; date?: string }) {
   const { event } = item;
   const tz = event.schedule.timezone;
-  const startKey = dateKeyInZone(event.schedule.start, tz);
+  const startKey = date ?? dateKeyInZone(event.schedule.start, tz);
   const [y, m, d] = startKey.split("-").map(Number);
   const cat = CATEGORY_META[event.category];
   const badge = statusBadge(event.status, event.updates);
@@ -168,6 +169,12 @@ function TripCard({ item }: { item: EventItem }) {
   );
 }
 
+function nextDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function dayHeading(date: string, today: string): string {
   const [y, m, d] = date.split("-").map(Number);
   const label = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
@@ -192,7 +199,19 @@ function Overview() {
 
   const setView = (v: EventsBrowse["view"]) => setBrowse((b) => ({ ...b, view: v }));
   const setFilters = (patch: Partial<EventFilters>) =>
-    setBrowse((b) => ({ ...b, filters: { ...b.filters, ...patch } }));
+    setBrowse((b) => {
+      const next = { ...b, filters: { ...b.filters, ...patch } };
+      if (patch.when && patch.when !== "any") {
+        const ok = dayAllowed(patch.when, today);
+        const cur = b.selectedDate ?? today;
+        if (!ok(cur)) {
+          let d = cur < today ? today : cur;
+          for (let i = 0; i < 14 && !ok(d); i++) d = nextDay(d);
+          if (ok(d)) return { ...next, selectedDate: d, month: `${d.slice(0, 7)}-01` };
+        }
+      }
+      return next;
+    });
 
   const people = useMemo(
     () =>
@@ -220,9 +239,13 @@ function Overview() {
   const visible = useMemo(() => live.filter((i) => matchesFilters(i, filters, ctx)), [live, filters, ctx]);
   const trips = useMemo(() => visible.filter(isTripIdea), [visible]);
   const dated = useMemo(() => visible.filter((i) => !isTripIdea(i)), [visible]);
-  const { next14, later } = useMemo(
-    () => groupForAgenda(dated, today),
-    [dated, today],
+  const dayOk = useMemo(
+    () => (filters.when === "any" ? undefined : dayAllowed(filters.when, today)),
+    [filters.when, today],
+  );
+  const { next14, later, dates } = useMemo(
+    () => groupForAgenda(dated, today, dayOk),
+    [dated, today, dayOk],
   );
   const counts4 = useMemo(() => kindCounts(items, filters, ctx), [items, filters, ctx]);
   const topics = useMemo(() => topicOptions(items), [items]);
@@ -377,13 +400,14 @@ function Overview() {
             weekStartsMonday
             selectedDate={selectedDate}
             onSelectDate={selectDate}
+            isDayShown={dayOk}
           />
           {/* 5rem = App.tsx h-14 header (3.5rem) + 0.75rem top offset + 0.75rem bottom gap */}
           <div
             ref={panelRef}
             className="lg:sticky lg:top-3 lg:flex lg:max-h-[calc(100dvh-5rem)] lg:flex-col"
           >
-            <EventsDayPanel items={dated} dateIso={selectedDate} onDateChange={selectDate} />
+            <EventsDayPanel items={dayOk && !dayOk(selectedDate) ? [] : dated} dateIso={selectedDate} onDateChange={selectDate} />
           </div>
         </div>
       ) : next14.length === 0 && later.length === 0 && trips.length === 0 ? (
@@ -432,7 +456,7 @@ function Overview() {
                         {dayHeading(group.date, today)}
                       </h3>
                       {group.items.map((item) => (
-                        <AgendaCard key={item.eventId} item={item} />
+                        <AgendaCard key={item.eventId} item={item} date={group.date} />
                       ))}
                     </div>
                   ))}
@@ -453,7 +477,7 @@ function Overview() {
               </h2>
               <div className="grid gap-2 lg:grid-cols-3 xl:grid-cols-4">
                 {later.map((item) => (
-                  <AgendaCard key={item.eventId} item={item} />
+                  <AgendaCard key={item.eventId} item={item} date={dates.get(item)} />
                 ))}
               </div>
             </section>
