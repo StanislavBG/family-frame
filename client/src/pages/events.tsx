@@ -1,12 +1,15 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { CalendarDays, CalendarHeart, Hourglass, List, MapPin } from "lucide-react";
-import type { EventCategory } from "@shared/events";
+import { useQuery } from "@tanstack/react-query";
+import type { Person } from "@shared/schema";
+import { ageOn } from "@shared/events-activity";
 import { CLOSE_TO_HOME_MILES } from "@shared/events-proximity";
 import { EmptyState } from "@/components/empty-state";
 import { EventHero } from "@/components/events/event-hero";
 import { EventsDayPanel } from "@/components/events/events-day-panel";
 import { EventsMonth } from "@/components/events/events-month";
+import { EventsFilterBar, FilterChip, type FilterGroup } from "@/components/events/events-filter-bar";
 import {
   DateBadge,
   LINE,
@@ -27,78 +30,31 @@ import {
   formatWhen,
   agendaColumns,
   groupForAgenda,
-  isPaidOrTicketed,
   isTripIdea,
-  matchesTripFilter,
   statusBadge,
   tripBadge,
-  type TripFilter,
   useEventItems,
   useEventsStatus,
   type EventItem,
 } from "@/lib/events";
+import {
+  DEFAULT_BROWSE,
+  DEFAULT_FILTERS,
+  FILTER_LABELS,
+  activeFilterCount,
+  kindCounts,
+  matchesFilters,
+  parseBrowse,
+  topicOptions,
+  type EventFilters,
+  type EventsBrowse,
+} from "@/lib/events-filters";
+import { useSessionState } from "@/hooks/use-session-state";
+import { queryKeys } from "@/lib/api";
 import { cn } from "@/lib/utils";
-
-type ResponseFilter = "active" | "new" | "going" | "interested" | "all";
-type View = "agenda" | "month";
-
-const RESPONSE_FILTERS: { id: ResponseFilter; label: string }[] = [
-  { id: "active", label: "Active" },
-  { id: "new", label: "New" },
-  { id: "going", label: "Going" },
-  { id: "interested", label: "Interested" },
-  { id: "all", label: "All" },
-];
-
-const TRIP_FILTERS: { id: TripFilter; label: string }[] = [
-  { id: "close", label: "Close to home" },
-  { id: "local", label: "Nearby" },
-  { id: "day-trip", label: "Day trips" },
-  { id: "weekend", label: "Weekends" },
-  { id: "all", label: "All" },
-];
-
-const HIDDEN_RESPONSES = new Set(["not-interested", "dismissed"]);
-const BTN =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-3 text-sm lg:text-base font-semibold";
 
 const MAP_BTN =
   "flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl text-xs font-semibold leading-none bg-[#dde8f1] text-[#3d6a8f] dark:bg-[#8fb4d4]/15 dark:text-[#8fb4d4]";
-
-function matchesResponse(item: EventItem, filter: ResponseFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "active") return !HIDDEN_RESPONSES.has(item.response);
-  return item.response === filter;
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-  testId,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  testId: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      data-testid={testId}
-      className={cn(
-        BTN,
-        active
-          ? "border-[#a83818] bg-[#a83818] text-white dark:border-[#e07a52] dark:bg-[#e07a52] dark:text-[#1a1612]"
-          : cn(SURFACE, LINE, "text-[#1a1612] dark:text-foreground"),
-      )}
-    >
-      {children}
-    </button>
-  );
-}
 
 const RESPONSE_LABELS: Record<string, string> = {
   going: "Going",
@@ -225,57 +181,144 @@ function dayHeading(date: string, today: string): string {
 
 function Overview() {
   const today = useToday();
-  const [view, setView] = useState<View>("agenda");
-  const [category, setCategory] = useState<EventCategory | null>(null);
-  const [response, setResponse] = useState<ResponseFilter>("active");
-  const [tripFilter, setTripFilter] = useState<TripFilter>("all");
-  const [paidOnly, setPaidOnly] = useState(false);
-  const [month, setMonth] = useState(`${today.slice(0, 7)}-01`);
-  const [selectedDate, setSelectedDate] = useState(today);
+  const [browse, setBrowse] = useSessionState<EventsBrowse>("ff.events.browse.v1", DEFAULT_BROWSE, parseBrowse);
+  const { view, month: storedMonth, selectedDate: storedDate } = browse;
+  const month = storedMonth ?? `${today.slice(0, 7)}-01`;
+  const selectedDate = storedDate ?? today;
   const panelRef = useRef<HTMLDivElement>(null);
-  const { data: items = [], isLoading } = useEventItems({
-    includeHidden: response === "all",
-  });
+  const { data: items = [], isLoading } = useEventItems({ includeHidden: true });
   const { data: status } = useEventsStatus();
+  const { data: allPeople = [] } = useQuery<Person[]>({ queryKey: queryKeys.people() });
 
-  const visible = useMemo(
+  const setView = (v: EventsBrowse["view"]) => setBrowse((b) => ({ ...b, view: v }));
+  const setFilters = (patch: Partial<EventFilters>) =>
+    setBrowse((b) => ({ ...b, filters: { ...b.filters, ...patch } }));
+
+  const people = useMemo(
     () =>
-      items.filter(
-        (i) =>
-          !i.withdrawn &&
-          (!category || i.event.category === category) &&
-          matchesResponse(i, response) &&
-          matchesTripFilter(i, tripFilter) &&
-          (!paidOnly || isPaidOrTicketed(i)),
-      ),
-    [items, category, response, tripFilter, paidOnly],
+      allPeople.flatMap((p) => {
+        const age = ageOn(p.birthday, today);
+        return age === null ? [] : [{ id: p.id, name: p.name, age }];
+      }),
+    [allPeople, today],
   );
+  const showWho = people.length >= 2;
+  // Stored ids that no longer exist are ignored.
+  const filters = useMemo<EventFilters>(
+    () => ({
+      ...browse.filters,
+      people: showWho ? browse.filters.people.filter((id) => people.some((p) => p.id === id)) : [],
+    }),
+    [browse.filters, people, showWho],
+  );
+  const ctx = useMemo(
+    () => ({ today, ages: people.filter((p) => filters.people.includes(p.id)).map((p) => p.age) }),
+    [today, people, filters.people],
+  );
+
+  const live = useMemo(() => items.filter((i) => !i.withdrawn), [items]);
+  const visible = useMemo(() => live.filter((i) => matchesFilters(i, filters, ctx)), [live, filters, ctx]);
   const trips = useMemo(() => visible.filter(isTripIdea), [visible]);
   const dated = useMemo(() => visible.filter((i) => !isTripIdea(i)), [visible]);
   const { next14, later } = useMemo(
     () => groupForAgenda(dated, today),
     [dated, today],
   );
-  const usedCategories = useMemo(
-    () => Array.from(new Set(items.map((i) => i.event.category))),
-    [items],
-  );
+  const counts4 = useMemo(() => kindCounts(items, filters, ctx), [items, filters, ctx]);
+  const topics = useMemo(() => topicOptions(items), [items]);
+
+  const groups: FilterGroup[] = [
+    {
+      key: "response",
+      label: "Show",
+      options: [...FILTER_LABELS.response],
+      value: filters.response,
+      defaultValue: DEFAULT_FILTERS.response,
+      onSelect: (id) => setFilters({ response: id as EventFilters["response"] }),
+    },
+    {
+      key: "when",
+      label: "When",
+      options: [...FILTER_LABELS.when],
+      value: filters.when,
+      defaultValue: DEFAULT_FILTERS.when,
+      onSelect: (id) => setFilters({ when: id as EventFilters["when"] }),
+    },
+    {
+      key: "kind",
+      label: "What",
+      options: FILTER_LABELS.kind.map((o) => ({
+        ...o,
+        count: o.id === "all" ? undefined : counts4[o.id as keyof typeof counts4],
+      })),
+      value: filters.kind,
+      defaultValue: DEFAULT_FILTERS.kind,
+      onSelect: (id) => setFilters({ kind: id as EventFilters["kind"] }),
+      caption: "Day trips: under 1½ hours' drive. Weekend getaways: under 2½ hours with a place to stay.",
+    },
+    {
+      key: "distance",
+      label: "How far",
+      options: [...FILTER_LABELS.distance],
+      value: filters.distance,
+      defaultValue: DEFAULT_FILTERS.distance,
+      onSelect: (id) => setFilters({ distance: id as EventFilters["distance"] }),
+      caption: `Close to home: within ${CLOSE_TO_HOME_MILES} miles of home or in your city. Nearby: under 45 minutes' drive.`,
+    },
+    {
+      key: "cost",
+      label: "Cost",
+      options: [...FILTER_LABELS.cost],
+      value: filters.cost,
+      defaultValue: DEFAULT_FILTERS.cost,
+      onSelect: (id) => setFilters({ cost: id as EventFilters["cost"] }),
+    },
+    {
+      key: "category",
+      label: "Topic",
+      options: [
+        { id: "all", label: "All topics" },
+        ...topics.map((c) => ({ id: c as string, label: CATEGORY_META[c].label })),
+      ],
+      value: filters.category ?? "all",
+      defaultValue: "all",
+      collapsible: true,
+      onSelect: (id) => setFilters({ category: id === "all" || id === filters.category ? null : (id as EventFilters["category"]) }),
+    },
+  ];
+  if (showWho) {
+    groups.push({
+      key: "people",
+      label: "Who",
+      options: [{ id: "everyone", label: "Everyone" }, ...people.map((p) => ({ id: p.id, label: p.name }))],
+      value: filters.people.length > 0 ? filters.people : "everyone",
+      defaultValue: "everyone",
+      multi: true,
+      onSelect: (id) =>
+        setFilters({
+          people:
+            id === "everyone"
+              ? []
+              : filters.people.includes(id)
+                ? filters.people.filter((x) => x !== id)
+                : [...filters.people, id],
+        }),
+    });
+  }
 
   const changeMonth = (monthIso: string) => {
-    setMonth(monthIso);
     const ym = monthIso.slice(0, 7);
-    setSelectedDate(today.slice(0, 7) === ym ? today : `${ym}-01`);
+    setBrowse((b) => ({ ...b, month: monthIso, selectedDate: today.slice(0, 7) === ym ? today : `${ym}-01` }));
   };
   const selectDate = (iso: string) => {
-    setSelectedDate(iso);
-    setMonth(`${iso.slice(0, 7)}-01`);
+    setBrowse((b) => ({ ...b, selectedDate: iso, month: `${iso.slice(0, 7)}-01` }));
     if (!window.matchMedia("(min-width: 1024px)").matches) {
       // Wait for the panel to render the new day before scrolling.
       requestAnimationFrame(() => panelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }));
     }
   };
 
-  const counts = status?.counts;
+  const statusCounts = status?.counts;
   const columns = useMemo(() => agendaColumns(next14, 3), [next14]);
 
   return (
@@ -292,9 +335,9 @@ function Overview() {
         >
           Events
         </h1>
-        {counts && (
+        {statusCounts && (
           <p className={cn("mr-2 text-sm", MUTED)} data-testid="events-counts">
-            {counts.new} new · {counts.going} going · {counts.changed} changed
+            {statusCounts.new} new · {statusCounts.going} going · {statusCounts.changed} changed
           </p>
         )}
         <div
@@ -302,91 +345,22 @@ function Overview() {
           role="group"
           aria-label="View"
         >
-          <Chip
-            active={view === "agenda"}
-            onClick={() => setView("agenda")}
-            testId="events-view-agenda"
-          >
+          <FilterChip selected={view === "agenda"} onClick={() => setView("agenda")} testId="events-view-agenda">
             <List className="h-5 w-5" aria-hidden /> Agenda
-          </Chip>
-          <Chip
-            active={view === "month"}
-            onClick={() => setView("month")}
-            testId="events-view-month"
-          >
+          </FilterChip>
+          <FilterChip selected={view === "month"} onClick={() => setView("month")} testId="events-view-month">
             <CalendarDays className="h-5 w-5" aria-hidden /> Month
-          </Chip>
+          </FilterChip>
         </div>
-        <div
-          className="flex flex-wrap items-center gap-2"
-          role="group"
-          aria-label="Response filter"
-        >
-          {RESPONSE_FILTERS.map((f) => (
-            <Chip
-              key={f.id}
-              active={response === f.id}
-              onClick={() => setResponse(f.id)}
-              testId={`events-response-${f.id}`}
-            >
-              {f.label}
-            </Chip>
-          ))}
-        </div>
-        <div
-          className="flex flex-wrap items-center gap-2"
-          role="group"
-          aria-label="Trip type filter"
-        >
-          {TRIP_FILTERS.map((f) => (
-            <Chip
-              key={f.id}
-              active={tripFilter === f.id}
-              onClick={() => setTripFilter(f.id)}
-              testId={`events-trip-filter-${f.id}`}
-            >
-              {f.label}
-            </Chip>
-          ))}
-          {tripFilter === "close" && (
-            <span className={cn("text-sm", MUTED)} data-testid="events-close-caption">
-              {`Within ${CLOSE_TO_HOME_MILES} miles of home or in your city`}
-            </span>
-          )}
-          <Chip
-            active={paidOnly}
-            onClick={() => setPaidOnly(!paidOnly)}
-            testId="events-paid-filter"
-          >
-            Paid / Ticketed
-          </Chip>
-        </div>
-        {usedCategories.length > 0 && (
-          <div
-            className="flex flex-wrap items-center gap-2"
-            role="group"
-            aria-label="Category filter"
-          >
-            <Chip
-              active={category === null}
-              onClick={() => setCategory(null)}
-              testId="events-category-all"
-            >
-              All categories
-            </Chip>
-            {usedCategories.map((c) => (
-              <Chip
-                key={c}
-                active={category === c}
-                onClick={() => setCategory(category === c ? null : c)}
-                testId={`events-category-${c}`}
-              >
-                {CATEGORY_META[c].label}
-              </Chip>
-            ))}
-          </div>
-        )}
       </div>
+
+      <EventsFilterBar
+        groups={groups}
+        shown={visible.length}
+        total={live.length}
+        activeCount={activeFilterCount(filters)}
+        onClear={() => setBrowse((b) => ({ ...b, filters: DEFAULT_FILTERS }))}
+      />
 
       {isLoading ? (
         <div className="space-y-3">
