@@ -12,7 +12,7 @@ import { DEFAULT_BROWSE, parseBrowse, type EventsBrowse } from "@/lib/events-fil
 import { useFitScale } from "@/hooks/use-fit-scale";
 import { buildEventFacts, distanceText, hasMapLocation, mapUrl, whereSummary } from "@/lib/event-detail";
 import { cn } from "@/lib/utils";
-import { signUpUrl } from "@shared/events-activity";
+import { isOngoingClass, signUpUrl } from "@shared/events-activity";
 import type { Trip } from "@shared/events";
 import {
   CATEGORY_META,
@@ -265,7 +265,7 @@ export function EventHero({ eventId }: { eventId: string }) {
             {event.title}
           </h1>
           <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 text-base font-semibold", tone.fg)}>
-            <span data-testid="text-event-when">{formatWhen(event.schedule)}</span>
+            <span data-testid="text-event-when">{isOngoingClass(event) ? (event.schedule.recurrenceText ?? "See the class website for times") : formatWhen(event.schedule)}</span>
             <span className="inline-flex items-start gap-1" data-testid="event-where-summary">
               <MapPin className="mt-1 h-4 w-4 flex-none" aria-hidden />
               {hasMap ? (

@@ -21,6 +21,7 @@ import {
   type VisitPrefs,
 } from "@shared/events-visit";
 import type { FfEvent } from "@shared/events";
+import { isOngoingClass } from "@shared/events-activity";
 import { useToday } from "@/hooks/use-today";
 import { parseLocalDate } from "@/lib/format";
 import { formatClockRange, formatWhen, useEventPreferences, useRespond, useSendFeedback, useUpdatePlan, type EventItem } from "@/lib/events";
@@ -73,7 +74,8 @@ function isPast(item: EventItem): boolean {
 }
 
 const MAX_VISIT_DAYS = 14;
-const LENGTH_CHOICES: { minutes: number; label: string; aria: string }[] = [
+export const LENGTH_CHOICES: { minutes: number; label: string; aria: string }[] = [
+  { minutes: 60, label: "1 h", aria: "Visit length 1 hour" },
   { minutes: 120, label: "2 h", aria: "Visit length 2 hours" },
   { minutes: 150, label: "2½ h", aria: "Visit length 2 and a half hours" },
   { minutes: 180, label: "3 h", aria: "Visit length 3 hours" },
@@ -140,16 +142,20 @@ function useVisitBlock(event: FfEvent, saved: { start: string; end: string } | u
   return { windows, block, setBlock: setPicked as (b: VisitBlock | null) => void };
 }
 
-function VisitEditor({
+export const CLASS_NOTE = "Pick the day of your first class. Times are on the class website.";
+
+export function VisitEditor({
   windows,
   block,
   onChange,
   idPrefix,
+  note,
 }: {
   windows: DayWindow[];
   block: VisitBlock | null;
   onChange: (b: VisitBlock) => void;
   idPrefix: string;
+  note?: string;
 }) {
   if (!block) return null;
   const window = windowFor(windows, block);
@@ -213,7 +219,7 @@ function VisitEditor({
         </div>
       )}
       <div className={cn("text-sm", MUTED)}>
-        {window.hoursKnown ? `Open ${formatClockRange(window.open, window.close)}` : "Hours not listed \u2013 check before you go"}
+        {note ?? (window.hoursKnown ? `Open ${formatClockRange(window.open, window.close)}` : "Hours not listed \u2013 check before you go")}
       </div>
     </div>
   );
@@ -342,7 +348,7 @@ function ChangePlanDialog({ item, open, onOpenChange }: { item: EventItem; open:
           )}
           <div className="space-y-2">
             <SectionLabel>Your visit</SectionLabel>
-            <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="plan" />
+            <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="plan" note={isOngoingClass(item.event) ? CLASS_NOTE : undefined} />
           </div>
           <WhoPicker value={who} onChange={setWho} enabled={open} />
           <div className="space-y-2">
@@ -459,7 +465,7 @@ export function EventActions({ item }: { item: EventItem }) {
       {choosing && (
         <div className={cn("space-y-2 rounded-xl border p-2", SURFACE, LINE)} data-testid="panel-add-to-calendar">
           <SectionLabel>Add to calendar</SectionLabel>
-          <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="calendar" />
+          <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="calendar" note={isOngoingClass(item.event) ? CLASS_NOTE : undefined} />
           <WhoPicker value={who} onChange={setWho} />
           <VisibilityChoice value={calendarVisibility} onChange={setCalendarVisibility} idPrefix="button-calendar" />
           <div className="flex flex-wrap gap-2">
