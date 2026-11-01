@@ -329,3 +329,13 @@ test("class merge in dry run pushes nothing", async () => {
   assert.equal(stats.merged, 1);
   assert.equal(pushes, 0);
 });
+
+test("ended class recommendations leave state.known and classes are counted", async () => {
+  const ended = recRow("Old Pottery Class", "2026-09-01T10:00:00-07:00", { end: "2026-10-01T12:00:00-07:00" });
+  const live = recRow("Chess Lessons", "2026-09-01T10:00:00-07:00", { end: "2026-11-01T12:00:00-07:00", eventId: "old2", fingerprint: "fp2" });
+  const f = fakeFf([household("h1")], { h1: state("h1", { recommendations: [ended, live] as FfState["recommendations"] }) });
+  const again = { ...classCand, title: "Old Pottery Class", end: "2026-11-20T12:00:00-07:00" };
+  const stats = await run({ ff: f.ff, runner: fakeRunner(found(again)) });
+  assert.equal(stats.published, 1);
+  assert.equal(stats.classes, 1);
+});

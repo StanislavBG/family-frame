@@ -321,3 +321,60 @@ test("close to home: reason comes first, only for close picks", () => {
   assert.equal(pf?.closeToHome, false);
   assert.ok(!pf?.matchReasons.includes("Close to home"));
 });
+
+const cls = (daysAhead: number, name: string, over: Partial<FfEvent> = {}): FfEvent =>
+  ev(daysAhead, { title: `${name} Class`, tags: ["class"], ...over });
+
+test("classes skip day and category caps, use own window counter, and are not counted in perDay", () => {
+  const names = ["Pottery", "Violin", "Chess", "Ballet", "Karate", "Painting", "Swimming", "Coding", "Origami", "Singing"];
+  const classes = names.map((n) => cls(3, `${n}x${n.length}${n}`));
+  const normal = [0, 1, 2].map((i) => ev(3, { category: EVENT_CATEGORIES[i] }));
+  const r = rankForHousehold(input([...classes, ...normal]));
+  const picked = r.picks.filter((p) => p.isClass);
+  assert.equal(picked.length, 8);
+  assert.ok(picked.every((p) => p.matchReasons.includes("A class you can sign up for")));
+  assert.equal(r.picks.filter((p) => !p.isClass).length, 3);
+  assert.equal(r.skipped.filter((s) => s.reason === "focus window full").length, 2);
+});
+
+test("later classes are capped by maxClassLater", () => {
+  const r = rankForHousehold(
+    input(["Aa", "Bb", "Cc", "Dd", "Ee", "Ff"].map((n, i) => cls(30, `${n}${i}${n}${n}`))),
+  );
+  assert.equal(r.picks.length, 4);
+});
+
+test("known classes do not count toward perDay and count toward the class pool", () => {
+  const start = ev(3).schedule.start;
+  const known = [0, 1, 2].map((i) => ({ title: `Known${i}${i}${i} Lessons`, start }));
+  const normal = ev(3);
+  const r = rankForHousehold(input([normal], { state: { knownEventIds: [], knownFingerprints: [], busy: [], known } }));
+  assert.equal(r.picks.length, 1);
+  const full = rankForHousehold(
+    input([cls(3, "Zumba"), normal], {
+      state: { knownEventIds: [], knownFingerprints: [], busy: [], known },
+      limits: { maxActiveClasses: 3 },
+    }),
+  );
+  assert.ok(full.skipped.some((s) => s.reason === "class pool full"));
+  assert.equal(full.picks.length, 1);
+});
+
+test("class series similarity is 0.8, non-class stays 0.6", () => {
+  const known = [{ title: "Beginner Pottery Class Fall", start: ev(3).schedule.start }];
+  const state = { knownEventIds: [], knownFingerprints: [], busy: [], known };
+  const sim = cls(3, "Beginner Pottery Fall");
+  const r = rankForHousehold(input([sim], { state }));
+  assert.equal(r.picks.length + r.skipped.length, 1);
+  const plainKnown = [{ title: "Riverside Pumpkin Festival Fun", start: ev(3).schedule.start }];
+  const p = rankForHousehold(
+    input([ev(3, { title: "Riverside Pumpkin Festival" })], { state: { ...state, known: plainKnown } }),
+  );
+  assert.equal(p.skipped[0]?.reason, "same series as a known recommendation");
+});
+
+test("a class that is also close to home uses class counters", () => {
+  const r = rankForHousehold(withPlace([cls(3, "Closeone")]));
+  assert.equal(r.picks[0].isClass, true);
+  assert.equal(r.picks[0].closeToHome, true);
+});

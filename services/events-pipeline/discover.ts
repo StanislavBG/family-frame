@@ -27,7 +27,7 @@ import {
   type EventsDb,
 } from "./db";
 import { nextCheckAt, pushEvent, type DispatchStats } from "./dispatch";
-import { CLASS_TAG } from "../../shared/events-activity";
+import { CLASS_TAG, isClassTitle } from "../../shared/events-activity";
 import { explainBatch } from "./explain";
 import type { FfClient, FfHousehold, FfState } from "./ff-client";
 import { householdProfile } from "../../shared/events-profile";
@@ -66,6 +66,7 @@ export interface DiscoverStats {
   skippedByReason: Record<string, number>;
   ranked: number;
   closeToHome: number;
+  classes: number;
   geocodeHits: number;
   geocodeMisses: number;
   phaseMs: { prepare: number; search: number; rank: number; explain: number; publish: number };
@@ -103,6 +104,15 @@ const bump = (m: Record<string, number>, key: string): void => {
 };
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
+/** Local YYYY-MM-DD of an instant in a household timezone; UTC if missing or invalid. */
+function todayFor(now: Date, timezone?: string | null): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone || "UTC" }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}
+
 function parseFeedback(raw: unknown[]): FeedbackEntry[] {
   const out: FeedbackEntry[] = [];
   for (const r of raw) {
@@ -131,6 +141,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     skippedByReason: {},
     ranked: 0,
     closeToHome: 0,
+    classes: 0,
     geocodeHits: 0,
     geocodeMisses: 0,
     phaseMs: { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 },
@@ -353,6 +364,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         state: { knownEventIds: Array.from(knownIds), knownFingerprints: Array.from(knownFps), busy: a.state.busy as BusyInterval[],
           known: a.state.recommendations
             .filter((r) => !r.withdrawn && r.response !== "not-interested" && r.response !== "dismissed")
+            .filter((r) => !(isClassTitle(r.title) && (r.end ?? r.start).slice(0, 10) < todayFor(now, a.h.timezone)))
             .map((r) => ({ title: r.title, start: r.start })),
         },
         now,
@@ -360,6 +372,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
       });
       stats.skipped += ranked.skipped.length;
       stats.ranked += ranked.picks.length;
+      stats.classes += ranked.picks.filter((p) => p.isClass).length;
       stats.closeToHome += ranked.picks.filter((p) => p.closeToHome).length;
       for (const sk of ranked.skipped) bump(stats.skippedByReason, sk.reason.endsWith(" window full") ? "window full" : sk.reason);
       const explainStart = clock();

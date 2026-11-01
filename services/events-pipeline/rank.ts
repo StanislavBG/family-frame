@@ -1,6 +1,7 @@
 import type { EventCategory, EventPreferences, FfEvent } from "../../shared/events";
 import type { PreferenceSummary } from "../../shared/events-preferences";
 import { isCloseToHome } from "../../shared/events-proximity";
+import { isClassOrLesson, isClassTitle } from "../../shared/events-activity";
 import { titleSimilarity } from "./normalize";
 
 // Pure scorer: picks which repository events to recommend to one household.
@@ -32,6 +33,12 @@ export interface RankLimits {
   maxCloseFocus?: number;
   /** Same, for the later window (apart from maxLater). */
   maxCloseLater?: number;
+  /** Max class picks in the focus window (own counter; classes skip the day caps). */
+  maxClassFocus?: number;
+  /** Same, for the later window. */
+  maxClassLater?: number;
+  /** Max known plus newly picked classes overall. */
+  maxActiveClasses?: number;
 }
 
 export interface RankInput {
@@ -62,6 +69,7 @@ export interface RankPick {
   distanceKm?: number;
   matchReasons: string[];
   closeToHome: boolean;
+  isClass: boolean;
 }
 
 export interface RankResult {
@@ -75,6 +83,7 @@ const MAX_PER_CATEGORY = 3;
 const CHILD_MAX_AGE = 17;
 const FOCUS_BONUS = 0.1;
 const SERIES_SIMILARITY = 0.6;
+const CLASS_SERIES_SIMILARITY = 0.8;
 
 /** Local calendar date (YYYY-MM-DD) of an instant in the event's timezone; UTC if the zone is invalid. */
 function dayInZone(ms: number, timezone: string): string {
@@ -226,6 +235,9 @@ export function rankForHousehold(input: RankInput): RankResult {
   const laterCloseExtraPerDay = input.limits?.laterCloseExtraPerDay ?? 1;
   const maxCloseFocus = input.limits?.maxCloseFocus ?? 28;
   const maxCloseLater = input.limits?.maxCloseLater ?? 15;
+  const maxClassFocus = input.limits?.maxClassFocus ?? 8;
+  const maxClassLater = input.limits?.maxClassLater ?? 4;
+  const maxActiveClasses = input.limits?.maxActiveClasses ?? 40;
   const { preferences: prefs, learned, memberAges } = household;
   const nowMs = now.getTime();
   const knownIds = new Set(state.knownEventIds);
@@ -352,13 +364,15 @@ export function rankForHousehold(input: RankInput): RankResult {
     );
     const score = base + (focus ? FOCUS_BONUS : 0);
     if (focus) reasons.push("Happening in the next two weeks");
+    const isClass = isClassOrLesson(event);
+    if (isClass) reasons.push("A class you can sign up for");
     if (reasons.length === 0) reasons.push("A good all-round fit for your household");
     if (closeToHome) reasons.unshift("Close to home");
 
     scored.push({
       focus,
       day: dayInZone(slot.startMs, event.schedule.timezone),
-      pick: { event, score, distanceKm, matchReasons: reasons.slice(0, 5), closeToHome },
+      pick: { event, score, distanceKm, matchReasons: reasons.slice(0, 5), closeToHome, isClass },
     });
   }
 
@@ -366,13 +380,18 @@ export function rankForHousehold(input: RankInput): RankResult {
 
   const picks: RankPick[] = [];
   const pickedFps = new Set<string>();
-  const counts = { focus: 0, later: 0, closeFocus: 0, closeLater: 0 };
+  const counts = { focus: 0, later: 0, closeFocus: 0, closeLater: 0, classFocus: 0, classLater: 0 };
+  let activeClasses = 0;
   const perCategory = new Map<string, number>();
   const perDay = new Map<string, number>();
   const knownTitles: string[] = [];
   for (const k of state.known ?? []) {
     if (Number.isNaN(Date.parse(k.start))) continue;
     knownTitles.push(k.title);
+    if (isClassTitle(k.title)) {
+      activeClasses += 1;
+      continue;
+    }
     const day = k.start.slice(0, 10);
     perDay.set(day, (perDay.get(day) ?? 0) + 1);
   }
@@ -384,12 +403,30 @@ export function rankForHousehold(input: RankInput): RankResult {
       skipped.push({ eventId: event.id, reason: "duplicate of a higher-ranked pick" });
       continue;
     }
-    if (knownTitles.some((t) => titleSimilarity(t, event.title) >= SERIES_SIMILARITY)) {
+    const seriesMin = pick.isClass ? CLASS_SERIES_SIMILARITY : SERIES_SIMILARITY;
+    if (pick.isClass && activeClasses >= maxActiveClasses) {
+      skipped.push({ eventId: event.id, reason: "class pool full" });
+      continue;
+    }
+    if (knownTitles.some((t) => titleSimilarity(t, event.title) >= seriesMin)) {
       skipped.push({ eventId: event.id, reason: "same series as a known recommendation" });
       continue;
     }
-    if (pickedTitles.some((t) => titleSimilarity(t, event.title) >= SERIES_SIMILARITY)) {
+    if (pickedTitles.some((t) => titleSimilarity(t, event.title) >= seriesMin)) {
       skipped.push({ eventId: event.id, reason: "same series as a higher-ranked pick" });
+      continue;
+    }
+    if (pick.isClass) {
+      const key = focus ? "classFocus" : "classLater";
+      if (counts[key] >= (focus ? maxClassFocus : maxClassLater)) {
+        skipped.push({ eventId: event.id, reason: `${window} window full` });
+        continue;
+      }
+      counts[key] += 1;
+      activeClasses += 1;
+      pickedFps.add(event.fingerprint);
+      pickedTitles.push(event.title);
+      picks.push(pick);
       continue;
     }
     const close = pick.closeToHome;
