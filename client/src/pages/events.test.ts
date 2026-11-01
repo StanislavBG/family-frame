@@ -16,7 +16,7 @@ vi.mock("@/hooks/use-session-state", () => ({
 // Vitest's esbuild transform uses the classic JSX runtime, which needs a global React.
 (globalThis as { React?: typeof React }).React = React;
 vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
-const { default: EventsPage, AgendaCard } = await import("./events");
+const { default: EventsPage, AgendaCard, splitClasses } = await import("./events");
 
 // A withdrawn item keeps the page on the Overview without needing a full event fixture.
 const withdrawn = { eventId: "e1", withdrawn: true, response: "going", rec: {}, event: { category: "parks-outdoors" } };
@@ -150,5 +150,101 @@ describe("Events page trip ideas and empty states", () => {
       expect(html).toContain("No events match these filters.");
       expect(has(html, "events-none-match-clear")).toBe(true);
     }
+  });
+});
+
+describe("Events page ongoing classes", () => {
+  const TODAY = "2026-11-01";
+  const mk = (id: string, title: string, schedule: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    ({
+      eventId: id,
+      withdrawn: false,
+      response: "none",
+      rec: {},
+      event: {
+        ...SAMPLE_EVENT,
+        title,
+        tags: [],
+        schedule: { timezone: "UTC", allDay: false, occurrences: [], ...schedule },
+        ...extra,
+      },
+    }) as never;
+  // No occurrences, all-day start: a class that runs on an ongoing basis.
+  const ongoing = mk("c1", "Toddler art class", { start: "2099-01-05", allDay: true, end: "2099-12-31" });
+  const sessions = mk("c2", "Swim lessons", {
+    start: "2099-01-06T10:00:00Z",
+    occurrences: [{ start: "2099-01-06T10:00:00Z", end: "2099-01-06T11:00:00Z" }],
+  });
+  const plain = mk("p1", "Park picnic", { start: "2099-01-07T10:00:00Z", end: "2099-01-07T12:00:00Z" });
+  const signUpOnly = mk(
+    "s1",
+    "Open house",
+    { start: "2099-01-08", allDay: true },
+    { cost: { ...SAMPLE_EVENT.cost, registrationRequired: true } },
+  );
+  const all = [ongoing, sessions, plain, signUpOnly] as { eventId: string }[];
+  const ids = (xs: { eventId: string }[]) => xs.map((x) => x.eventId);
+
+  beforeEach(() => {
+    stored.value = null;
+  });
+
+  it("keeps ongoing classes off the calendar but passes them to the side panel and shelf", () => {
+    const r = splitClasses(all as never, "all", TODAY);
+    expect(ids(r.calendarItems)).toEqual(["c2", "p1", "s1"]);
+    expect(ids(r.dated)).toEqual(["c1", "c2", "p1", "s1"]);
+    expect(ids(r.classItems)).toEqual(["c1"]);
+  });
+
+  it("keeps classes with session dates on the calendar", () => {
+    const r = splitClasses(all as never, "all", TODAY);
+    expect(ids(r.calendarItems)).toContain("c2");
+    expect(ids(r.classItems)).not.toContain("c2");
+  });
+
+  it("drops ongoing classes with no day left from today", () => {
+    const past = mk("c3", "Old class", { start: "2020-01-05", allDay: true, end: "2020-01-06" });
+    expect(ids(splitClasses([past], "all", TODAY).classItems)).toEqual([]);
+  });
+
+  it("with What on Classes & sign-ups, the shelf lists every sign-up item without a session", () => {
+    const r = splitClasses(all as never, "classes", TODAY);
+    expect(ids(r.classItems)).toEqual(["c1", "s1"]);
+  });
+
+  it("Agenda shows the capped shelf and leaves ongoing classes out of the lists", () => {
+    stored.value = { ...DEFAULT_BROWSE, view: "agenda" } satisfies EventsBrowse;
+    const html = render(two, { items: all });
+    expect(has(html, "events-classes")).toBe(true);
+    expect(has(html, "events-class-c1")).toBe(true);
+    expect(has(html, "events-card-c1")).toBe(false);
+    expect(has(html, "events-card-c2")).toBe(true);
+    expect(html).not.toContain("events-classes-all");
+  });
+
+  it("Agenda shows See all when more than four classes", () => {
+    stored.value = { ...DEFAULT_BROWSE, view: "agenda" } satisfies EventsBrowse;
+    const many = Array.from({ length: 5 }, (_, i) =>
+      mk(`m${i}`, `Class ${i}`, { start: "2099-01-05", allDay: true, end: "2099-12-31" }),
+    );
+    const html = render(two, { items: many });
+    expect(has(html, "events-classes-all")).toBe(true);
+    expect(html).toContain("See all 5");
+    expect(has(html, "events-class-m4")).toBe(false);
+  });
+
+  it("with What on Classes & sign-ups, both views show the full shelf above the calendar", () => {
+    const many = Array.from({ length: 5 }, (_, i) =>
+      mk(`m${i}`, `Class ${i}`, { start: "2099-01-05", allDay: true, end: "2099-12-31" }),
+    );
+    for (const view of ["agenda", "month"] as const) {
+      stored.value = { ...DEFAULT_BROWSE, view, filters: { ...DEFAULT_FILTERS, kind: "classes" } } satisfies EventsBrowse;
+      const html = render(two, { items: many });
+      expect(has(html, "events-class-m4")).toBe(true);
+      expect(has(html, "events-classes-all")).toBe(false);
+    }
+    stored.value = { ...DEFAULT_BROWSE, view: "month", filters: { ...DEFAULT_FILTERS, kind: "classes" } } satisfies EventsBrowse;
+    const html = render(two, { items: many });
+    expect(html.indexOf('data-testid="events-classes"')).toBeLessThan(html.indexOf('data-testid="events-month"'));
   });
 });

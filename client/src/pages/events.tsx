@@ -3,11 +3,14 @@ import { Link, useLocation, useRoute } from "wouter";
 import { CalendarDays, CalendarHeart, Hourglass, List, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { Person } from "@shared/schema";
-import { ageOn } from "@shared/events-activity";
+import { ageOn, isOngoingClass, isSignUpActivity } from "@shared/events-activity";
+import { dayWindows } from "@shared/events-visit";
+import type { FfEvent } from "@shared/events";
 import { CLOSE_TO_HOME_MILES } from "@shared/events-proximity";
 import { EmptyState } from "@/components/empty-state";
 import { EventHero } from "@/components/events/event-hero";
 import { EventsDayPanel } from "@/components/events/events-day-panel";
+import { EventsClassesShelf } from "@/components/events/events-classes-shelf";
 import { EventsMonth } from "@/components/events/events-month";
 import { EventsFilterBar, FilterChip, type FilterGroup } from "@/components/events/events-filter-bar";
 import {
@@ -219,6 +222,29 @@ function NoneMatch({ onClear }: { onClear: () => void }) {
   );
 }
 
+/**
+ * Splits the visible items: calendarItems leave out ongoing classes (no published session
+ * times, so not an event on a specific date); classItems feed the classes shelf.
+ */
+export function splitClasses(
+  visible: EventItem[],
+  kind: EventFilters["kind"],
+  today: string,
+): { dated: EventItem[]; calendarItems: EventItem[]; classItems: EventItem[] } {
+  const dated = visible.filter((i) => !isTripIdea(i));
+  const calendarItems = dated.filter((i) => !isOngoingClass(i.event));
+  const hasSession = (e: EventItem["event"]) =>
+    dayWindows(e as FfEvent).some((w) => w.kind === "session");
+  const hasDayFromToday = (e: EventItem["event"]) =>
+    dayWindows(e as FfEvent, { from: today }).some((w) => w.date >= today);
+  const classItems = dated.filter((i) =>
+    kind === "classes"
+      ? isSignUpActivity(i.event) && !hasSession(i.event) && hasDayFromToday(i.event)
+      : isOngoingClass(i.event) && hasDayFromToday(i.event),
+  );
+  return { dated, calendarItems, classItems };
+}
+
 function nextDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -290,14 +316,17 @@ function Overview() {
   const live = useMemo(() => items.filter((i) => !i.withdrawn), [items]);
   const visible = useMemo(() => live.filter((i) => matchesFilters(i, filters, ctx)), [live, filters, ctx]);
   const trips = useMemo(() => visible.filter(isTripIdea), [visible]);
-  const dated = useMemo(() => visible.filter((i) => !isTripIdea(i)), [visible]);
+  const { dated, calendarItems, classItems } = useMemo(
+    () => splitClasses(visible, filters.kind, today),
+    [visible, filters.kind, today],
+  );
   const dayOk = useMemo(
     () => (filters.when === "any" ? undefined : dayAllowed(filters.when, today)),
     [filters.when, today],
   );
   const { next14, later, dates } = useMemo(
-    () => groupForAgenda(dated, today, dayOk),
-    [dated, today, dayOk],
+    () => groupForAgenda(calendarItems, today, dayOk),
+    [calendarItems, today, dayOk],
   );
   const counts4 = useMemo(() => kindCounts(items, filters, ctx), [items, filters, ctx]);
   const topics = useMemo(() => topicOptions(items), [items]);
@@ -396,6 +425,8 @@ function Overview() {
   const tripChip = filters.kind === "day-trip" || filters.kind === "weekend";
   const clearFilters = () => setBrowse((b) => ({ ...b, filters: DEFAULT_FILTERS }));
   const hideGrid = tripChip && dated.length === 0;
+  const showAllClasses = () => setFilters({ kind: "classes" });
+  const fullShelf = filters.kind === "classes";
   const statusCounts = status?.counts;
   const columns = useMemo(() => agendaColumns(next14, 3), [next14]);
 
@@ -450,10 +481,11 @@ function Overview() {
         <div className="space-y-3">
           {tripChip && <TripIdeas trips={trips} chipOn tripsEnabled={tripsEnabled} />}
           {visible.length === 0 && <NoneMatch onClear={clearFilters} />}
+          {fullShelf && <EventsClassesShelf items={classItems} />}
           {!hideGrid && (
             <div className="space-y-3 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-3 lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
               <EventsMonth
-                items={dated}
+                items={calendarItems}
                 monthIso={month}
                 onMonthChange={changeMonth}
                 weekStartsMonday
@@ -471,7 +503,7 @@ function Overview() {
             </div>
           )}
         </div>
-      ) : next14.length === 0 && later.length === 0 && trips.length === 0 ? (
+      ) : next14.length === 0 && later.length === 0 && trips.length === 0 && classItems.length === 0 ? (
         <div className="space-y-3">
           {tripChip && <TripIdeas trips={trips} chipOn tripsEnabled={tripsEnabled} />}
           <NoneMatch onClear={clearFilters} />
@@ -479,6 +511,11 @@ function Overview() {
       ) : (
         <div className="space-y-4">
           <TripIdeas trips={trips} chipOn={tripChip} tripsEnabled={tripsEnabled} />
+          {fullShelf ? (
+            <EventsClassesShelf items={classItems} />
+          ) : (
+            <EventsClassesShelf items={classItems} limit={4} onShowAll={showAllClasses} />
+          )}
           <section aria-labelledby="events-next14" className="space-y-2">
             <h2
               id="events-next14"
