@@ -234,3 +234,46 @@ test("recheck never overwrites an existing address and pushes nothing", async ()
   assert.equal(pushes.length, 0);
   assert.equal(getEvent(db, "e9")!.location.address, "1 Main St");
 });
+
+const signUpEvent = (id: string, url?: string) =>
+  ev(id, 5, { cost: { ...SAMPLE_EVENT.cost, registrationRequired: true, registrationUrl: url } as FfEvent["cost"] });
+const signUpResult = (registrationUrl: string) =>
+  okData({ status: "scheduled", changes: [], cost: { registrationUrl }, confidence: 0.9 });
+
+test("recheck fills missing sign-up link without a Changed update, and pushes", async () => {
+  const db = openEventsDb(":memory:");
+  seed(db, signUpEvent("s1"), ["h1"]);
+  const runner = fakeRunner([signUpResult("https://example.org/register")]);
+  const { ff, pushes } = fakeFf();
+  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "s1" });
+  assert.match(runner.calls[0].prompt, /registrationUrl/);
+  assert.equal(stats.pushed, 1);
+  assert.equal(pushes.length, 1);
+  const saved = getEvent(db, "s1")!;
+  assert.equal(saved.cost.registrationUrl, "https://example.org/register");
+  assert.equal(saved.updates.length, 0);
+  assert.equal(saved.verification.lastChangedAt, undefined);
+});
+
+for (const [name, bad] of [["http", "http://example.org/register"], ["malformed", "not a url"]] as const) {
+  test(`recheck drops ${name} sign-up link`, async () => {
+    const db = openEventsDb(":memory:");
+    seed(db, signUpEvent("s2"), ["h1"]);
+    const { ff, pushes } = fakeFf();
+    const stats = await runDispatch({ db, runner: fakeRunner([signUpResult(bad)]), ff, now: NOW, runId: "s2" });
+    assert.equal(stats.failed, 0);
+    assert.equal(pushes.length, 0);
+    assert.equal(getEvent(db, "s2")!.cost.registrationUrl, undefined);
+  });
+}
+
+test("recheck keeps a stored sign-up link and does not ask for one", async () => {
+  const db = openEventsDb(":memory:");
+  seed(db, signUpEvent("s3", "https://example.org/old"), ["h1"]);
+  const runner = fakeRunner([signUpResult("https://example.org/new")]);
+  const { ff, pushes } = fakeFf();
+  await runDispatch({ db, runner, ff, now: NOW, runId: "s3" });
+  assert.doesNotMatch(runner.calls[0].prompt, /sign-up link is stored/);
+  assert.equal(pushes.length, 0);
+  assert.equal(getEvent(db, "s3")!.cost.registrationUrl, "https://example.org/old");
+});

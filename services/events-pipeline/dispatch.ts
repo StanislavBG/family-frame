@@ -18,6 +18,7 @@ import {
   upsertEvent,
   type EventsDb,
 } from "./db";
+import { needsSignUp } from "../../shared/events-activity";
 import type { FfClient } from "./ff-client";
 import type { HaikuRunner } from "./haiku";
 
@@ -80,6 +81,7 @@ const checkResultSchema = z.object({
       priceText: z.string().optional(),
       ticketRequired: z.boolean().optional(),
       registrationRequired: z.boolean().optional(),
+      registrationUrl: z.string().optional(),
     })
     .optional(),
   schedule: z
@@ -136,6 +138,7 @@ export const CHECK_JSON_SCHEMA = {
         priceText: str("Price as shown on the page"),
         ticketRequired: { type: "boolean" },
         registrationRequired: { type: "boolean" },
+        registrationUrl: str("https URL of the official sign-up or registration page; only when the event has none stored"),
       },
     },
     schedule: {
@@ -177,6 +180,7 @@ function missingLocationFields(event: FfEvent): string[] {
 function buildPrompt(event: FfEvent): string {
   const urls = event.sources.map((s) => `- ${s.url}`).join("\n");
   const missing = missingLocationFields(event);
+  const wantsSignUpUrl = needsSignUp(event) && !event.cost?.registrationUrl;
   return [
     "You verify that a published family event is still accurate. Re-read the source pages below with your web tools",
     "and report only real changes to its status, date or time, venue, price or availability.",
@@ -187,6 +191,12 @@ function buildPrompt(event: FfEvent): string {
       ? [
           `The stored event lacks these location details: ${missing.join(", ")}. If the official or venue page states them,`,
           "return them in location (only those fields, short factual text). Never guess, and do not return fields that are not missing.",
+        ]
+      : []),
+    ...(wantsSignUpUrl
+      ? [
+          "This event needs sign-up but no sign-up link is stored. If the official page links to the sign-up or registration page,",
+          "return its https URL in cost.registrationUrl. Never guess a URL.",
         ]
       : []),
     "",
@@ -240,6 +250,19 @@ function applyResult(event: FfEvent, result: CheckResult, now: Date): { updated:
       field: "location",
     } as (typeof newUpdates)[number]);
   }
+  const { registrationUrl: rawUrl, ...resultCost } = result.cost ?? {};
+  let signUpUrl: string | undefined;
+  if (accepted && !event.cost?.registrationUrl && typeof rawUrl === "string") {
+    try {
+      const u = new URL(rawUrl.trim());
+      if (u.protocol === "https:" && u.href.length <= 2000) {
+        signUpUrl = u.href;
+      }
+    } catch {
+      // malformed link: dropped
+    }
+  }
+  const filledSignUp = signUpUrl !== undefined;
   const changed = newUpdates.length > 0;
   const verification = {
     ...event.verification,
@@ -247,12 +270,15 @@ function applyResult(event: FfEvent, result: CheckResult, now: Date): { updated:
     checkCount: event.verification.checkCount + 1,
     ...(changed ? { lastChangedAt: nowIso, confidence: result.confidence } : {}),
   };
-  if (!changed) return { updated: ffEventSchema.parse({ ...event, verification }), changed: false };
+  if (!changed) {
+    const cost = filledSignUp ? { ...event.cost, registrationUrl: signUpUrl } : event.cost;
+    return { updated: ffEventSchema.parse({ ...event, cost, verification }), changed: filledSignUp };
+  }
   const updated = ffEventSchema.parse({
     ...event,
     status: result.status,
     location: { ...event.location, ...filled },
-    cost: { ...event.cost, ...result.cost },
+    cost: { ...event.cost, ...resultCost, ...(filledSignUp ? { registrationUrl: signUpUrl } : {}) },
     schedule: { ...event.schedule, ...result.schedule },
     updates: [...event.updates, ...newUpdates].slice(-EVENTS_LIMITS.maxUpdates),
     verification,
