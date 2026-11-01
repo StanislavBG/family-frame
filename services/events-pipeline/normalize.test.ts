@@ -182,3 +182,21 @@ test("mergeDuplicate keeps registrationUrl from either side", () => {
   assert.equal(mergeDuplicate(richPlain, withUrl).cost.registrationUrl, url);
   assert.equal(mergeDuplicate(withUrl, richPlain).cost.registrationUrl, url);
 });
+
+test("isClass puts the class tag first, even with 20 existing tags", () => {
+  const tags = Array.from({ length: 20 }, (_, i) => `tag${i}`);
+  const e = ok({ ...base, tags, isClass: true });
+  assert.equal(e.tags[0], "class");
+  assert.equal(e.tags.length, 20);
+  assert.equal(ok({ ...base, tags: ["a"] }).tags.includes("class"), false);
+  assert.equal(rawCandidateSchema.safeParse({ ...base, isClass: true }).success, true);
+});
+
+test("mergeDuplicate keeps the class tag from either side with a full tag list", () => {
+  const full = Array.from({ length: 20 }, (_, i) => `tag${i}`);
+  const a = ok({ ...base, tags: full });
+  const b = ok({ ...base, tags: ["x"], isClass: true });
+  assert.equal(mergeDuplicate(a, b).tags[0], "class");
+  assert.equal(mergeDuplicate(b, a).tags[0], "class");
+  assert.equal(mergeDuplicate(b, a).tags.length, 20);
+});

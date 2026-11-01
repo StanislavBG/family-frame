@@ -214,6 +214,8 @@ export function buildSearchPrompt(
     "- Include recurring family activities (library story times, farm days, museum free days, nature programs) as one candidate with `occurrences` listing the upcoming dates.",
     "- From the official or venue page, include the venue's full street address and postal code, and parking (cost, where, tips) and accessibility notes when stated; omit them if not found.",
     "- Put a sign-up or enrolment page (classes, courses, camps) in registrationUrl and a ticket-buying page in ticketUrl; never put one in the other field.",
+    "- Set isClass to true for anything you sign up to attend: classes, lessons, courses, workshops, camps, clinics and leagues. Leave it out for one-off events and places.",
+    "- For a class, course or league, start is the real first session or term start date from the official page, never the first day of the search range.",
     "- Do not repeat events already known.",
   );
   if (known.length > 0) {

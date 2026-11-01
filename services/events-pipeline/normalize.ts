@@ -9,6 +9,7 @@ import {
   type EventCategory,
   type FfEvent,
 } from "../../shared/events";
+import { CLASS_TAG } from "../../shared/events-activity";
 
 // Normalizer between untrusted web-search output and the repository. All
 // candidate text is data: it is validated, stripped and stored, never evaluated.
@@ -21,6 +22,14 @@ const httpsUrl = z
   .url()
   .max(2000)
   .refine((u) => u.startsWith("https://"), "Must be an https URL");
+
+const isClassTag = (t: string) => t.trim().toLowerCase() === CLASS_TAG;
+
+/** Order CLASS_TAG first (when wanted) so the tag limit cannot cut it. */
+function withClassTag(tags: string[], isClass: boolean): string[] {
+  const rest = tags.filter((t) => !isClassTag(t));
+  return (isClass ? [CLASS_TAG, ...rest] : rest).slice(0, EVENTS_LIMITS.maxTags);
+}
 
 export const rawCandidateSchema = z
   .object({
@@ -54,6 +63,7 @@ export const rawCandidateSchema = z
     ticketUrl: httpsUrl.optional(),
     registrationUrl: httpsUrl.optional(),
     registrationRequired: z.boolean().optional(),
+    isClass: z.boolean().optional(),
     ageMin: z.number().int().min(0).max(120).optional(),
     ageMax: z.number().int().min(0).max(120).optional(),
     ageBands: z.array(z.enum(AGE_BANDS)).max(8).optional(),
@@ -123,6 +133,7 @@ export const RAW_CANDIDATES_JSON_SCHEMA = {
           ticketUrl: urlProp,
           registrationUrl: urlProp,
           registrationRequired: bool,
+          isClass: { type: "boolean", description: "True when this is something you sign up to attend: a class, lesson, course, workshop, camp, clinic or league." },
           ageMin: { type: "integer", minimum: 0, maximum: 120 },
           ageMax: { type: "integer", minimum: 0, maximum: 120 },
           ageBands: { type: "array", maxItems: 8, items: { type: "string", enum: [...AGE_BANDS] } },
@@ -351,7 +362,7 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
       : "other";
 
   const currency = c.currency?.trim().toUpperCase();
-  const tags = Array.from(new Set((c.tags ?? []).map(cleanText).filter(Boolean))).slice(0, EVENTS_LIMITS.maxTags);
+  const tags = withClassTag(Array.from(new Set((c.tags ?? []).map(cleanText).filter(Boolean))), c.isClass === true);
   const organizerName = opt(c.organizerName);
   const recurrenceText = clipText(opt(c.recurrenceText), 200);
   const sourceUrls = Array.from(new Set(c.sourceUrls));
@@ -488,7 +499,10 @@ export function mergeDuplicate(existing: FfEvent, incoming: FfEvent): FfEvent {
     ...existing,
     description: incoming.description.length > existing.description.length ? incoming.description : existing.description,
     summary: incoming.description.length > existing.description.length ? incoming.summary : existing.summary,
-    tags: Array.from(new Set([...existing.tags, ...incoming.tags])).slice(0, EVENTS_LIMITS.maxTags),
+    tags: withClassTag(
+      Array.from(new Set([...existing.tags, ...incoming.tags])),
+      [...existing.tags, ...incoming.tags].some(isClassTag),
+    ),
     location,
     cost,
     organizer: existing.organizer ?? incoming.organizer,

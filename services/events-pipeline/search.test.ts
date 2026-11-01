@@ -214,3 +214,13 @@ test("output rules separate registrationUrl from ticketUrl", () => {
   const prompt = buildSearchPrompt(task, { ...area, radiusKm: 25 }, [], "Family");
   assert.match(prompt, /sign-up or enrolment page.*registrationUrl.*ticket-buying page in ticketUrl/);
 });
+
+test("prompt asks for isClass and the real first session date", () => {
+  const prompt = buildSearchPrompt(task, { ...area, radiusKm: 25 }, [], "");
+  assert.ok(prompt.includes("Set isClass to true"));
+  for (const w of ["classes", "lessons", "courses", "workshops", "camps", "clinics", "leagues"]) assert.ok(prompt.includes(w), w);
+  assert.ok(prompt.includes("never the first day of the search range"));
+  const props = (RAW_CANDIDATES_JSON_SCHEMA as any).properties.candidates.items.properties;
+  assert.equal(props.isClass.type, "boolean");
+  assert.ok(props.isClass.description.length > 0);
+});
