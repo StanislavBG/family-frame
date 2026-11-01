@@ -436,6 +436,21 @@ test("respond honours Shared visibility, people, and addToCalendar defaults", as
   await rejects(svc.respond("u1", "n", "missing", { response: "going" }), 404);
 });
 
+test("respond saves people to the plan, empty clears, omitted keeps", async () => {
+  const { svc, events } = await setup();
+  let item = await svc.respond("u1", "n", EID, { response: "interested", people: ["p1", "p2"] });
+  assert.equal(events.length, 0);
+  assert.deepEqual(item.plan?.people, ["p1", "p2"]);
+  item = await svc.respond("u1", "n", EID, { response: "maybe" });
+  assert.deepEqual(item.plan?.people, ["p1", "p2"]);
+  item = await svc.respond("u1", "n", EID, { response: "going", addToCalendar: true });
+  assert.deepEqual(events[0].people, ["p1", "p2"]);
+  assert.deepEqual(item.plan?.people, ["p1", "p2"]);
+  item = await svc.respond("u1", "n", EID, { response: "going", people: [] });
+  assert.deepEqual(events[0].people, []);
+  assert.ok(!item.plan?.people?.length);
+});
+
 test("responding again updates the linked entry instead of creating a second one", async () => {
   const { svc, events, calls } = await setup();
   await svc.respond("u1", "n", EID, { response: "going" });

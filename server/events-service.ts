@@ -586,6 +586,10 @@ export function createEventsService(deps: EventsDeps) {
         if (window.kind === "session" && window.occurrenceStart) plan.occurrenceStart = window.occurrenceStart;
         planChanged = true;
       }
+      if (people !== undefined) {
+        plan.people = people;
+        planChanged = true;
+      }
 
       const resolvedPeople = people ?? raw.plan?.people;
       // Long windows get a default 2-3h block (from the household's preferences) instead of the whole span.
