@@ -294,3 +294,34 @@ describe("Events page day route", () => {
     expect(render(two, { items: [item] })).toContain(`href="/day/${soon}"`);
   });
 });
+
+describe("Events page counts and height", () => {
+  const mkItem = (id: string, schedule: Record<string, unknown>) =>
+    ({
+      eventId: id,
+      withdrawn: false,
+      response: "none",
+      rec: {},
+      event: {
+        ...SAMPLE_EVENT,
+        title: id,
+        tags: [],
+        schedule: { timezone: "UTC", allDay: true, occurrences: [], ...schedule },
+      },
+    }) as never;
+
+  it("leaves a past class out of the shown count", () => {
+    const future = mkItem("f1", { start: "2099-01-05", end: "2099-12-31" });
+    const past = mkItem("p1", { start: "2020-01-05", end: "2020-01-06" });
+    stored.value = { ...DEFAULT_BROWSE, view: "agenda", filters: { ...DEFAULT_FILTERS, cost: "free" } };
+    const html = render(two, { items: [future, past] });
+    expect(html).toMatch(/\d of 1 shown/);
+    expect(html).not.toMatch(/of 2 shown/);
+  });
+
+  it("gives the overview min-h-full", () => {
+    const html = render(two);
+    const m = html.match(/class="([^"]*)"\s+data-testid="events-overview"/);
+    expect(m?.[1].split(" ")).toContain("min-h-full");
+  });
+});

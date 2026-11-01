@@ -188,7 +188,7 @@ export function matchesFilters(item: EventItem, filters: EventFilters, ctx: Filt
   return matchesGroups(item, filters, ctx, false);
 }
 
-function isUpcoming(item: EventItem, today: string): boolean {
+export function isUpcoming(item: EventItem, today: string): boolean {
   if (isTripIdea(item)) return true;
   return dayWindows(item.event, { from: today, maxDays: 120 }).length > 0;
 }
