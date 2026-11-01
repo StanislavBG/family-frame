@@ -69,9 +69,16 @@ describe("EventsDayPanel classes", () => {
 
   it("adds the class count to the count line and keeps other open rows", () => {
     const html = render([cls(), item("o1", { schedule: openSchedule })]);
-    expect(html).toContain("2 events · 1 class");
+    expect(html).toContain("1 event · 1 class");
     expect(html).toContain("Hours not listed");
     expect(html).toContain("Suggested visit");
     expect(render([item("o1", { schedule: openSchedule })])).toContain("1 event<");
+  });
+
+  it("counts a day with only classes as 0 events and keeps the empty message off", () => {
+    const html = render([cls(), item("c2", { schedule: openSchedule, title: "Pottery class" })]);
+    expect(html).toContain("0 events · 2 classes");
+    expect(html).not.toContain("Nothing planned for this day.");
+    expect(render([])).toContain("Nothing planned for this day.");
   });
 });

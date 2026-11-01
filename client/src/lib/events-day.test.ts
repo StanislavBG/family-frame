@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_EVENT } from "@shared/events";
 import type { EventItem } from "./events";
-import { dayStrip, dayViewSections, parseDayParam } from "./events-day";
+import { dayCounts, dayStrip, dayViewSections, formatDayCount, parseDayParam } from "./events-day";
 
 type Sched = typeof SAMPLE_EVENT.schedule;
 const make = (id: string, title: string, over: Partial<Sched>, tags: string[] = []): EventItem =>
@@ -76,5 +76,29 @@ describe("parseDayParam", () => {
     expect(parseDayParam("2026-2-3")).toBeNull();
     expect(parseDayParam("nope")).toBeNull();
     expect(parseDayParam(undefined)).toBeNull();
+  });
+});
+
+describe("dayCounts and formatDayCount", () => {
+  const ongoing = (id: string) =>
+    make(id, `${id} class`, { start: "2026-10-01T00:00:00Z", end: "2026-12-01T00:00:00Z", allDay: true });
+
+  it("keeps ongoing classes out of events and matches the strip", () => {
+    const items = [at("a", "09:00"), at("b", "13:00"), ongoing("c1"), ongoing("c2")];
+    expect(dayCounts(items, "2026-10-24")).toEqual({ events: 2, classes: 2 });
+    for (const d of dayStrip(items, "2026-10-24", "2026-10-24")) {
+      expect(d.count).toBe(dayCounts(items, d.iso).events);
+    }
+  });
+
+  it("counts a day with only classes", () => {
+    expect(dayCounts([ongoing("c1"), ongoing("c2"), ongoing("c3")], "2026-10-24")).toEqual({ events: 0, classes: 3 });
+  });
+
+  it("formats counts", () => {
+    expect(formatDayCount({ events: 18, classes: 8 })).toBe("18 events · 8 classes");
+    expect(formatDayCount({ events: 1, classes: 0 })).toBe("1 event");
+    expect(formatDayCount({ events: 1, classes: 1 })).toBe("1 event · 1 class");
+    expect(formatDayCount({ events: 0, classes: 3 })).toBe("0 events · 3 classes");
   });
 });

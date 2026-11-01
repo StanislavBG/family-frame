@@ -78,4 +78,15 @@ describe("EventsDayView", () => {
     expect(html).toContain("Nothing planned for this day.");
     expect(html).not.toContain("events-day-card-s1");
   });
+
+  it("counts events and classes apart, matching the strip", () => {
+    const open = { timezone: "UTC", start: "2026-10-24", allDay: true, occurrences: [] } as FfEvent["schedule"];
+    const klass = (id: string) => item(id, { title: `Swim class ${id}`, schedule: open });
+    const html = render([item("s1"), klass("c1"), klass("c2")], "2026-10-24", "2026-10-24");
+    expect(html).toMatch(/events-day-view-count[^>]*>1 event · 2 classes</);
+    expect(html).not.toContain("Nothing planned for this day.");
+    const only = render([klass("c1")], "2026-10-24", "2026-10-24");
+    expect(only).toMatch(/events-day-view-count[^>]*>0 events · 1 class</);
+    expect(only).not.toContain("Nothing planned for this day.");
+  });
 });

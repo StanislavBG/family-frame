@@ -53,6 +53,31 @@ export function dayViewSections(items: EventItem[], dateIso: string): DaySection
   }));
 }
 
+export interface DayCounts {
+  events: number;
+  classes: number;
+}
+
+/** Events (sessions and non-class open entries) and ongoing classes for a day, counted apart. */
+export function dayCounts(items: EventItem[], dateIso: string): DayCounts {
+  const { sessions, open } = eventDayEntries(items, dateIso);
+  const events = new Set<string>();
+  const classes = new Set<string>();
+  for (const { item } of sessions) events.add(item.eventId);
+  for (const { item } of open) {
+    if (isOngoingClass(item.event)) classes.add(item.eventId);
+    else events.add(item.eventId);
+  }
+  return { events: events.size, classes: classes.size };
+}
+
+/** "18 events · 8 classes", "1 event", "0 events · 3 classes". */
+export function formatDayCount({ events, classes }: DayCounts): string {
+  const e = `${events} ${events === 1 ? "event" : "events"}`;
+  if (classes === 0) return e;
+  return `${e} · ${classes} ${classes === 1 ? "class" : "classes"}`;
+}
+
 /** Seven days to jump across: from today while selected is within it, else from selected. */
 export function dayStrip(items: EventItem[], selectedIso: string, todayIso: string): DayStripDay[] {
   const inWindow = selectedIso >= todayIso && selectedIso <= addDaysIso(todayIso, STRIP_DAYS - 1);
@@ -60,12 +85,8 @@ export function dayStrip(items: EventItem[], selectedIso: string, todayIso: stri
   const days: DayStripDay[] = [];
   for (let i = 0; i < STRIP_DAYS; i++) {
     const iso = addDaysIso(start, i);
-    const { sessions, open } = eventDayEntries(items, iso);
-    const ids = new Set<string>();
-    for (const { item } of sessions) ids.add(item.eventId);
-    for (const { item } of open) if (!isOngoingClass(item.event)) ids.add(item.eventId);
     const weekday = weekdayOfIso(iso);
-    days.push({ iso, count: ids.size, isToday: iso === todayIso, isWeekend: weekday === 0 || weekday === 6 });
+    days.push({ iso, count: dayCounts(items, iso).events, isToday: iso === todayIso, isWeekend: weekday === 0 || weekday === 6 });
   }
   return days;
 }

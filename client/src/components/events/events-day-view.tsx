@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { LINE, MUTED, SERIF, SURFACE, ToneChip } from "@/components/person/satchel";
 import { EventsDayCard } from "@/components/events/events-day-card";
-import { dayStrip, dayViewSections } from "@/lib/events-day";
+import { dayCounts, dayStrip, dayViewSections, formatDayCount } from "@/lib/events-day";
 import { tripBadge, type EventItem } from "@/lib/events";
 import { addDaysIso, weekdayOfIso } from "@/lib/person-day";
 import { cn } from "@/lib/utils";
@@ -59,7 +59,7 @@ export function EventsDayView({ items, trips, dateIso, todayIso, isDayShown, onD
   const shown = !isDayShown || isDayShown(dateIso);
   const sections = useMemo(() => (shown ? dayViewSections(items, dateIso) : []), [items, dateIso, shown]);
   const strip = useMemo(() => dayStrip(items, dateIso, todayIso), [items, dateIso, todayIso]);
-  const total = sections.reduce((n, s) => n + s.entries.length, 0);
+  const counts = useMemo(() => (shown ? dayCounts(items, dateIso) : { events: 0, classes: 0 }), [items, dateIso, shown]);
   const weekday = weekdayOfIso(dateIso);
   const showTrips = shown && (weekday === 0 || weekday === 6) && trips.length > 0;
 
@@ -83,7 +83,7 @@ export function EventsDayView({ items, trips, dateIso, todayIso, isDayShown, onD
             {headingFor(dateIso)}
           </h2>
           <p className={cn("text-sm", MUTED)} data-testid="events-day-view-count">
-            {total} {total === 1 ? "event" : "events"}
+            {formatDayCount(counts)}
           </p>
           {dateIso !== todayIso && (
             <button
@@ -131,7 +131,7 @@ export function EventsDayView({ items, trips, dateIso, todayIso, isDayShown, onD
         })}
       </nav>
 
-      {total === 0 && (
+      {counts.events === 0 && counts.classes === 0 && (
         <p className={cn("text-base", MUTED)} data-testid="events-day-view-empty">
           Nothing planned for this day.
         </p>

@@ -14,6 +14,7 @@ import {
   type EventItem,
 } from "@/lib/events";
 import { hasMapLocation, mapUrl } from "@/lib/event-detail";
+import { dayCounts, formatDayCount } from "@/lib/events-day";
 import { addDaysIso } from "@/lib/person-day";
 import { cn } from "@/lib/utils";
 
@@ -126,8 +127,7 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
     : DEFAULT_VISIT_PREFS;
   const classes = open.filter((e) => isOngoingClass(e.item.event));
   const openOthers = open.filter((e) => !isOngoingClass(e.item.event));
-  const total = sessions.length + open.length;
-  const classCount = classes.length;
+  const counts = useMemo(() => dayCounts(items, dateIso), [items, dateIso]);
 
   return (
     <section
@@ -155,8 +155,7 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
             {headingFor(dateIso)}
           </h2>
           <p className={cn("text-sm", MUTED)} data-testid="events-day-count">
-            {total} {total === 1 ? "event" : "events"}
-            {classCount > 0 && ` · ${classCount} ${classCount === 1 ? "class" : "classes"}`}
+            {formatDayCount(counts)}
           </p>
           <span className="inline-flex items-center gap-1 text-sm font-semibold underline underline-offset-2 text-[#3d6a8f] dark:text-[#8fb4d4]">
             <Expand className="h-4 w-4" aria-hidden="true" />
@@ -178,7 +177,7 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
         className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
         data-testid="events-day-list"
       >
-      {total === 0 && (
+      {counts.events === 0 && counts.classes === 0 && (
         <p className={cn("text-base", MUTED)} data-testid="events-day-empty">
           Nothing planned for this day.
         </p>
