@@ -58,7 +58,7 @@ An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapp
 
 ## Cost caps
 
-`--max-sessions` (default 45) caps the Haiku sessions in one run, shared across discover and refresh when running `all` (`watch` defaults to 20). Every session is pinned to the Haiku model with read-only tools. Rate-limit or budget errors stop the run early.
+`--max-sessions` (default 45) caps the Haiku sessions per phase: when running `all`, discover, refresh and trips each get their own budget of that size (`watch` defaults to 20). Every session is pinned to the Haiku model with read-only tools. Rate-limit or budget errors stop the run early.
 
 ## Revoking consent
 
