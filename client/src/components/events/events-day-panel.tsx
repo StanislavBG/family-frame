@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
-import { Check, ChevronLeft, ChevronRight, MapPin, Star } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Expand, MapPin, Star } from "lucide-react";
 import { DEFAULT_VISIT_PREFS, suggestVisit, type VisitPrefs } from "@shared/events-visit";
 import { LINE, MUTED, SERIF, SURFACE, ToneChip } from "@/components/person/satchel";
 import {
@@ -125,14 +125,23 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
-        <div className="min-w-0 text-center">
+        <Link
+          href={`/day/${dateIso}`}
+          className="min-h-11 min-w-0 text-center"
+          aria-label={`Open full day for ${headingFor(dateIso)}`}
+          data-testid="events-day-open"
+        >
           <h2 className={cn(SERIF, "text-xl font-bold text-[#1a1612] dark:text-foreground")} data-testid="events-day-title">
             {headingFor(dateIso)}
           </h2>
           <p className={cn("text-sm", MUTED)} data-testid="events-day-count">
             {total} {total === 1 ? "event" : "events"}
           </p>
-        </div>
+          <span className="inline-flex items-center gap-1 text-sm font-semibold underline underline-offset-2 text-[#3d6a8f] dark:text-[#8fb4d4]">
+            <Expand className="h-4 w-4" aria-hidden="true" />
+            Open full day
+          </span>
+        </Link>
         <button
           type="button"
           className={cn(NAV, SURFACE, LINE)}
