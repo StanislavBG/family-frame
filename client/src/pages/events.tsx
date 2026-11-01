@@ -34,6 +34,7 @@ import {
   statusBadge,
   tripBadge,
   useEventItems,
+  useEventPreferences,
   useEventsStatus,
   type EventItem,
 } from "@/lib/events";
@@ -169,6 +170,55 @@ function TripCard({ item }: { item: EventItem }) {
   );
 }
 
+function TripIdeas({ trips, chipOn, tripsEnabled }: { trips: EventItem[]; chipOn: boolean; tripsEnabled: boolean }) {
+  if (trips.length === 0) {
+    if (!chipOn) return null;
+    return (
+      <p className={cn("text-base", MUTED)} data-testid="events-trips-none">
+        {tripsEnabled ? (
+          "No trip ideas yet. We research a new one each morning."
+        ) : (
+          <>
+            Trip ideas are off.{" "}
+            <Link href="~/settings?section=apps&app=events" className="underline" data-testid="events-trips-settings">
+              Turn them on in Events settings
+            </Link>
+            .
+          </>
+        )}
+      </p>
+    );
+  }
+  return (
+    <section aria-labelledby="events-trips" className="space-y-2" data-testid="events-trips">
+      <h2 id="events-trips" className={cn(SERIF, "text-2xl font-bold", SATCHEL_TONES.leaf.fg)}>
+        Trip ideas
+      </h2>
+      <div className="grid gap-2 lg:grid-cols-3 xl:grid-cols-4">
+        {trips.map((item) => (
+          <TripCard key={item.eventId} item={item} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function NoneMatch({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="space-y-2" data-testid="events-none-match">
+      <p className={cn("text-lg", MUTED)}>No events match these filters.</p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="min-h-11 rounded-full border px-4 text-base font-semibold"
+        data-testid="events-none-match-clear"
+      >
+        Clear filters
+      </button>
+    </div>
+  );
+}
+
 function nextDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -195,6 +245,8 @@ function Overview() {
   const panelRef = useRef<HTMLDivElement>(null);
   const { data: items = [], isLoading } = useEventItems({ includeHidden: true });
   const { data: status } = useEventsStatus();
+  const { data: prefs } = useEventPreferences();
+  const tripsEnabled = prefs?.tripsEnabled !== false;
   const { data: allPeople = [] } = useQuery<Person[]>({ queryKey: queryKeys.people() });
 
   const setView = (v: EventsBrowse["view"]) => setBrowse((b) => ({ ...b, view: v }));
@@ -341,6 +393,9 @@ function Overview() {
     }
   };
 
+  const tripChip = filters.kind === "day-trip" || filters.kind === "weekend";
+  const clearFilters = () => setBrowse((b) => ({ ...b, filters: DEFAULT_FILTERS }));
+  const hideGrid = tripChip && dated.length === 0;
   const statusCounts = status?.counts;
   const columns = useMemo(() => agendaColumns(next14, 3), [next14]);
 
@@ -382,7 +437,7 @@ function Overview() {
         shown={visible.length}
         total={live.length}
         activeCount={activeFilterCount(filters)}
-        onClear={() => setBrowse((b) => ({ ...b, filters: DEFAULT_FILTERS }))}
+        onClear={clearFilters}
       />
 
       {isLoading ? (
@@ -392,45 +447,38 @@ function Overview() {
           ))}
         </div>
       ) : view === "month" ? (
-        <div className="space-y-3 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-3 lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
-          <EventsMonth
-            items={dated}
-            monthIso={month}
-            onMonthChange={changeMonth}
-            weekStartsMonday
-            selectedDate={selectedDate}
-            onSelectDate={selectDate}
-            isDayShown={dayOk}
-          />
-          {/* 5rem = App.tsx h-14 header (3.5rem) + 0.75rem top offset + 0.75rem bottom gap */}
-          <div
-            ref={panelRef}
-            className="lg:sticky lg:top-3 lg:flex lg:max-h-[calc(100dvh-5rem)] lg:flex-col"
-          >
-            <EventsDayPanel items={dayOk && !dayOk(selectedDate) ? [] : dated} dateIso={selectedDate} onDateChange={selectDate} />
-          </div>
+        <div className="space-y-3">
+          {tripChip && <TripIdeas trips={trips} chipOn tripsEnabled={tripsEnabled} />}
+          {visible.length === 0 && <NoneMatch onClear={clearFilters} />}
+          {!hideGrid && (
+            <div className="space-y-3 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-3 lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
+              <EventsMonth
+                items={dated}
+                monthIso={month}
+                onMonthChange={changeMonth}
+                weekStartsMonday
+                selectedDate={selectedDate}
+                onSelectDate={selectDate}
+                isDayShown={dayOk}
+              />
+              {/* 5rem = App.tsx h-14 header (3.5rem) + 0.75rem top offset + 0.75rem bottom gap */}
+              <div
+                ref={panelRef}
+                className="lg:sticky lg:top-3 lg:flex lg:max-h-[calc(100dvh-5rem)] lg:flex-col"
+              >
+                <EventsDayPanel items={dayOk && !dayOk(selectedDate) ? [] : dated} dateIso={selectedDate} onDateChange={selectDate} />
+              </div>
+            </div>
+          )}
         </div>
       ) : next14.length === 0 && later.length === 0 && trips.length === 0 ? (
-        <p className={cn("text-lg", MUTED)} data-testid="events-none-match">
-          No events match these filters.
-        </p>
+        <div className="space-y-3">
+          {tripChip && <TripIdeas trips={trips} chipOn tripsEnabled={tripsEnabled} />}
+          <NoneMatch onClear={clearFilters} />
+        </div>
       ) : (
         <div className="space-y-4">
-          {trips.length > 0 && (
-            <section aria-labelledby="events-trips" className="space-y-2" data-testid="events-trips">
-              <h2
-                id="events-trips"
-                className={cn(SERIF, "text-2xl font-bold", SATCHEL_TONES.leaf.fg)}
-              >
-                Trip ideas
-              </h2>
-              <div className="grid gap-2 lg:grid-cols-3 xl:grid-cols-4">
-                {trips.map((item) => (
-                  <TripCard key={item.eventId} item={item} />
-                ))}
-              </div>
-            </section>
-          )}
+          <TripIdeas trips={trips} chipOn={tripChip} tripsEnabled={tripsEnabled} />
           <section aria-labelledby="events-next14" className="space-y-2">
             <h2
               id="events-next14"

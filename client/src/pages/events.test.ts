@@ -21,11 +21,16 @@ const { default: EventsPage, AgendaCard } = await import("./events");
 // A withdrawn item keeps the page on the Overview without needing a full event fixture.
 const withdrawn = { eventId: "e1", withdrawn: true, response: "going", rec: {}, event: { category: "parks-outdoors" } };
 
-function render(people: { id: string; name: string; birthday?: string }[]): string {
+function render(
+  people: { id: string; name: string; birthday?: string }[],
+  opts: { items?: unknown[]; prefs?: unknown } = {},
+): string {
   const client = new QueryClient();
   client.setQueryData(queryKeys.events.status(), { sharingEnabled: true, counts: { new: 0, going: 0, changed: 0 } });
-  client.setQueryData(queryKeys.events.items({}), [withdrawn]);
-  client.setQueryData(queryKeys.events.items({ includeHidden: true }), [withdrawn]);
+  const list = opts.items ?? [withdrawn];
+  client.setQueryData(queryKeys.events.items({}), list);
+  client.setQueryData(queryKeys.events.items({ includeHidden: true }), list);
+  if (opts.prefs) client.setQueryData(queryKeys.events.preferences(), opts.prefs);
   client.setQueryData(queryKeys.people(), people);
   return renderToStaticMarkup(
     React.createElement(
@@ -106,5 +111,44 @@ describe("Events page days", () => {
     const html = render(two);
     expect(has(html, "events-month")).toBe(true);
     expect(has(html, "events-month-cell-2026-10-12")).toBe(true);
+  });
+});
+
+describe("Events page trip ideas and empty states", () => {
+  const tripBrowse = (view: "month" | "agenda", kind: "day-trip" | "weekend" | "all") =>
+    ({ ...DEFAULT_BROWSE, view, filters: { ...DEFAULT_FILTERS, kind } }) satisfies EventsBrowse;
+
+  beforeEach(() => {
+    stored.value = null;
+  });
+
+  it("Month with a trip chip and no ideas explains and hides the grid", () => {
+    stored.value = tripBrowse("month", "day-trip");
+    const html = render(two, { prefs: { tripsEnabled: true } });
+    expect(has(html, "events-trips-none")).toBe(true);
+    expect(html).toContain("No trip ideas yet. We research a new one each morning.");
+    expect(has(html, "events-month")).toBe(false);
+  });
+
+  it("says trips are off, with a settings link, when tripsEnabled is false", () => {
+    stored.value = tripBrowse("weekend", "weekend");
+    const html = render(two, { prefs: { tripsEnabled: false } });
+    expect(has(html, "events-trips-none")).toBe(true);
+    expect(html).toContain("Trip ideas are off");
+    expect(html).toContain("settings?section=apps&amp;app=events");
+  });
+
+  it("shows no trip message without a trip chip", () => {
+    stored.value = { ...DEFAULT_BROWSE, view: "month" } satisfies EventsBrowse;
+    expect(has(render(two), "events-trips-none")).toBe(false);
+  });
+
+  it("shows Clear filters when nothing matches, in both views", () => {
+    for (const view of ["agenda", "month"] as const) {
+      stored.value = { ...DEFAULT_BROWSE, view, filters: { ...DEFAULT_FILTERS, cost: "free" } };
+      const html = render(two);
+      expect(html).toContain("No events match these filters.");
+      expect(has(html, "events-none-match-clear")).toBe(true);
+    }
   });
 });
