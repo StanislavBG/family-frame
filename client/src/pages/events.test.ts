@@ -23,7 +23,7 @@ const withdrawn = { eventId: "e1", withdrawn: true, response: "going", rec: {}, 
 
 function render(
   people: { id: string; name: string; birthday?: string }[],
-  opts: { items?: unknown[]; prefs?: unknown } = {},
+  opts: { items?: unknown[]; prefs?: unknown; path?: string } = {},
 ): string {
   const client = new QueryClient();
   client.setQueryData(queryKeys.events.status(), { sharingEnabled: true, counts: { new: 0, going: 0, changed: 0 } });
@@ -36,7 +36,7 @@ function render(
     React.createElement(
       QueryClientProvider,
       { client },
-      React.createElement(Router, { ssrPath: "/" }, React.createElement(EventsPage)),
+      React.createElement(Router, { ssrPath: opts.path ?? "/" }, React.createElement(EventsPage)),
     ),
   );
 }
@@ -246,5 +246,51 @@ describe("Events page ongoing classes", () => {
     stored.value = { ...DEFAULT_BROWSE, view: "month", filters: { ...DEFAULT_FILTERS, kind: "classes" } } satisfies EventsBrowse;
     const html = render(two, { items: many });
     expect(html.indexOf('data-testid="events-classes"')).toBeLessThan(html.indexOf('data-testid="events-month"'));
+  });
+});
+
+describe("Events page day route", () => {
+  beforeEach(() => {
+    stored.value = null;
+  });
+
+  it("renders the day view inside the overview with title row and filters", () => {
+    const html = render(two, { path: "/day/2026-11-05" });
+    expect(has(html, "events-day-view")).toBe(true);
+    expect(has(html, "events-view-day")).toBe(true);
+    expect(has(html, "events-view-agenda")).toBe(true);
+    expect(has(html, "events-filter-when")).toBe(true);
+    expect(html).toContain("Thursday, November 5");
+  });
+
+  it("redirects a bad date and a bare /day to the overview", () => {
+    for (const path of ["/day/2026-02-31", "/day/nope", "/day"]) {
+      const html = render(two, { path });
+      expect(has(html, "events-day-view")).toBe(false);
+      expect(has(html, "events-overview")).toBe(false);
+    }
+  });
+
+  it("links the side panel title and agenda headings to the day", () => {
+    stored.value = { ...DEFAULT_BROWSE, view: "month", selectedDate: "2026-11-05", month: "2026-11-01" } satisfies EventsBrowse;
+    const month = render(two);
+    expect(month).toContain('href="/day/2026-11-05"');
+    expect(month).toContain("Open full day");
+    expect(month).toContain('aria-label="Open full day for Thursday, November 5"');
+
+    const soon = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+    const item = {
+      eventId: "g1",
+      withdrawn: false,
+      response: "none",
+      rec: {},
+      event: {
+        ...SAMPLE_EVENT,
+        tags: [],
+        schedule: { timezone: "UTC", allDay: false, occurrences: [], start: `${soon}T12:00:00Z`, end: `${soon}T13:00:00Z` },
+      },
+    } as never;
+    stored.value = { ...DEFAULT_BROWSE, view: "agenda" } satisfies EventsBrowse;
+    expect(render(two, { items: [item] })).toContain(`href="/day/${soon}"`);
   });
 });

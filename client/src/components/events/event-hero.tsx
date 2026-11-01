@@ -5,6 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { EventActions } from "@/components/events/event-actions";
 import { LINE, MUTED, SATCHEL_TONES, SectionLabel, SERIF, SURFACE, ToneChip, type SatchelTone } from "@/components/person/satchel";
+import { useSessionState } from "@/hooks/use-session-state";
+import { DEFAULT_BROWSE, parseBrowse, type EventsBrowse } from "@/lib/events-filters";
 import { useFitScale } from "@/hooks/use-fit-scale";
 import { buildEventFacts, distanceText, hasMapLocation, mapUrl, whereSummary } from "@/lib/event-detail";
 import { cn } from "@/lib/utils";
@@ -151,8 +153,9 @@ function HeroSkeleton() {
 }
 
 function BackLink() {
+  const [browse] = useSessionState<EventsBrowse>("ff.events.browse.v1", DEFAULT_BROWSE, parseBrowse);
   return (
-    <Link href="/" className={cn("inline-flex min-h-11 items-center gap-1 text-base font-semibold", SATCHEL_TONES.sky.fg)} data-testid="link-event-back">
+    <Link href={browse.lastDay ? `/day/${browse.lastDay}` : "/"} className={cn("inline-flex min-h-11 items-center gap-1 text-base font-semibold", SATCHEL_TONES.sky.fg)} data-testid="link-event-back">
       <ArrowLeft className="h-4 w-4" aria-hidden />
       Back to events
     </Link>

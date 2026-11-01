@@ -1,6 +1,6 @@
-import { useMemo, useRef } from "react";
-import { Link, useLocation, useRoute } from "wouter";
-import { CalendarDays, CalendarHeart, Hourglass, List, MapPin } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
+import { Link, Redirect, useLocation, useRoute } from "wouter";
+import { CalendarDays, CalendarRange, CalendarHeart, Hourglass, List, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { Person } from "@shared/schema";
 import { ageOn, isOngoingClass, isSignUpActivity } from "@shared/events-activity";
@@ -11,6 +11,8 @@ import { EmptyState } from "@/components/empty-state";
 import { EventHero } from "@/components/events/event-hero";
 import { EventsDayPanel } from "@/components/events/events-day-panel";
 import { EventsClassesShelf } from "@/components/events/events-classes-shelf";
+import { EventsDayView } from "@/components/events/events-day-view";
+import { parseDayParam } from "@/lib/events-day";
 import { EventsMonth } from "@/components/events/events-month";
 import { EventsFilterBar, FilterChip, type FilterGroup } from "@/components/events/events-filter-bar";
 import {
@@ -262,12 +264,13 @@ function dayHeading(date: string, today: string): string {
   return date === today ? `Today · ${label}` : label;
 }
 
-function Overview() {
+function Overview({ day }: { day?: string }) {
   const today = useToday();
+  const [, setLocation] = useLocation();
   const [browse, setBrowse] = useSessionState<EventsBrowse>("ff.events.browse.v1", DEFAULT_BROWSE, parseBrowse);
   const { view, month: storedMonth, selectedDate: storedDate } = browse;
   const month = storedMonth ?? `${today.slice(0, 7)}-01`;
-  const selectedDate = storedDate ?? today;
+  const selectedDate = day ?? storedDate ?? today;
   const panelRef = useRef<HTMLDivElement>(null);
   const { data: items = [], isLoading } = useEventItems({ includeHidden: true });
   const { data: status } = useEventsStatus();
@@ -275,7 +278,29 @@ function Overview() {
   const tripsEnabled = prefs?.tripsEnabled !== false;
   const { data: allPeople = [] } = useQuery<Person[]>({ queryKey: queryKeys.people() });
 
-  const setView = (v: EventsBrowse["view"]) => setBrowse((b) => ({ ...b, view: v }));
+  // Remember the open day for the event page's back link; the overview clears it.
+  useEffect(() => {
+    setBrowse((b) => {
+      if (day) {
+        const month = `${day.slice(0, 7)}-01`;
+        return b.lastDay === day && b.selectedDate === day && b.month === month
+          ? b
+          : { ...b, lastDay: day, selectedDate: day, month };
+      }
+      return b.lastDay === null ? b : { ...b, lastDay: null };
+    });
+    // setBrowse is stable per key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day]);
+
+  const setView = (v: EventsBrowse["view"]) => {
+    setBrowse((b) => ({ ...b, view: v }));
+    if (day) setLocation("/");
+  };
+  const openDay = (iso: string) => {
+    setBrowse((b) => ({ ...b, selectedDate: iso, month: `${iso.slice(0, 7)}-01`, lastDay: iso }));
+    setLocation(`/day/${iso}`, { replace: true });
+  };
   const setFilters = (patch: Partial<EventFilters>) =>
     setBrowse((b) => {
       const next = { ...b, filters: { ...b.filters, ...patch } };
@@ -454,11 +479,14 @@ function Overview() {
           role="group"
           aria-label="View"
         >
-          <FilterChip selected={view === "agenda"} onClick={() => setView("agenda")} testId="events-view-agenda">
+          <FilterChip selected={!day && view === "agenda"} onClick={() => setView("agenda")} testId="events-view-agenda">
             <List className="h-5 w-5" aria-hidden /> Agenda
           </FilterChip>
-          <FilterChip selected={view === "month"} onClick={() => setView("month")} testId="events-view-month">
+          <FilterChip selected={!day && view === "month"} onClick={() => setView("month")} testId="events-view-month">
             <CalendarDays className="h-5 w-5" aria-hidden /> Month
+          </FilterChip>
+          <FilterChip selected={day !== undefined} onClick={() => openDay(selectedDate)} testId="events-view-day">
+            <CalendarRange className="h-5 w-5" aria-hidden /> Day
           </FilterChip>
         </div>
       </div>
@@ -477,6 +505,15 @@ function Overview() {
             <Skeleton key={i} className="h-24 rounded-2xl" />
           ))}
         </div>
+      ) : day ? (
+        <EventsDayView
+          items={dayOk && !dayOk(day) ? [] : dated}
+          trips={trips}
+          dateIso={day}
+          todayIso={today}
+          isDayShown={dayOk}
+          onDateChange={openDay}
+        />
       ) : view === "month" ? (
         <div className="space-y-3">
           {tripChip && <TripIdeas trips={trips} chipOn tripsEnabled={tripsEnabled} />}
@@ -538,7 +575,13 @@ function Overview() {
                       data-testid={`events-day-${group.date}`}
                     >
                       <h3 className="text-base font-bold text-[#1a1612] dark:text-foreground">
-                        {dayHeading(group.date, today)}
+                        <Link
+                          href={`/day/${group.date}`}
+                          className="underline-offset-2 hover:underline"
+                          data-testid={`events-day-link-${group.date}`}
+                        >
+                          {dayHeading(group.date, today)}
+                        </Link>
                       </h3>
                       {group.items.map((item) => (
                         <AgendaCard key={item.eventId} item={item} date={group.date} />
@@ -582,9 +625,13 @@ function formatPublished(iso: string): string {
 
 function EventsContent() {
   const [, setLocation] = useLocation();
+  const [dayMatch, dayParams] = useRoute<{ date: string }>("/day/:date");
   const [match, params] = useRoute<{ eventId: string }>("/:eventId");
   const { data: status, isLoading } = useEventsStatus();
   const { data: items, isLoading: itemsLoading } = useEventItems();
+
+  if (dayMatch && dayParams && parseDayParam(dayParams.date) === null) return <Redirect to="/" replace />;
+  if (match && params && params.eventId === "day") return <Redirect to="/" replace />;
 
   if (match && params)
     return <EventHero eventId={decodeURIComponent(params.eventId)} />;
@@ -630,7 +677,8 @@ function EventsContent() {
     );
   }
 
-  return <Overview />;
+  const dayIso = dayMatch && dayParams ? parseDayParam(dayParams.date) : null;
+  return <Overview day={dayIso ?? undefined} />;
 }
 
 export default function EventsPage() {
