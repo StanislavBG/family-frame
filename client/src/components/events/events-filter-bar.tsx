@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LINE, MUTED, SectionLabel, SURFACE } from "@/components/person/satchel";
 
@@ -128,11 +128,43 @@ export function EventsFilterBar({
   activeCount: number;
   onClear: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const summary = groups
+    .flatMap((g) =>
+      selectedIds(g)
+        .filter((id) => id !== g.defaultValue)
+        .map((id) => g.options.find((o) => o.id === id)?.label),
+    )
+    .filter((l): l is string => Boolean(l))
+    .join(" · ");
   return (
     <div className="flex flex-wrap items-start gap-2" data-testid="events-filter-bar">
-      {groups.map((g) => (
-        <Group key={g.key} group={g} />
-      ))}
+      <div className="flex min-h-11 flex-wrap items-center gap-2 xl:hidden">
+        <FilterChip
+          selected={activeCount > 0}
+          isDefault={activeCount === 0}
+          expanded={open}
+          onClick={() => setOpen(!open)}
+          testId="events-filter-toggle"
+        >
+          <SlidersHorizontal className="h-4 w-4" aria-hidden />
+          {activeCount > 0 ? `Filters (${activeCount})` : "Filters"}
+          {open ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+        </FilterChip>
+        {!open && summary && (
+          <span className={cn("text-sm lg:text-base", MUTED)} data-testid="events-filter-summary">
+            {summary}
+          </span>
+        )}
+      </div>
+      <div
+        data-testid="events-filter-groups"
+        className={open ? "contents" : "hidden xl:contents"}
+      >
+        {groups.map((g) => (
+          <Group key={g.key} group={g} />
+        ))}
+      </div>
       {activeCount > 0 && (
         <div className="flex min-h-11 flex-wrap items-center gap-2">
           <span className={cn("text-sm lg:text-base", MUTED)} data-testid="events-filter-count">

@@ -82,4 +82,26 @@ describe("EventsFilterBar", () => {
   it("renders caption", () => {
     expect(render([group({ caption: "Hint text" })])).toContain("Hint text");
   });
+
+  it("collapses below xl behind a Filters chip", () => {
+    const html = render([group()]);
+    expect(html).toContain('data-testid="events-filter-groups"');
+    expect(html).toContain("hidden xl:contents");
+    const toggle = chip(html, "events-filter-toggle");
+    expect(toggle).toContain('aria-expanded="false"');
+    expect(toggle).toContain("min-h-11");
+    expect(html).toContain("Filters<");
+    expect(html).not.toContain("events-filter-summary");
+    expect(html.split('data-testid="events-filter-cost"').length).toBe(2);
+  });
+
+  it("names active filters in the closed summary and count in the chip", () => {
+    const html = render(
+      [group({ value: "free" }), group({ key: "when", label: "When", value: "wk", defaultValue: "any", options: [{ id: "any", label: "Any", count: 4 }, { id: "wk", label: "This weekend", count: 2 }] })],
+      2,
+    );
+    expect(html).toContain("Filters (2)");
+    expect(html).toMatch(/events-filter-summary[^>]*>Free · This weekend</);
+    expect(html.split('data-testid="events-filter-clear"').length).toBe(2);
+  });
 });
