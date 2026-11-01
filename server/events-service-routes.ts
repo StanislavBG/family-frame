@@ -5,6 +5,7 @@ import { eventsService, EventsError, type EventsService } from "./events-service
 import { householdProfileService, type HouseholdProfileService } from "./household-profile-service";
 import { getUserData } from "./firebase";
 import { aggregatePreferences } from "@shared/events-preferences";
+import { ageOn } from "@shared/events-activity";
 
 const BUSY_WINDOW_DAYS = 90;
 const LEARNED_FEEDBACK_LIMIT = 5000;
@@ -27,17 +28,11 @@ const runBodySchema = z.object({
 
 // Whole years from a YYYY-MM-DD birthday as of todayIso; people without a valid birthday are skipped.
 export function memberAgesFrom(people: Array<{ birthday?: string }> | undefined, todayIso: string): number[] {
-  const today = /^(\d{4})-(\d{2})-(\d{2})/.exec(todayIso);
-  if (!today || !Array.isArray(people)) return [];
-  const [ty, tm, td] = [Number(today[1]), Number(today[2]), Number(today[3])];
+  if (!/^\d{4}-\d{2}-\d{2}/.test(todayIso) || !Array.isArray(people)) return [];
   const ages: number[] = [];
   for (const person of people) {
-    const m = typeof person?.birthday === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(person.birthday) : null;
-    if (!m) continue;
-    const [by, bm, bd] = [Number(m[1]), Number(m[2]), Number(m[3])];
-    let age = ty - by;
-    if (tm < bm || (tm === bm && td < bd)) age--;
-    if (age >= 0) ages.push(age);
+    const age = ageOn(person?.birthday, todayIso);
+    if (age !== null) ages.push(age);
   }
   return ages;
 }
