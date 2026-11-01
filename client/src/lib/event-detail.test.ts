@@ -14,6 +14,7 @@ describe("buildEventFacts", () => {
     const facts = buildEventFacts(event, rec);
     expect(facts.map((f) => f.label)).toEqual([
       "When",
+      "Schedule",
       "Where",
       "Distance",
       "Cost",
@@ -42,6 +43,7 @@ describe("buildEventFacts", () => {
       cost: { isFree: true, currency: "USD", ticketRequired: false, registrationRequired: false },
       audience: { ageBands: [], familyFriendly: true, strollerFriendly: false, languages: ["en"] },
       organizer: undefined,
+      schedule: { ...SAMPLE_EVENT.schedule, recurrenceText: undefined },
     } as FfEvent;
     const facts = buildEventFacts(event, {});
     expect(facts).toEqual([
@@ -92,5 +94,22 @@ describe("hasMapLocation", () => {
 
   it("is false for an online event with no place or coordinates", () => {
     expect(hasMapLocation({ country: "US", setting: "unknown", online: true } as FfEvent["location"])).toBe(false);
+  });
+});
+
+describe("buildEventFacts Schedule row", () => {
+  it("adds Schedule right after When when recurrenceText is set", () => {
+    const event: FfEvent = {
+      ...SAMPLE_EVENT,
+      schedule: { ...SAMPLE_EVENT.schedule, recurrenceText: "Saturdays 10:00-11:00 for 6 weeks" },
+    };
+    const facts = buildEventFacts(event, rec);
+    expect(facts.slice(0, 3).map((f) => f.label)).toEqual(["When", "Schedule", "Where"]);
+    expect(facts[1].value).toBe("Saturdays 10:00-11:00 for 6 weeks");
+  });
+
+  it("omits Schedule without recurrenceText", () => {
+    const event: FfEvent = { ...SAMPLE_EVENT, schedule: { ...SAMPLE_EVENT.schedule, recurrenceText: undefined } };
+    expect(buildEventFacts(event, rec).map((f) => f.label)).not.toContain("Schedule");
   });
 });

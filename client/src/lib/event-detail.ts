@@ -59,6 +59,7 @@ function ageText(audience: FfEvent["audience"]): string {
 export function buildEventFacts(event: FfEvent, rec: Pick<EventItem["rec"], "distanceKm" | "travelMinutes">): EventFact[] {
   const { location, cost, audience, organizer } = event;
   const facts: EventFact[] = [{ label: "When", value: formatWhen(event.schedule) }];
+  if (event.schedule.recurrenceText) facts.push({ label: "Schedule", value: event.schedule.recurrenceText });
 
   const where = wherePlace(location) || (location.online ? "Online event" : "");
   if (where) facts.push({ label: "Where", value: where });

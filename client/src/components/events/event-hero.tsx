@@ -10,6 +10,7 @@ import { DEFAULT_BROWSE, parseBrowse, type EventsBrowse } from "@/lib/events-fil
 import { useFitScale } from "@/hooks/use-fit-scale";
 import { buildEventFacts, distanceText, hasMapLocation, mapUrl, whereSummary } from "@/lib/event-detail";
 import { cn } from "@/lib/utils";
+import { signUpUrl } from "@shared/events-activity";
 import type { Trip } from "@shared/events";
 import {
   CATEGORY_META,
@@ -209,11 +210,12 @@ export function EventHero({ eventId }: { eventId: string }) {
   const tripLabel = tripBadge(item);
   const admission = admissionBadge(cost);
   const hasMap = hasMapLocation(location);
+  const signUp = signUpUrl(event);
   const actions: { href: string; label: string; testId?: string; Icon?: LucideIcon }[] = [
     ...(hasMap ? [{ href: mapUrl(location), label: "Google Maps", testId: "link-event-map", Icon: MapPin }] : []),
     ...(cost.ticketUrl ? [{ href: cost.ticketUrl, label: "Buy tickets", testId: "link-event-tickets" }] : []),
-    ...(cost.registrationUrl ? [{ href: cost.registrationUrl, label: "Register", testId: "link-event-registration" }] : []),
-    ...(organizer?.url ? [{ href: organizer.url, label: "Organizer website" }] : []),
+    ...(signUp ? [{ href: signUp, label: "Sign up", testId: "link-event-registration" }] : []),
+    ...(organizer?.url && organizer.url !== signUp ? [{ href: organizer.url, label: "Organizer website" }] : []),
   ];
 
   return (
