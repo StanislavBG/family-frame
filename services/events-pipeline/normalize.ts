@@ -250,12 +250,14 @@ export function localDate(iso: string, tz: string): string {
 
 // ---- fingerprint ----
 
+const hasClassTag = (event: FfEvent) => event.tags.some(isClassTag);
+
 export function fingerprint(event: FfEvent): string {
-  const key = [
-    titleTokens(event.title).join(" "),
-    localDate(event.schedule.start, event.schedule.timezone),
-    normalizeCity(event.location.city),
-  ].join("|");
+  const parts = [titleTokens(event.title).join(" ")];
+  // Classes are ongoing: their identity must not depend on the day they were found.
+  if (!hasClassTag(event)) parts.push(localDate(event.schedule.start, event.schedule.timezone));
+  parts.push(normalizeCity(event.location.city));
+  const key = parts.join("|");
   return createHash("sha256").update(key).digest("hex");
 }
 
@@ -462,6 +464,10 @@ export function titleSimilarity(a: string, b: string): number {
 }
 
 export function isNearDuplicate(a: FfEvent, b: FfEvent): boolean {
+  if (hasClassTag(a) && hasClassTag(b)) {
+    if (normalizeCity(a.location.city) !== normalizeCity(b.location.city)) return false;
+    return titleSimilarity(a.title, b.title) >= 0.8;
+  }
   if (localDate(a.schedule.start, a.schedule.timezone) !== localDate(b.schedule.start, b.schedule.timezone)) {
     return false;
   }
@@ -471,6 +477,15 @@ export function isNearDuplicate(a: FfEvent, b: FfEvent): boolean {
 
 function completeness(obj: object): number {
   return Object.values(obj).filter((v) => v !== undefined && v !== "").length;
+}
+
+/** Latest instant of a schedule: end, start and every occurrence start/end. */
+function windowEndMs(schedule: FfEvent["schedule"]): number {
+  const times = [schedule.end, schedule.start, ...schedule.occurrences.flatMap((o) => [o.start, o.end])]
+    .filter((t): t is string => typeof t === "string")
+    .map((t) => Date.parse(t))
+    .filter((n) => !Number.isNaN(n));
+  return times.length ? Math.max(...times) : NaN;
 }
 
 /** Merge a re-found event into the stored one; the stored identity wins. */
@@ -495,8 +510,13 @@ export function mergeDuplicate(existing: FfEvent, incoming: FfEvent): FfEvent {
   const location =
     completeness(incoming.location) > completeness(existing.location) ? incoming.location : existing.location;
 
+  const isClass = hasClassTag(existing) || hasClassTag(incoming);
+  const schedule =
+    isClass && windowEndMs(incoming.schedule) > windowEndMs(existing.schedule) ? incoming.schedule : existing.schedule;
+
   return {
     ...existing,
+    schedule,
     description: incoming.description.length > existing.description.length ? incoming.description : existing.description,
     summary: incoming.description.length > existing.description.length ? incoming.summary : existing.summary,
     tags: withClassTag(

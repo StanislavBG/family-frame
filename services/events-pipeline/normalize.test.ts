@@ -200,3 +200,44 @@ test("mergeDuplicate keeps the class tag from either side with a full tag list",
   assert.equal(mergeDuplicate(b, a).tags[0], "class");
   assert.equal(mergeDuplicate(b, a).tags.length, 20);
 });
+
+// ---- class identity ----
+
+const swim = { ...base, title: "Swim Lessons Level 1", isClass: true, start: "2026-10-10T10:00:00-07:00", end: "2026-10-24T11:00:00-07:00" };
+
+test("class fingerprint ignores the date; non-class fingerprint keeps it", () => {
+  const a = ok(swim);
+  const b = ok({ ...swim, start: "2026-10-11T10:00:00-07:00", end: "2026-10-25T11:00:00-07:00" });
+  assert.equal(fingerprint(a), fingerprint(b));
+  const p = ok(base);
+  const q = ok({ ...base, start: "2026-10-25T10:00:00-07:00" });
+  assert.notEqual(fingerprint(p), fingerprint(q));
+});
+
+test("class near-duplicates ignore the date and need similarity >= 0.8", () => {
+  const a = ok(swim);
+  const b = ok({ ...swim, start: "2026-10-12T10:00:00-07:00", end: "2026-10-26T11:00:00-07:00" });
+  assert.equal(isNearDuplicate(a, b), true);
+  // non-class: different date is still not a duplicate
+  assert.equal(isNearDuplicate(ok(base), ok({ ...base, start: "2026-10-25T10:00:00-07:00" })), false);
+  // 3 of 5 tokens shared (0.6) is enough for non-class same-date, not for classes
+  const c = ok({ ...swim, title: "Swim Lessons Level 2" });
+  assert.equal(isNearDuplicate(a, c), false);
+  const n1 = ok({ ...base, title: "Swim Lessons Level 1", isClass: false });
+  const n2 = ok({ ...base, title: "Swim Lessons Level 2", isClass: false });
+  assert.equal(isNearDuplicate(n1, n2), true);
+});
+
+test("class merge takes the incoming schedule only when its window ends later", () => {
+  const a = ok(swim);
+  const later = ok({ ...swim, start: "2026-10-12T10:00:00-07:00", end: "2026-10-26T11:00:00-07:00" });
+  assert.equal(mergeDuplicate(a, later).schedule.end, later.schedule.end);
+  assert.equal(mergeDuplicate(a, later).schedule.start, later.schedule.start);
+  assert.equal(mergeDuplicate(a, later).id, a.id);
+  const earlier = ok({ ...swim, start: "2026-10-08T10:00:00-07:00", end: "2026-10-20T11:00:00-07:00" });
+  assert.equal(mergeDuplicate(a, earlier).schedule.end, a.schedule.end);
+  // non-class keeps stored schedule
+  const p = ok(base);
+  const q = ok({ ...base, end: "2026-10-24T20:00:00-07:00" });
+  assert.deepEqual(mergeDuplicate(p, q).schedule, p.schedule);
+});
