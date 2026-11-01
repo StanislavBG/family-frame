@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { Check, ChevronLeft, ChevronRight, Expand, MapPin, Star } from "lucide-react";
+import { isOngoingClass, signUpUrl } from "@shared/events-activity";
 import { DEFAULT_VISIT_PREFS, suggestVisit, type VisitPrefs } from "@shared/events-visit";
 import { LINE, MUTED, SERIF, SURFACE, ToneChip } from "@/components/person/satchel";
 import {
@@ -27,6 +28,9 @@ const NAV = "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bo
 const MAP_BTN =
   "flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl text-xs font-semibold leading-none bg-[#dde8f1] text-[#3d6a8f] dark:bg-[#8fb4d4]/15 dark:text-[#8fb4d4]";
 
+const SIGNUP_BTN =
+  "flex min-h-11 shrink-0 items-center justify-center rounded-xl px-3 text-sm font-semibold bg-[#dde8f1] text-[#3d6a8f] dark:bg-[#8fb4d4]/15 dark:text-[#8fb4d4]";
+
 function headingFor(dateIso: string): string {
   const [y, m, d] = dateIso.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
@@ -40,6 +44,7 @@ function headingFor(dateIso: string): string {
 function Row({ entry, children }: { entry: DayEntry<EventItem>; children: React.ReactNode }) {
   const { item } = entry;
   const { event } = item;
+  const signUp = isOngoingClass(event) ? signUpUrl(event) : undefined;
   const cat = CATEGORY_META[event.category];
   const km = item.rec.distanceKm;
   const where = formatWhere(event.location);
@@ -79,6 +84,18 @@ function Row({ entry, children }: { entry: DayEntry<EventItem>; children: React.
         )}
       </div>
       </Link>
+      {signUp && (
+        <a
+          href={signUp}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={SIGNUP_BTN}
+          aria-label={`Sign up for ${event.title}`}
+          data-testid={`events-day-signup-${item.eventId}`}
+        >
+          Sign up
+        </a>
+      )}
       {hasMapLocation(event.location) && (
         <a
           href={mapUrl(event.location)}
@@ -107,7 +124,10 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
         preferredTimes: prefs.preferredTimes,
       }
     : DEFAULT_VISIT_PREFS;
+  const classes = open.filter((e) => isOngoingClass(e.item.event));
+  const openOthers = open.filter((e) => !isOngoingClass(e.item.event));
   const total = sessions.length + open.length;
+  const classCount = classes.length;
 
   return (
     <section
@@ -136,6 +156,7 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
           </h2>
           <p className={cn("text-sm", MUTED)} data-testid="events-day-count">
             {total} {total === 1 ? "event" : "events"}
+            {classCount > 0 && ` · ${classCount} ${classCount === 1 ? "class" : "classes"}`}
           </p>
           <span className="inline-flex items-center gap-1 text-sm font-semibold underline underline-offset-2 text-[#3d6a8f] dark:text-[#8fb4d4]">
             <Expand className="h-4 w-4" aria-hidden="true" />
@@ -178,12 +199,27 @@ export function EventsDayPanel({ items, dateIso, onDateChange }: EventsDayPanelP
         </div>
       )}
 
-      {open.length > 0 && (
+      {classes.length > 0 && (
+        <div className="space-y-1.5" data-testid="events-day-classes">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-[#5d5648] dark:text-muted-foreground">
+            Classes you can sign up for
+          </h3>
+          {classes.map((entry) => (
+            <Row key={entry.item.eventId} entry={entry}>
+              <div className="text-sm font-semibold text-[#1a1612] dark:text-foreground">
+                {entry.item.event.schedule.recurrenceText?.trim() || "See the class website for times"}
+              </div>
+            </Row>
+          ))}
+        </div>
+      )}
+
+      {openOthers.length > 0 && (
         <div className="space-y-1.5" data-testid="events-day-open">
           <h3 className="text-sm font-bold uppercase tracking-wide text-[#5d5648] dark:text-muted-foreground">
             Open all day
           </h3>
-          {open.map((entry) => {
+          {openOthers.map((entry) => {
             const { window } = entry;
             const block = suggestVisit(window, visitPrefs);
             return (
