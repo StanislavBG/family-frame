@@ -26,7 +26,8 @@ import {
   finishRun,
   type EventsDb,
 } from "./db";
-import { nextCheckAt } from "./dispatch";
+import { nextCheckAt, pushEvent, type DispatchStats } from "./dispatch";
+import { CLASS_TAG } from "../../shared/events-activity";
 import { explainBatch } from "./explain";
 import type { FfClient, FfHousehold, FfState } from "./ff-client";
 import { householdProfile } from "../../shared/events-profile";
@@ -298,6 +299,13 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
             const merged = mergeDuplicate(existing, incoming);
             upsertEvent(db, merged, areaKey, nextCheckAt(merged, now) ?? NEVER);
             stats.merged += 1;
+            const isClass = merged.tags.some((t) => t.trim().toLowerCase() === CLASS_TAG);
+            if (!dryRun && isClass && JSON.stringify(existing.schedule) !== JSON.stringify(merged.schedule)) {
+              // A grown class window must reach the household's copy, or it expires there.
+              const sink: DispatchStats = { checked: 0, changed: 0, cancelled: 0, pushed: 0, failed: 0 };
+              await pushEvent({ db, runner, ff, now, runId }, merged, sink);
+              stats.errors += sink.failed;
+            }
           } else {
             upsertEvent(db, incoming, areaKey, nextCheckAt(incoming, now) ?? NEVER);
             stats.newEvents += 1;

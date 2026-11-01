@@ -294,7 +294,7 @@ function areaKeyOf(db: EventsDb, id: string): string {
   return String(db.prepare("SELECT area_key FROM events WHERE id = ?").get(id)?.area_key ?? "");
 }
 
-async function pushEvent(opts: DispatchOptions, event: FfEvent, stats: DispatchStats): Promise<void> {
+export async function pushEvent(opts: DispatchOptions, event: FfEvent, stats: DispatchStats): Promise<void> {
   const { db, ff, runId, now } = opts;
   for (const householdId of listHouseholdsHoldingEvent(db, event.id)) {
     const stored = getPublishedRecommendation(db, householdId, event.id);

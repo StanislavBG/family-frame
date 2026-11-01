@@ -296,3 +296,36 @@ test("item without distance publishes neither driveMinutes nor tripType", async 
   assert.equal(none.driveMinutes, undefined);
   assert.equal(none.tripType, undefined);
 });
+
+const classCand = { ...candidate, title: "Saturday Pottery Course", category: "kids-activities", isClass: true, end: "2026-10-17T12:00:00-07:00" };
+const grown = { ...classCand, end: "2026-11-20T12:00:00-07:00" };
+
+async function twoPasses(first: unknown, second: unknown, dryRun = false) {
+  const db = openEventsDb(":memory:");
+  const f = fakeFf([household("h1")], {});
+  await runDiscover({ db, geocoder, now, runId: "r1", limits, ff: f.ff, runner: fakeRunner(found(first)) });
+  const putsBefore = f.puts.length;
+  const stats = await runDiscover({ db, geocoder, now, runId: "r2", limits, dryRun, ff: f.ff, runner: fakeRunner(found(second)) });
+  return { stats, pushes: f.puts.length - putsBefore, f };
+}
+
+test("class found again with a longer window is pushed once", async () => {
+  const { stats, pushes, f } = await twoPasses(classCand, grown);
+  assert.equal(stats.merged, 1);
+  assert.equal(pushes, 1);
+  assert.equal(stats.errors, 0);
+  assert.ok(f.puts[f.puts.length - 1].event.schedule.end?.startsWith("2026-11-20"));
+});
+
+test("non-class merge pushes nothing", async () => {
+  const plain = { ...candidate, end: "2026-10-17T12:00:00-07:00" };
+  const { stats, pushes } = await twoPasses(plain, { ...plain, end: "2026-11-20T12:00:00-07:00" });
+  assert.equal(stats.merged, 1);
+  assert.equal(pushes, 0);
+});
+
+test("class merge in dry run pushes nothing", async () => {
+  const { stats, pushes } = await twoPasses(classCand, grown, true);
+  assert.equal(stats.merged, 1);
+  assert.equal(pushes, 0);
+});
