@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { nextFitScale } from "@/lib/fit-scale";
+import { INITIAL_FIT, stepFitScale } from "@/lib/fit-scale";
 
 /**
  * Uniformly scales content down so it fits its container's height without scrolling, keeping
@@ -10,6 +10,7 @@ export function useFitScale<C extends HTMLElement, I extends HTMLElement>(minWid
   const containerRef = useRef<C>(null);
   const contentRef = useRef<I>(null);
   const [scale, setScale] = useState(1);
+  const stateRef = useRef(INITIAL_FIT);
   const [enabled, setEnabled] = useState(() => window.matchMedia(`(min-width: ${minWidth}px)`).matches);
 
   useEffect(() => {
@@ -21,13 +22,17 @@ export function useFitScale<C extends HTMLElement, I extends HTMLElement>(minWid
 
   useEffect(() => {
     if (!enabled) {
+      stateRef.current = INITIAL_FIT;
       setScale(1);
       return;
     }
     const container = containerRef.current;
     const content = contentRef.current;
     if (!container || !content) return;
-    const update = () => setScale((s) => nextFitScale(container.clientHeight, content.offsetHeight, s));
+    const update = () => {
+      stateRef.current = stepFitScale(stateRef.current, container.clientHeight, content.offsetHeight);
+      setScale(stateRef.current.scale);
+    };
     const ro = new ResizeObserver(update);
     ro.observe(container);
     ro.observe(content);

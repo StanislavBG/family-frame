@@ -20,3 +20,31 @@ export function fitCount(containerWidth: number, itemWidth: number, gap: number)
   if (!Number.isFinite(containerWidth) || containerWidth <= 0) return 1;
   return Math.max(1, Math.floor((containerWidth + gap) / (itemWidth + gap)));
 }
+
+/**
+ * Settling state for the fit scale. Scaling changes the layout width, text re-wraps and the
+ * natural height changes, which can flip the scale between two values for ever. After a shrink
+ * that follows a grow, `lock` records the available height; while locked, growth is blocked.
+ */
+export interface FitState {
+  scale: number;
+  grewLast: boolean;
+  lock: { available: number; natural: number | null } | null;
+}
+
+export const INITIAL_FIT: FitState = { scale: 1, grewLast: false, lock: null };
+
+/** Pure step of the fit-scale loop: settles on the lower of two flipping scales. */
+export function stepFitScale(state: FitState, availableHeight: number, naturalHeight: number, min = FIT_SCALE_MIN): FitState {
+  if (availableHeight <= 0 || naturalHeight <= 0) return state;
+  let lock = state.lock;
+  if (lock && lock.available !== availableHeight) lock = null;
+  if (lock && lock.natural !== null && naturalHeight <= lock.natural * 0.9) lock = null;
+  const target = nextFitScale(availableHeight, naturalHeight, state.scale, min);
+  if (target === state.scale) return lock === state.lock ? state : { ...state, lock };
+  if (target > state.scale) {
+    if (lock) return { ...state, lock: lock.natural === null ? { ...lock, natural: naturalHeight } : lock };
+    return { scale: target, grewLast: true, lock: null };
+  }
+  return { scale: target, grewLast: false, lock: state.grewLast || lock ? { available: availableHeight, natural: null } : null };
+}
