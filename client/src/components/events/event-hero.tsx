@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { Person } from "@shared/schema";
 import { Link } from "wouter";
 import { ArrowLeft, BedDouble, CalendarX, Car, Compass, ExternalLink, MapPin, Moon, Utensils, type LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -167,6 +169,7 @@ export function EventHero({ eventId }: { eventId: string }) {
   const { data: item, isLoading, error } = useEventItem(eventId);
   const markSeen = useMarkSeen(eventId);
   const markedFor = useRef<string | null>(null);
+  const { data: people = [] } = useQuery<Person[]>({ queryKey: ["/api/people/list"] });
   // Wall displays: scale the whole page to fit one screen instead of scrolling.
   const fit = useFitScale<HTMLDivElement, HTMLElement>();
 
@@ -211,6 +214,11 @@ export function EventHero({ eventId }: { eventId: string }) {
   const admission = admissionBadge(cost);
   const hasMap = hasMapLocation(location);
   const signUp = signUpUrl(event);
+  const goingNames = (item.plan?.people ?? []).flatMap((id) => people.find((p) => p.id === id)?.name ?? []);
+  const peopleLabel =
+    goingNames.length > 0 && (item.response === "going" || item.response === "interested")
+      ? `${item.response === "going" ? "Going" : "Interested"}: ${goingNames.join(", ")}`
+      : null;
   const actions: { href: string; label: string; testId?: string; Icon?: LucideIcon }[] = [
     ...(hasMap ? [{ href: mapUrl(location), label: "Google Maps", testId: "link-event-map", Icon: MapPin }] : []),
     ...(cost.ticketUrl ? [{ href: cost.ticketUrl, label: "Buy tickets", testId: "link-event-tickets" }] : []),
@@ -286,6 +294,7 @@ export function EventHero({ eventId }: { eventId: string }) {
               <span data-testid="text-event-distance">{distance}</span>
             )}
             <span data-testid="text-event-cost">{formatCost(cost)}</span>
+            {peopleLabel && <span data-testid="text-event-people">{peopleLabel}</span>}
           </div>
           <p className={BODY}>{event.summary}</p>
           {actions.length > 0 && (

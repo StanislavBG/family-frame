@@ -259,9 +259,39 @@ function VisibilityChoice({
   );
 }
 
+export function WhoPicker({ value, onChange, enabled = true }: { value: string[]; onChange: (next: string[]) => void; enabled?: boolean }) {
+  const { data: people = [] } = useQuery<Person[]>({ queryKey: ["/api/people/list"], enabled });
+  if (people.length === 0) return null;
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((p) => p !== id) : [...value, id]);
+  return (
+    <div className="space-y-2" data-testid="who-picker">
+      <SectionLabel>Who is going</SectionLabel>
+      <div className="flex flex-wrap gap-2">
+        {people.map((p) => {
+          const on = value.includes(p.id);
+          return (
+            <Button
+              key={p.id}
+              type="button"
+              aria-pressed={on}
+              aria-label={`${p.name} is ${on ? "" : "not "}going`}
+              variant={on ? "default" : "outline"}
+              className={BIG_BUTTON}
+              onClick={() => toggle(p.id)}
+              data-testid={`button-plan-person-${p.id}`}
+            >
+              {on && <Check className="mr-1 h-4 w-4" aria-hidden />}
+              {p.name}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ChangePlanDialog({ item, open, onOpenChange }: { item: EventItem; open: boolean; onOpenChange: (o: boolean) => void }) {
   const updatePlan = useUpdatePlan(item.eventId);
-  const { data: people = [] } = useQuery<Person[]>({ queryKey: ["/api/people/list"], enabled: open });
   const { schedule } = item.event;
   const dates = Array.from(new Set([schedule.start, ...schedule.occurrences.map((o) => o.start)]));
   const [occurrence, setOccurrence] = useState(item.plan?.occurrenceStart ?? schedule.start);
@@ -270,8 +300,6 @@ function ChangePlanDialog({ item, open, onOpenChange }: { item: EventItem; open:
   const [visibility, setVisibility] = useState<Visibility>(item.calendar?.visibility ?? "Private");
   const hasOccurrences = schedule.occurrences.length > 0;
   const visit = useVisitBlock(item.event, item.plan?.visit, hasOccurrences ? occurrence : undefined);
-
-  const toggle = (id: string) => setWho((cur) => (cur.includes(id) ? cur.filter((p) => p !== id) : [...cur, id]));
 
   const save = () =>
     updatePlan.mutate(
@@ -316,31 +344,7 @@ function ChangePlanDialog({ item, open, onOpenChange }: { item: EventItem; open:
             <SectionLabel>Your visit</SectionLabel>
             <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="plan" />
           </div>
-          {people.length > 0 && (
-            <div className="space-y-2">
-              <SectionLabel>Who is going</SectionLabel>
-              <div className="flex flex-wrap gap-2">
-                {people.map((p) => {
-                  const on = who.includes(p.id);
-                  return (
-                    <Button
-                      key={p.id}
-                      type="button"
-                      aria-pressed={on}
-                      aria-label={`${p.name} is ${on ? "" : "not "}going`}
-                      variant={on ? "default" : "outline"}
-                      className={BIG_BUTTON}
-                      onClick={() => toggle(p.id)}
-                      data-testid={`button-plan-person-${p.id}`}
-                    >
-                      {on && <Check className="mr-1 h-4 w-4" aria-hidden />}
-                      {p.name}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <WhoPicker value={who} onChange={setWho} enabled={open} />
           <div className="space-y-2">
             <SectionLabel>Notes</SectionLabel>
             <Textarea
@@ -378,6 +382,7 @@ export function EventActions({ item }: { item: EventItem }) {
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const [planOpen, setPlanOpen] = useState(false);
+  const [who, setWho] = useState<string[]>(item.plan?.people ?? []);
   const visit = useVisitBlock(item.event, item.plan?.visit);
   const past = isPast(item);
   const current: HouseholdResponse = item.response;
@@ -391,6 +396,7 @@ export function EventActions({ item }: { item: EventItem }) {
     setDeclining(false);
     setCalendarVisibility(item.calendar?.visibility ?? "Private");
     visit.setBlock(null);
+    setWho(item.plan?.people ?? []);
     setChoosing((c) => (c === value ? null : value));
   };
 
@@ -402,9 +408,10 @@ export function EventActions({ item }: { item: EventItem }) {
             response: choosing,
             addToCalendar: true,
             visibility: calendarVisibility,
+            ...(who.length > 0 ? { people: who } : {}),
             ...(visit.block ? { visit: visitToPlan(visit.block) } : {}),
           }
-        : { response: choosing, addToCalendar: false },
+        : { response: choosing, addToCalendar: false, ...(who.length > 0 ? { people: who } : {}) },
       { onSuccess: () => setChoosing(null) },
     );
   };
@@ -453,6 +460,7 @@ export function EventActions({ item }: { item: EventItem }) {
         <div className={cn("space-y-2 rounded-xl border p-2", SURFACE, LINE)} data-testid="panel-add-to-calendar">
           <SectionLabel>Add to calendar</SectionLabel>
           <VisitEditor windows={visit.windows} block={visit.block} onChange={visit.setBlock} idPrefix="calendar" />
+          <WhoPicker value={who} onChange={setWho} />
           <VisibilityChoice value={calendarVisibility} onChange={setCalendarVisibility} idPrefix="button-calendar" />
           <div className="flex flex-wrap gap-2">
             <Button type="button" className={BIG_BUTTON} disabled={respond.isPending} onClick={() => confirmCalendar(true)} aria-label={`Add to calendar as ${calendarVisibility}`} data-testid="button-calendar-confirm">

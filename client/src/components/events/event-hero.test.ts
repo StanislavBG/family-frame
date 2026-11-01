@@ -14,7 +14,7 @@ const { EventHero } = await import("./event-hero");
 const ID = "e1";
 const TESTID = 'data-testid="link-event-registration"';
 
-function render(event: FfEvent): string {
+function render(event: FfEvent, extra: Record<string, unknown> = {}, people?: { id: string; name: string }[]): string {
   const client = new QueryClient();
   const item = {
     eventId: ID,
@@ -24,8 +24,10 @@ function render(event: FfEvent): string {
     hasUnseenUpdate: false,
     withdrawn: false,
     recommendedAt: "2026-10-01T00:00:00Z",
+    ...extra,
   } as unknown as EventItem;
   client.setQueryData(queryKeys.events.item(ID), item);
+  if (people) client.setQueryData(queryKeys.people(), people);
   return renderToStaticMarkup(
     React.createElement(
       QueryClientProvider,
@@ -64,5 +66,20 @@ describe("EventHero Sign up pill", () => {
     const html = render(base({}));
     expect(html).not.toContain(TESTID);
     expect(html).toContain("Organizer website");
+  });
+});
+
+describe("EventHero going names", () => {
+  const people = [{ id: "p1", name: "Ana" }, { id: "p2", name: "Boris" }];
+  it("shows names for Going and ignores unknown ids", () => {
+    const html = render(base({}), { response: "going", plan: { people: ["p1", "zz", "p2"] } }, people);
+    expect(html).toContain('data-testid="text-event-people"');
+    expect(html).toContain("Going: Ana, Boris");
+  });
+  it("labels Interested", () => {
+    expect(render(base({}), { response: "interested", plan: { people: ["p2"] } }, people)).toContain("Interested: Boris");
+  });
+  it("shows nothing when no id resolves", () => {
+    expect(render(base({}), { response: "going", plan: { people: ["zz"] } }, people)).not.toContain("text-event-people");
   });
 });
