@@ -61,7 +61,7 @@ Family Frame is a Progressive Web App (PWA) designed as "The Window Between Home
 │       ├── components/
 │       │   ├── ui/             # shadcn components
 │       │   ├── person/         # People app person views (Satchel design; see below)
-│       │   ├── events/         # Events app UI (hero, month view, actions, preferences)
+│       │   ├── events/         # Events app UI (hero, month view, day view, filter bar, classes shelf, actions, preferences)
 │       │   ├── calendar/       # Calendar Day view UI (calendar-day-view.tsx)
 │       │   ├── app-sidebar.tsx # Navigation sidebar
 │       │   ├── app-picker.tsx  # Settings > Apps shelf (add, set up, configure apps via AppPage)
@@ -282,6 +282,10 @@ Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`,
 - `services/events-pipeline/trips.ts` + `trips-run.ts` - trip ideas (day trip, weekend; research only, no booking): max 3 active per household, one new per `all` run, kept out of the shared events table; drive limits in `geo.ts`.
 - Month view day panel: `client/src/components/events/events-day-panel.tsx` (`EventsDayPanel`), the full list for the day selected in the month view, rendered by `pages/events.tsx`.
 - Close to home tag: `shared/events-proximity.ts` (`isCloseToHome`: not online, not a trip, within 5 miles / 8.05 km or in the household's city); `server/apps/events.ts` derives `closeToHome` at read time on `GET /api/events/items*` (never stored); the UI shows a "Close to home" chip and filter; the pipeline adds a `close-to-home` search task (focus and near windows, `search.ts`) and `rank.ts` gives those picks +2 per focus day and +1 per later day with their own caps. Details in `docs/events.md`.
+- Browse model (details in `docs/events.md`): `client/src/lib/events-filters.ts` (pure filter groups, `parseBrowse`, `matchesFilters`), `client/src/lib/events-day.ts` (pure day view sections, 7-day strip, `parseDayParam`), `shared/events-activity.ts` (class / sign-up / audience helpers, `isOngoingClass`). Components in `client/src/components/events/`: `events-filter-bar.tsx`, `events-day-view.tsx` (`/day/YYYY-MM-DD`), `events-day-card.tsx`, `events-classes-shelf.tsx`.
+- Filter groups stay logical: When means days, What means kind, How far means distance; do not mix them.
+- Ongoing classes (no dated session) stay off calendar days (agenda, month, day strip); they show in the day view's classes section and the classes shelf.
+- Browse state (view, filters, selected day) uses `useSessionState` (`ff.events.browse.v1`) and is rebuilt with `parseBrowse`.
 - Feedback entries live in RTDB as objects where empty arrays vanish: read them only through `feedbackEntrySchema` in `listFeedback` (`server/events-service.ts`), never as a raw `FeedbackEntry` (cause of the 2026-10-16 outage).
 
 ### Calendar Day view

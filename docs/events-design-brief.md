@@ -39,8 +39,8 @@ Elements, in priority order:
 2. **Changed badge.** A clear badge on any card whose event has a recent entry in `updates` (compare `updates[].at` and `verification.lastChangedAt` to what the household last saw). The badge says what changed in words ("Price changed", "Postponed", "Cancelled") using `updates[].kind`. Cancelled and postponed must be hard to miss on a wall display: a coloured band, not a small dot.
 3. **Later list.** Everything beyond 14 days, as a calmer, denser list grouped by month. Same card content, smaller.
 4. **Month view toggle.** A switch between Agenda (default) and Month. The month grid shows day cells with small tinted dots or titles by category tone; tapping a day opens that day's events. Multi-day events (`schedule.occurrences`) appear on each of their days.
-5. **Category filter chips.** One chip per `category` that has events, in a horizontally scrolling row on phones and a wrapping row on wall displays. Tapping toggles. A visible "All" chip resets. Chip count is optional.
-6. **Response filter.** A compact control: All, New, Interested, Going, Maybe, Not for us. Default is All except hidden ones (`not-interested` and `dismissed` are tucked away unless chosen).
+5. **Filter groups.** A filter bar with one single-choice row per group, each with a default and a count of active groups: Show (All open, New, Interested, Going, Not for us), When (Any day, This weekend, Sat & Sun), What (Everything, Classes & sign-ups, Day trips, Weekend getaways), How far (Any distance, Close to home, Nearby), Cost (Any price, Free, Paid / Ticketed), Topic (All topics, then one chip per `category` that has events) and Who (Everyone or picked household members, multi-select, only with two or more people). When means days, What means kind and How far means distance. A "Clear filters" button resets all of them.
+6. **Day view.** Beside Agenda and Month, a Day view at `/day/YYYY-MM-DD` shows one day in full: Morning, Afternoon, Evening, Classes you can sign up for, Open all day, with a 7-day strip to jump across days. It opens from the Day chip, from a day heading in the agenda, or from the month view day panel heading. Ongoing classes (no dated session) are listed only there and in the classes shelf, never on calendar days.
 7. **Entry to Events settings.** A gear or "Preferences" link to the preferences panel (screen 4).
 
 Sorting: soonest first. Do not expose a sort control; keep it simple. Show `matchScore` only as a gentle cue (for example a small "Great fit" mark above a threshold), never as a raw number on the overview.
@@ -382,8 +382,8 @@ This is `SAMPLE_RECOMMENDATION_INPUT` from `shared/events.ts`, one complete reco
 - **Add to calendar:** a short sheet after Going or Interested: choose Shared or Private, choose the date if several, optional people and note. One primary button "Add to calendar". It should be possible to respond without adding to the calendar.
 - **Change plan:** reopens the same sheet pre-filled.
 - **Feedback:** one tap per pair, tap again to clear, optional reason field appears inline. No modal.
-- **Filters:** category chips toggle; the response filter is single-choice; both combine. A "Clear filters" button appears when any filter is active. Filters are remembered for the session.
-- **Agenda vs Month:** toggle at the top; selection is remembered.
+- **Filters:** each group (Show, When, What, How far, Cost, Topic) is single-choice, Who is multi-select; all groups combine. A "Clear filters" button appears when any filter is active. Filters, view and selected day are remembered for the session.
+- **Agenda, Month or Day:** toggle at the top; selection is remembered. A day heading opens the Day view.
 - **Changed badge:** clears once the household has opened the event page.
 - **Preferences:** changes save automatically with a visible "Saved" confirmation, or with an explicit Save button; the designer picks one and uses it consistently.
 - **Consent:** the switch only turns on after the household has seen the full wording (it is always visible, so this is automatic). Turning off asks for confirmation.

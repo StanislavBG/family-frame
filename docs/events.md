@@ -148,6 +148,37 @@ Weights decay with a 120-day half-life. Category sums are normalised with `tanh(
 
 Household profile (`shared/events-profile.ts`, `householdProfile(memberAges)`): life stages (`baby`, `toddler`, `preschool`, `school-age`, `teen`, `adults-only`, `multi-generational`) and up to 3 plain lines such as "Household: 2 adults and a toddler (1-2)." They come from the member ages the service API already shares, so there is no new personal data and no consent change. The lines go into the explain and trip prompts together with `PROFILE_GUIDANCE`: the profile and preferences are hints, not filters, and the model should still include some ideas outside them.
 
+## Browse model (filters and day view)
+
+Client-only; no API change. Logic is pure and unit-tested in `client/src/lib/events-filters.ts` (groups, defaults, `parseBrowse`, `matchesFilters`, `kindCounts`, `dayAllowed`); the bar is `components/events/events-filter-bar.tsx`, rendered by `pages/events.tsx`.
+
+Filter groups. Each group answers one question and the groups combine (all must match):
+
+| Group | Meaning | Choices |
+| --- | --- | --- |
+| Show | The household's response | All open (default, hides not-interested and dismissed), New, Interested, Going, Not for us |
+| When | Days only | Any day, This weekend, Sat & Sun |
+| What | Kind of thing only | Everything, Classes & sign-ups, Day trips, Weekend getaways (with counts that honour the other groups) |
+| How far | Distance only | Any distance, Close to home (5 miles or same city), Nearby (under 45 minutes' drive) |
+| Cost | Price | Any price, Free, Paid / Ticketed |
+| Topic | `category` | All topics, then one per category in use |
+| Who | Household members | Everyone, or picked people (multi-select; shown only with 2 or more people); filters by the age fit of `audience` |
+
+Rule: When means days, What means kind and How far means distance. Keep them apart: "Sat & Sun" is things that happen on those days (When), "Weekend getaways" is the trip idea (What), and "Close to home" is never a When or What choice. Trip ideas have no dates, so When does not filter them. A new filter must fit one of these meanings or become its own group.
+
+Browse state (view, filters, selected day, month, last open day) is one object kept per browser session under `ff.events.browse.v1` with `useSessionState` and rebuilt through `parseBrowse` (unknown values fall back field by field). Choosing a When option moves the selected day to the first matching day.
+
+Day view. Route `/day/YYYY-MM-DD` inside the Events app (bad dates are rejected by `parseDayParam` and fall back to the overview). It is the full-page version of the month view day panel and lists that day's existing events grouped by Morning, Afternoon, Evening, Classes you can sign up for, and Open all day (`dayViewSections` in `client/src/lib/events-day.ts`), with a 7-day strip to jump across days (`dayStrip`). Component: `events-day-view.tsx`. Entry points:
+
+- the "Day" view chip next to Agenda and Month (opens the selected day);
+- the day heading in the month view day panel (`events-day-panel.tsx`);
+- each day heading in the agenda;
+- a bare `/day/YYYY-MM-DD` link.
+
+Back from an event page returns to the day it came from (`lastDay` in the browse state).
+
+Classes. Helpers live in `shared/events-activity.ts` (`isClassOrLesson`, `needsSignUp`, `isSignUpActivity`, `isOngoingClass`, `signUpUrl`, `audienceGroup`, `suitsPeople`). A class with no dated session (`isOngoingClass`) is not an event on a specific date, so it stays off calendar days: the agenda, month cells and day strip counts leave it out. It appears in the "Classes you can sign up for" section of the day view and day panel, and in the classes shelf (`events-classes-shelf.tsx`, grouped For the kids / For grown-ups / For all of us, with the sign-up link). `splitClasses` in `pages/events.tsx` splits the visible items into calendar items and shelf items. Classes with dated sessions are ordinary events on those days. Choosing What = Classes & sign-ups shows every class or sign-up activity.
+
 ## 8. Pipeline
 
 `services/events-pipeline/` is a separate Node 22.13+ package (`node:sqlite`), run with `npm run events:run -- <discover|refresh|all|watch|status|report> [--dry-run] [--household <id>] [--max-sessions <n>]` (`report` also takes `--runs <n>`). It is excluded from the root `npm test` and `npm run check`; use `npm run events:test` and `npm run events:check`.
