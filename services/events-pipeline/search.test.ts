@@ -5,7 +5,7 @@ import type { EventCategory } from "../../shared/events";
 import type { PreferenceSummary } from "../../shared/events-preferences";
 import type { HaikuRunner } from "./haiku";
 import { RAW_CANDIDATES_JSON_SCHEMA } from "./normalize";
-import { CLASSES_CATEGORY_KEY, CLOSE_CATEGORY_KEY, ageBandsFromAges, buildSearchPrompt, planSearchTasks, runSearchTask } from "./search";
+import { CLASSES_ADULTS_KEY, CLASSES_FAMILY_KEY, CLOSE_CATEGORY_KEY, ageBandsFromAges, buildSearchPrompt, planSearchTasks, runSearchTask } from "./search";
 import type { PlanInput, SearchTask } from "./search";
 
 const now = new Date("2026-10-10T12:00:00Z");
@@ -39,7 +39,7 @@ test("never searched: focus general first, within maxTasks", () => {
   assert.equal(tasks[0].categoryKey, "general");
   assert.equal(tasks[0].fromDate, "2026-10-10");
   assert.equal(tasks[0].toDate, "2026-10-24");
-  assert.equal(tasks.length, 15);
+  assert.equal(tasks.length, 16);
   assert.equal(plan({ maxTasks: 2 }).length, 2);
 });
 
@@ -63,7 +63,7 @@ test("only stale pairs are returned", () => {
 
 test("preferred categories are ordered first", () => {
   const tasks = plan({ households: [household({ likedCategories: ["faith-church"] }, { "arts-culture": 0.5 })] });
-  const focusSpecific = tasks.find((t) => t.windowKey === "focus" && t.categoryKey !== "general" && t.categoryKey !== CLOSE_CATEGORY_KEY && t.categoryKey !== CLASSES_CATEGORY_KEY)!;
+  const focusSpecific = tasks.find((t) => t.windowKey === "focus" && t.categoryKey !== "general" && t.categoryKey !== CLOSE_CATEGORY_KEY && t.categoryKey !== CLASSES_ADULTS_KEY && t.categoryKey !== CLASSES_FAMILY_KEY)!;
   assert.equal(focusSpecific.categories[0], "faith-church");
   assert.equal(focusSpecific.categories[1], "arts-culture");
 });
@@ -160,7 +160,7 @@ test("ticketed-shows task sits after the first focus task and respects lastSearc
   const t = tasks.find((x) => x.categoryKey === "ticketed-shows")!;
   assert.equal(t.windowKey, "near");
   assert.deepEqual(t.categories, ["music-performance", "arts-culture", "family-entertainment"]);
-  assert.equal(tasks.length, 15);
+  assert.equal(tasks.length, 16);
   assert.equal(t.maxTicketPrice, 500);
   const fresh = plan({ lastSearchAt: (w, k) => (w === "near" && k === "ticketed-shows" ? now.toISOString() : null) });
   assert.ok(!fresh.some((t) => t.categoryKey === "ticketed-shows"));
@@ -177,20 +177,22 @@ test("ticketed-shows prompt states the price ceiling", () => {
 });
 
 test("close-to-home tasks sit after general focus and after ticketed near, with cadence", () => {
-  const tasks = plan();
-  assert.deepEqual(tasks.slice(0, 6).map((t) => `${t.windowKey}|${t.categoryKey}`), [
+  const tasks = plan({ households: [household({}, {}, [35, 3])] });
+  assert.deepEqual(tasks.slice(0, 8).map((t) => `${t.windowKey}|${t.categoryKey}`), [
     "focus|general",
     "focus|close-to-home",
-    "focus|classes-lessons",
+    "focus|classes-adults",
+    "focus|classes-family",
     "near|ticketed-shows",
     "near|close-to-home",
-    "near|classes-lessons",
+    "near|classes-adults",
+    "near|classes-family",
   ]);
   assert.deepEqual(tasks[1].categories, [...EVENT_CATEGORIES]);
   assert.equal(tasks[1].fromDate, "2026-10-10");
   assert.equal(tasks[1].toDate, "2026-10-24");
-  assert.equal(tasks[4].fromDate, "2026-10-25");
-  assert.equal(tasks[4].toDate, "2026-11-24");
+  assert.equal(tasks[5].fromDate, "2026-10-25");
+  assert.equal(tasks[5].toDate, "2026-11-24");
   const fresh = plan({ lastSearchAt: (w, k) => (w === "focus" && k === CLOSE_CATEGORY_KEY ? now.toISOString() : null) });
   assert.ok(!fresh.some((t) => t.windowKey === "focus" && t.categoryKey === CLOSE_CATEGORY_KEY));
   assert.ok(fresh.some((t) => t.windowKey === "near" && t.categoryKey === CLOSE_CATEGORY_KEY));
@@ -221,26 +223,59 @@ test("prompt asks for isClass and the real first session date", () => {
   const prompt = buildSearchPrompt(task, { ...area, radiusKm: 25 }, [], "");
   assert.ok(prompt.includes("Set isClass to true"));
   for (const w of ["classes", "lessons", "courses", "workshops", "camps", "clinics", "leagues"]) assert.ok(prompt.includes(w), w);
-  assert.ok(prompt.includes("never the first day of the search range"));
+  assert.ok(prompt.includes("start is that date from the official page"));
   const props = (RAW_CANDIDATES_JSON_SCHEMA as any).properties.candidates.items.properties;
   assert.equal(props.isClass.type, "boolean");
   assert.ok(props.isClass.description.length > 0);
 });
 
-test("classes-lessons task follows close-to-home in focus and near; prompt covers adults, parent-and-child, kids", () => {
-  const tasks = plan();
-  assert.equal(CLASSES_CATEGORY_KEY, "classes-lessons");
-  const classes = tasks.filter((t) => t.categoryKey === CLASSES_CATEGORY_KEY);
-  assert.deepEqual(classes.map((t) => t.windowKey), ["focus", "near"]);
-  assert.deepEqual(classes[0].categories, [...EVENT_CATEGORIES]);
-  const withAddress = { ...area, radiusKm: 25, line1: "742 Evergreen Terrace" };
-  const prompt = buildSearchPrompt(classes[0], withAddress, [], "Family with a toddler (1-2)");
-  assert.ok(!prompt.toLowerCase().includes("family-friendly"));
-  assert.ok(prompt.startsWith("Find real, upcoming classes, lessons, courses, workshops and camps"));
-  for (const s of ["adults on their own", "tennis", "pottery", "yoga", "languages", "parent-and-child", "each child's age", "recurrenceText", "price", "registrationUrl", "ageBands", "ageMin/ageMax"]) {
-    assert.ok(prompt.includes(s), s);
+const ADULTS_FOCUS = "Focus: classes and lessons for adults on their own, with no child needed. Skip children's and parent-and-child classes. Check each kind of provider in this area: city parks and recreation catalogs, community college continuing education, tennis and swim clubs, gyms and yoga studios, pottery and art studios, dance schools, cooking schools, language and music schools.";
+const FAMILY_FOCUS = "Focus: classes and lessons for children, and parent-and-child classes. Check each kind of provider in this area: city parks and recreation catalogs, swim schools, gymnastics and dance studios, music and art schools, libraries, nature centres and community centres.";
+const COMMON = "Cover at least 6 different activities and aim for 15 to 25 candidates, one per class or course a provider offers. A class counts even when you cannot confirm exact session dates: for a class already running or offered year-round, set start to the first day of the date range, put the pattern in recurrenceText (or \"See the provider's website for times\"), and put the provider's class or sign-up page in registrationUrl. Omit any field you cannot confirm, but keep the candidate. Set ageMin to 18 for adult classes, and set ageBands to who attends the class, never to the parent of a child who attends. ageMin and ageMax are whole years, never months.";
+
+test("classes-adults and classes-family follow close-to-home; family needs a member under 18", () => {
+  assert.equal(CLASSES_ADULTS_KEY, "classes-adults");
+  assert.equal(CLASSES_FAMILY_KEY, "classes-family");
+  const noKids = plan({ households: [household({}, {}, [35, 38, 18])] });
+  assert.ok(!noKids.some((t) => t.categoryKey === CLASSES_FAMILY_KEY));
+  assert.deepEqual(noKids.filter((t) => t.categoryKey === CLASSES_ADULTS_KEY).map((t) => t.windowKey), ["focus", "near"]);
+  const tasks = plan({ households: [household({}, {}, [35, 17])] });
+  const family = tasks.filter((t) => t.categoryKey === CLASSES_FAMILY_KEY);
+  assert.deepEqual(family.map((t) => t.windowKey), ["focus", "near"]);
+  assert.deepEqual(family[0].categories, [...EVENT_CATEGORIES]);
+  assert.equal(plan({ households: [household({}, {}, [3])] }).length, 17);
+});
+
+test("class tasks run 30 days from their window start", () => {
+  const tasks = plan({ households: [household({}, {}, [3])], maxTasks: 20 });
+  for (const t of tasks.filter((x) => x.categoryKey === CLASSES_ADULTS_KEY || x.categoryKey === CLASSES_FAMILY_KEY)) {
+    if (t.windowKey === "focus") assert.deepEqual([t.fromDate, t.toDate], ["2026-10-10", "2026-11-09"]);
+    else assert.deepEqual([t.fromDate, t.toDate], ["2026-10-25", "2026-11-24"]);
   }
-  assert.ok(!prompt.includes("742 Evergreen"));
+  const far = plan({ households: [household({}, {}, [3])], maxTasks: 20 }).find((t) => t.categoryKey === CLOSE_CATEGORY_KEY && t.windowKey === "focus")!;
+  assert.equal(far.toDate, "2026-10-24");
+});
+
+test("classes prompts: adults has no audience line, family keeps it; shared text; no address", () => {
+  const tasks = plan({ households: [household({}, {}, [35, 2])] });
+  const adults = tasks.find((t) => t.categoryKey === CLASSES_ADULTS_KEY)!;
+  const family = tasks.find((t) => t.categoryKey === CLASSES_FAMILY_KEY)!;
+  const withAddress = { ...area, radiusKm: 25, line1: "742 Evergreen Terrace" };
+  const hint = "Family with a toddler (1-2)";
+  const ap = buildSearchPrompt(adults, withAddress, [], hint);
+  const fp = buildSearchPrompt(family, withAddress, [], hint);
+  for (const p of [ap, fp]) {
+    assert.ok(p.startsWith("Find real, upcoming classes, lessons, courses, workshops and camps that people can sign up for near Portland, Oregon, United States (within 25 km)."));
+    assert.ok(p.includes(COMMON));
+    assert.ok(!p.includes("Each candidate needs session dates"));
+    assert.ok(!p.includes("742 Evergreen"));
+    assert.ok(p.includes("If it is already running or offered year-round, start is the first day of the date range and the pattern goes in recurrenceText."));
+    assert.ok(!p.includes("never the first day of the search range"));
+  }
+  assert.ok(ap.includes(ADULTS_FOCUS));
+  assert.ok(!ap.includes("Audience:"));
+  assert.ok(fp.includes(FAMILY_FOCUS));
+  assert.ok(fp.includes("Audience: Family with a toddler (1-2)"));
   const general = buildSearchPrompt(task, { ...area, radiusKm: 25 }, [], "Family");
   assert.ok(!general.includes("adults on their own"));
 });

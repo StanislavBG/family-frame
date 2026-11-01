@@ -83,12 +83,15 @@ export const TICKETED_CATEGORY_KEY = "ticketed-shows";
 const TICKETED_CATEGORIES: EventCategory[] = ["music-performance", "arts-culture", "family-entertainment"];
 
 export const CLOSE_CATEGORY_KEY = "close-to-home";
-export const CLASSES_CATEGORY_KEY = "classes-lessons";
+export const CLASSES_ADULTS_KEY = "classes-adults";
+export const CLASSES_FAMILY_KEY = "classes-family";
+const CLASS_RANGE_DAYS = 30;
+const isClassKey = (k: string): boolean => k === CLASSES_ADULTS_KEY || k === CLASSES_FAMILY_KEY;
 
 const keyFor = (cats: EventCategory[]): string => [...cats].sort().join("+");
 
 export function planSearchTasks(input: PlanInput): SearchTask[] {
-  const maxTasks = input.maxTasks ?? 15;
+  const maxTasks = input.maxTasks ?? 17;
   const hs = input.households;
   if (hs.length === 0 || maxTasks <= 0) return [];
 
@@ -110,15 +113,19 @@ export function planSearchTasks(input: PlanInput): SearchTask[] {
   const ticketed = { key: TICKETED_CATEGORY_KEY, categories: TICKETED_CATEGORIES.filter((c) => !avoided(c)) };
   const close = { key: CLOSE_CATEGORY_KEY, categories: EVENT_CATEGORIES.filter((c) => !avoided(c)) };
   const closeG = close.categories.length > 0 ? close : undefined;
-  const classesG = closeG ? { key: CLASSES_CATEGORY_KEY, categories: close.categories } : undefined;
+  const hasKids = hs.some((h) => h.memberAges.some((a) => a < 18));
+  const adultsG = closeG ? { key: CLASSES_ADULTS_KEY, categories: close.categories } : undefined;
+  const familyG = closeG && hasKids ? { key: CLASSES_FAMILY_KEY, categories: close.categories } : undefined;
   const maxTicketPrice = Math.max(...hs.map((h) => h.preferences.maxTicketPrice));
   const order: { w: WindowKey; g: { key: string; categories: EventCategory[] } | undefined }[] = [
     { w: "focus", g: g0 },
     { w: "focus", g: closeG },
-    { w: "focus", g: classesG },
+    { w: "focus", g: adultsG },
+    { w: "focus", g: familyG },
     { w: "near", g: ticketed.categories.length > 0 ? ticketed : undefined },
     { w: "near", g: closeG },
-    { w: "near", g: classesG },
+    { w: "near", g: adultsG },
+    { w: "near", g: familyG },
     { w: "focus", g: specificGroups[0] },
     { w: "focus", g: specificGroups[1] },
     { w: "near", g: g0 },
@@ -147,7 +154,7 @@ export function planSearchTasks(input: PlanInput): SearchTask[] {
     tasks.push({
       windowKey: w,
       fromDate: isoDay(input.now, window.fromDay),
-      toDate: isoDay(input.now, window.toDay),
+      toDate: isClassKey(g.key) ? isoDay(input.now, window.fromDay + CLASS_RANGE_DAYS) : isoDay(input.now, window.toDay),
       categoryKey: g.key,
       categories: g.categories,
       ...(g.key === TICKETED_CATEGORY_KEY ? { maxTicketPrice } : {}),
@@ -180,7 +187,8 @@ export function buildSearchPrompt(
   const place = [area.city, area.region, area.country].filter((p): p is string => Boolean(p)).map(oneLine).join(", ");
   const known = knownEvents.slice(0, MAX_KNOWN);
   const isClose = task.categoryKey === CLOSE_CATEGORY_KEY;
-  const isClasses = task.categoryKey === CLASSES_CATEGORY_KEY;
+  const isAdults = task.categoryKey === CLASSES_ADULTS_KEY;
+  const isClasses = isClassKey(task.categoryKey);
   const lines = [
     isClasses
       ? `Find real, upcoming classes, lessons, courses, workshops and camps that people can sign up for near ${place} (within ${area.radiusKm} km).`
@@ -190,7 +198,7 @@ export function buildSearchPrompt(
     `Date range: ${task.fromDate} to ${task.toDate} (inclusive).`,
     `Categories to cover: ${task.categories.join(", ")}.`,
   ];
-  if (audienceHint.trim()) lines.push(`Audience: ${oneLine(audienceHint)}`);
+  if (!isAdults && audienceHint.trim()) lines.push(`Audience: ${oneLine(audienceHint)}`);
   if (task.categoryKey === TICKETED_CATEGORY_KEY) {
     lines.push(
       "Focus: ticketed concerts, shows and theatre suitable for the household's ages. Include price ranges (minPrice and maxPrice with currency) and ticket URLs for each.",
@@ -201,11 +209,10 @@ export function buildSearchPrompt(
   }
   if (isClasses) {
     lines.push(
-      "Focus: things to sign up for, for every member of the household. Cover three groups:",
-      "- adults on their own, with no child needed (for example tennis, swimming, pottery, painting, dance, yoga, cooking, languages, music);",
-      "- parent-and-child classes that a parent and a child attend together;",
-      "- classes, lessons and camps for each child's age, using the age bands in the audience line.",
-      "Each candidate needs session dates in occurrences (or the first session in start plus the pattern in recurrenceText, for example \"Saturdays 10:00-11:00 for 6 weeks\"), the price, registrationUrl, ageBands and ageMin/ageMax.",
+      isAdults
+        ? "Focus: classes and lessons for adults on their own, with no child needed. Skip children's and parent-and-child classes. Check each kind of provider in this area: city parks and recreation catalogs, community college continuing education, tennis and swim clubs, gyms and yoga studios, pottery and art studios, dance schools, cooking schools, language and music schools."
+        : "Focus: classes and lessons for children, and parent-and-child classes. Check each kind of provider in this area: city parks and recreation catalogs, swim schools, gymnastics and dance studios, music and art schools, libraries, nature centres and community centres.",
+      "Cover at least 6 different activities and aim for 15 to 25 candidates, one per class or course a provider offers. A class counts even when you cannot confirm exact session dates: for a class already running or offered year-round, set start to the first day of the date range, put the pattern in recurrenceText (or \"See the provider's website for times\"), and put the provider's class or sign-up page in registrationUrl. Omit any field you cannot confirm, but keep the candidate. Set ageMin to 18 for adult classes, and set ageBands to who attends the class, never to the parent of a child who attends. ageMin and ageMax are whole years, never months.",
     );
   }
   if (isClose) {
@@ -231,7 +238,7 @@ export function buildSearchPrompt(
     "- From the official or venue page, include the venue's full street address and postal code, and parking (cost, where, tips) and accessibility notes when stated; omit them if not found.",
     "- Put a sign-up or enrolment page (classes, courses, camps) in registrationUrl and a ticket-buying page in ticketUrl; never put one in the other field.",
     "- Set isClass to true for anything you sign up to attend: classes, lessons, courses, workshops, camps, clinics and leagues. Leave it out for one-off events and places.",
-    "- For a class, course or league, start is the real first session or term start date from the official page, never the first day of the search range.",
+    "- For a class, course or league with a real upcoming first session, start is that date from the official page. If it is already running or offered year-round, start is the first day of the date range and the pattern goes in recurrenceText.",
     "- Do not repeat events already known.",
   );
   if (known.length > 0) {
