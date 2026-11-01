@@ -50,6 +50,7 @@ import {
   activeFilterCount,
   dayAllowed,
   kindCounts,
+  isUpcoming,
   matchesFilters,
   parseBrowse,
   topicOptions,
@@ -340,6 +341,8 @@ function Overview({ day }: { day?: string }) {
 
   const live = useMemo(() => items.filter((i) => !i.withdrawn), [items]);
   const visible = useMemo(() => live.filter((i) => matchesFilters(i, filters, ctx)), [live, filters, ctx]);
+  const upcomingLive = useMemo(() => live.filter((i) => isUpcoming(i, today)), [live, today]);
+  const upcomingVisible = useMemo(() => visible.filter((i) => isUpcoming(i, today)), [visible, today]);
   const trips = useMemo(() => visible.filter(isTripIdea), [visible]);
   const { dated, calendarItems, classItems } = useMemo(
     () => splitClasses(visible, filters.kind, today),
@@ -457,7 +460,7 @@ function Overview({ day }: { day?: string }) {
 
   return (
     <div
-      className={cn("space-y-3 p-3 lg:p-4", PAGE)}
+      className={cn("min-h-full space-y-3 p-3 lg:p-4", PAGE)}
       data-testid="events-overview"
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -493,8 +496,8 @@ function Overview({ day }: { day?: string }) {
 
       <EventsFilterBar
         groups={groups}
-        shown={visible.length}
-        total={live.length}
+        shown={upcomingVisible.length}
+        total={upcomingLive.length}
         activeCount={activeFilterCount(filters)}
         onClear={clearFilters}
       />
