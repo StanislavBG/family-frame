@@ -83,11 +83,12 @@ export const TICKETED_CATEGORY_KEY = "ticketed-shows";
 const TICKETED_CATEGORIES: EventCategory[] = ["music-performance", "arts-culture", "family-entertainment"];
 
 export const CLOSE_CATEGORY_KEY = "close-to-home";
+export const CLASSES_CATEGORY_KEY = "classes-lessons";
 
 const keyFor = (cats: EventCategory[]): string => [...cats].sort().join("+");
 
 export function planSearchTasks(input: PlanInput): SearchTask[] {
-  const maxTasks = input.maxTasks ?? 13;
+  const maxTasks = input.maxTasks ?? 15;
   const hs = input.households;
   if (hs.length === 0 || maxTasks <= 0) return [];
 
@@ -109,12 +110,15 @@ export function planSearchTasks(input: PlanInput): SearchTask[] {
   const ticketed = { key: TICKETED_CATEGORY_KEY, categories: TICKETED_CATEGORIES.filter((c) => !avoided(c)) };
   const close = { key: CLOSE_CATEGORY_KEY, categories: EVENT_CATEGORIES.filter((c) => !avoided(c)) };
   const closeG = close.categories.length > 0 ? close : undefined;
+  const classesG = closeG ? { key: CLASSES_CATEGORY_KEY, categories: close.categories } : undefined;
   const maxTicketPrice = Math.max(...hs.map((h) => h.preferences.maxTicketPrice));
   const order: { w: WindowKey; g: { key: string; categories: EventCategory[] } | undefined }[] = [
     { w: "focus", g: g0 },
     { w: "focus", g: closeG },
+    { w: "focus", g: classesG },
     { w: "near", g: ticketed.categories.length > 0 ? ticketed : undefined },
     { w: "near", g: closeG },
+    { w: "near", g: classesG },
     { w: "focus", g: specificGroups[0] },
     { w: "focus", g: specificGroups[1] },
     { w: "near", g: g0 },
@@ -176,8 +180,11 @@ export function buildSearchPrompt(
   const place = [area.city, area.region, area.country].filter((p): p is string => Boolean(p)).map(oneLine).join(", ");
   const known = knownEvents.slice(0, MAX_KNOWN);
   const isClose = task.categoryKey === CLOSE_CATEGORY_KEY;
+  const isClasses = task.categoryKey === CLASSES_CATEGORY_KEY;
   const lines = [
-    isClose
+    isClasses
+      ? `Find real, upcoming classes, lessons, courses, workshops and camps that people can sign up for near ${place} (within ${area.radiusKm} km).`
+      : isClose
       ? `Find real, upcoming family-friendly things to do in ${place} itself or within about ${CLOSE_TO_HOME_MILES} miles (${Math.round(CLOSE_TO_HOME_KM)} km) of it.`
       : `Find real, upcoming family-friendly events near ${place} (within ${area.radiusKm} km).`,
     `Date range: ${task.fromDate} to ${task.toDate} (inclusive).`,
@@ -191,6 +198,15 @@ export function buildSearchPrompt(
     if (task.maxTicketPrice !== undefined) {
       lines.push(`Price ceiling: skip events whose cheapest ticket costs more than ${task.maxTicketPrice}.`);
     }
+  }
+  if (isClasses) {
+    lines.push(
+      "Focus: things to sign up for, for every member of the household. Cover three groups:",
+      "- adults on their own, with no child needed (for example tennis, swimming, pottery, painting, dance, yoga, cooking, languages, music);",
+      "- parent-and-child classes that a parent and a child attend together;",
+      "- classes, lessons and camps for each child's age, using the age bands in the audience line.",
+      "Each candidate needs session dates in occurrences (or the first session in start plus the pattern in recurrenceText, for example \"Saturdays 10:00-11:00 for 6 weeks\"), the price, registrationUrl, ageBands and ageMin/ageMax.",
+    );
   }
   if (isClose) {
     lines.push(
