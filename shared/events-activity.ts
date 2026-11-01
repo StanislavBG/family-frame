@@ -49,13 +49,36 @@ const KID_BANDS: AgeBand[] = ["baby", "toddler", "preschool", "school-age", "tee
 const ADULT_BANDS: AgeBand[] = ["adult", "senior"];
 const ADULT_TITLE = /\b(adults?|seniors?)\b/i;
 
+const CHILD_ONLY_BANDS: AgeBand[] = ["baby", "toddler", "preschool", "school-age"];
+
+function childrenOnly(bands: AgeBand[] | undefined): boolean {
+  return !!bands && bands.length > 0 && bands.every((b) => CHILD_ONLY_BANDS.includes(b));
+}
+
+/**
+ * Ages in years. Searches sometimes return months for children's classes
+ * (band toddler, ages 24-36). When every band is a child band and the numbers
+ * cannot be years (max > 17 or min >= 13), convert; otherwise unchanged.
+ */
+export function agesInYears(audience: Audience): { ageMin?: number; ageMax?: number } {
+  const { ageBands, ageMin, ageMax } = audience;
+  const out: { ageMin?: number; ageMax?: number } = {};
+  const months =
+    childrenOnly(ageBands) &&
+    ((ageMax !== undefined && ageMax > 17) || (ageMin !== undefined && ageMin >= 13));
+  if (ageMin !== undefined) out.ageMin = months ? Math.floor(ageMin / 12) : ageMin;
+  if (ageMax !== undefined) out.ageMax = months ? Math.ceil(ageMax / 12) : ageMax;
+  return out;
+}
+
 export function audienceGroup(event: Pick<FfEvent, "title" | "audience">): AudienceGroup {
-  const { ageBands, ageMin, ageMax } = event.audience;
+  const { ageBands } = event.audience;
+  const { ageMin, ageMax } = agesInYears(event.audience);
   const bands = ageBands ?? [];
   if (bands.includes("all-ages") && ageMin === undefined && ageMax === undefined) {
     return ADULT_TITLE.test(event.title ?? "") ? "adults" : "everyone";
   }
-  if (ageMin !== undefined && ageMin >= 16) return "adults";
+  if (ageMin !== undefined && ageMin >= 16 && !childrenOnly(bands)) return "adults";
   const kid = bands.some((b) => KID_BANDS.includes(b));
   const adult = bands.some((b) => ADULT_BANDS.includes(b));
   if (kid && adult) return "everyone";
@@ -75,7 +98,7 @@ const BAND_RANGES: Record<AgeBand, [number, number]> = {
 };
 
 export function suitsAge(audience: Audience, age: number): boolean {
-  const { ageMin, ageMax } = audience;
+  const { ageMin, ageMax } = agesInYears(audience);
   if (ageMin !== undefined || ageMax !== undefined) {
     return (ageMin === undefined || age >= ageMin) && (ageMax === undefined || age <= ageMax);
   }

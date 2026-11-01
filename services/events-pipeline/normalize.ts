@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { agesInYears } from "../../shared/events-activity";
 import { z } from "zod";
 import {
   ADMISSION_KINDS,
@@ -434,6 +435,8 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
     verification: { lastCheckedAt: nowIso, checkCount: 0, confidence: 0.6 },
     firstSeenAt: nowIso,
   };
+
+  Object.assign(event.audience, agesInYears(event.audience));
 
   event.cost.admission = deriveAdmission(event.cost, category);
   event.fingerprint = fingerprint(event);

@@ -241,3 +241,20 @@ test("class merge takes the incoming schedule only when its window ends later", 
   const q = ok({ ...base, end: "2026-10-24T20:00:00-07:00" });
   assert.deepEqual(mergeDuplicate(p, q).schedule, p.schedule);
 });
+
+test("ages given in months are stored in years", () => {
+  const cases: [string[], number, number, number, number][] = [
+    [["toddler"], 24, 36, 2, 3],
+    [["toddler"], 16, 35, 1, 3],
+    [["toddler"], 4, 24, 0, 2],
+    [["baby", "toddler"], 0, 36, 0, 3],
+    [["toddler"], 18, 30, 1, 3],
+    [["school-age"], 6, 12, 6, 12],
+  ];
+  for (const [ageBands, ageMin, ageMax, wantMin, wantMax] of cases) {
+    const e = ok({ ...base, ageBands, ageMin, ageMax });
+    assert.equal(e.audience.ageMin, wantMin);
+    assert.equal(e.audience.ageMax, wantMax);
+    assert.equal(ffEventSchema.safeParse(e).success, true);
+  }
+});

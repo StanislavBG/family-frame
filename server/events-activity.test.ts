@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CLASS_TAG, ageOn, audienceGroup, isClassOrLesson, isClassTitle, isOngoingClass,
+  CLASS_TAG, ageOn, agesInYears, audienceGroup, isClassOrLesson, isClassTitle, isOngoingClass,
   isSignUpActivity, needsSignUp, signUpUrl, suitsAge, suitsPeople,
 } from "../shared/events-activity";
 
@@ -82,4 +82,27 @@ test("ageOn", () => {
   assert.equal(ageOn(undefined, "2026-06-15"), null);
   assert.equal(ageOn("bad", "2026-06-15"), null);
   assert.equal(ageOn("2030-01-01", "2026-06-15"), null);
+});
+
+test("agesInYears converts months for children-only bands", () => {
+  const f = (ageBands: any[], ageMin?: number, ageMax?: number) => agesInYears({ ageBands, ageMin, ageMax });
+  assert.deepEqual(f(["toddler"], 24, 36), { ageMin: 2, ageMax: 3 });
+  assert.deepEqual(f(["toddler"], 16, 35), { ageMin: 1, ageMax: 3 });
+  assert.deepEqual(f(["toddler"], 4, 24), { ageMin: 0, ageMax: 2 });
+  assert.deepEqual(f(["baby", "toddler"], 0, 36), { ageMin: 0, ageMax: 3 });
+  assert.deepEqual(f(["toddler"], 18, 30), { ageMin: 1, ageMax: 3 });
+  assert.deepEqual(f(["school-age"], 6, 12), { ageMin: 6, ageMax: 12 });
+  assert.deepEqual(f(["teen"], 13, 17), { ageMin: 13, ageMax: 17 });
+  assert.deepEqual(f(["adult"], 18), { ageMin: 18 });
+  assert.deepEqual(f([], 24, 36), { ageMin: 24, ageMax: 36 });
+});
+
+test("months-valued toddler class is kids and suits ages 2 and 3, not 40", () => {
+  const a = { ageBands: ["toddler"] as any, ageMin: 24, ageMax: 36 };
+  assert.equal(audienceGroup({ title: "Music class", audience: a } as any), "kids");
+  assert.equal(audienceGroup({ title: "x", audience: { ageBands: ["toddler"] as any, ageMin: 18 } } as any), "kids");
+  assert.equal(suitsAge(a, 2), true);
+  assert.equal(suitsAge(a, 3), true);
+  assert.equal(suitsAge(a, 40), false);
+  assert.equal(audienceGroup({ title: "x", audience: { ageBands: ["adult"] as any, ageMin: 18 } } as any), "adults");
 });
