@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireLock, acquireLockWithWait, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
+import { addUsage, acquireLock, acquireLockWithWait, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
 import { openEventsDb, startRun, finishRun } from "./db";
 import type { FfClient } from "./ff-client";
 import type { Notice } from "./notify";
@@ -399,4 +399,43 @@ test("discover sends no daily summary notice but all does", async () => {
   assert.equal(await main(["all"], h.deps), 0);
   assert.equal(h.notices.length, 1);
   assert.match(h.notices[0].title, /daily run finished/);
+});
+
+const mkUsage = (sessions: number, cost: number) => ({ sessions, ok: sessions, refused: 0, failures: {}, costUsd: cost, totalMs: sessions * 10 });
+
+test("addUsage sums sessions, cost and failures", () => {
+  const a = { ...mkUsage(2, 0.1), failures: { timeout: 1 } };
+  const b = { ...mkUsage(3, 0.2), failures: { timeout: 2 } };
+  const sum = addUsage(a as never, b as never);
+  assert.equal(sum.sessions, 5);
+  assert.equal(sum.ok, 5);
+  assert.ok(Math.abs(sum.costUsd - 0.3) < 1e-9);
+  assert.equal((sum.failures as Record<string, number>).timeout, 3);
+});
+
+test("all builds one runner per phase; trips run even when discover and refresh are out of budget", async () => {
+  const h = notifyHarness();
+  const built: number[] = [];
+  const calls: string[] = [];
+  h.deps.makeRunner = () => {
+    const idx = built.length;
+    built.push(idx);
+    const label = ["discover", "refresh", "trips"][idx];
+    return {
+      run: async () => {
+        calls.push(label);
+        return { ok: false, reason: "budget-exhausted", detail: "x" } as never;
+      },
+      usage: () => mkUsage(idx === 2 ? 1 : 45, 0.1 * (idx + 1)) as never,
+    };
+  };
+  assert.equal(await main(["all"], h.deps), 0);
+  assert.equal(built.length, 3);
+  const out = JSON.parse(h.lines[h.lines.length - 1]);
+  assert.equal(out.haiku.sessions, 91);
+  const db = openEventsDb(h.deps.env!.EVENTS_DB_PATH!);
+  const row = db.prepare("SELECT stats_json FROM runs WHERE kind = 'refresh'").get() as { stats_json: string };
+  db.close();
+  assert.equal(JSON.parse(row.stats_json).haiku.sessions, 45);
+  assert.ok(out.trips, "trips stage ran");
 });

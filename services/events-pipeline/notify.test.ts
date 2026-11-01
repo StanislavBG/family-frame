@@ -169,3 +169,26 @@ test("sendNotice does nothing when EVENTS_NOTIFY=off", () => {
   );
   assert.equal(called, false);
 });
+
+test("trips stats appear in the daily summary body", () => {
+  const { notices } = planNotices(
+    "all",
+    null,
+    { ok: true, summary: { published: 1, candidates: 2, errors: 0 }, trips: { active: 3, created: 1, failed: 0 } },
+    NOW,
+  );
+  assert.equal(notices.length, 1);
+  assert.match(notices[0].body, /3 active, 1 new/);
+});
+
+test("trips.failed > 0 adds a normal 'Events trip ideas failed' notice", () => {
+  const { notices } = planNotices(
+    "all",
+    null,
+    { ok: true, summary: { published: 1, candidates: 2, errors: 0 }, trips: { active: 0, created: 0, failed: 2 } },
+    NOW,
+  );
+  const n = notices.find((x) => x.title === "Events trip ideas failed");
+  assert.ok(n);
+  assert.equal(n.urgency, "normal");
+});

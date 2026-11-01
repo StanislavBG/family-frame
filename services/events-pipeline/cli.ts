@@ -145,18 +145,17 @@ export async function acquireLockWithWait(
 const LOCK_WAIT_ATTEMPTS = 40;
 const LOCK_WAIT_INTERVAL_MS = 30_000;
 
-/** Usage accrued since `before` (the runner's meter is cumulative across discover and refresh in `all` mode). */
-export function usageSince(now: HaikuUsage, before?: HaikuUsage): HaikuUsage {
-  if (!before) return now;
-  const failures = { ...now.failures };
-  for (const k of Object.keys(failures) as (keyof HaikuUsage["failures"])[]) failures[k] -= before.failures[k] ?? 0;
+/** Sum two usage meters (an `all` run has one runner per phase). */
+export function addUsage(a: HaikuUsage, b: HaikuUsage): HaikuUsage {
+  const failures = { ...a.failures };
+  for (const k of Object.keys(b.failures) as (keyof HaikuUsage["failures"])[]) failures[k] = (failures[k] ?? 0) + (b.failures[k] ?? 0);
   return {
-    sessions: now.sessions - before.sessions,
-    ok: now.ok - before.ok,
-    refused: now.refused - before.refused,
+    sessions: a.sessions + b.sessions,
+    ok: a.ok + b.ok,
+    refused: a.refused + b.refused,
     failures,
-    costUsd: now.costUsd - before.costUsd,
-    totalMs: now.totalMs - before.totalMs,
+    costUsd: a.costUsd + b.costUsd,
+    totalMs: a.totalMs + b.totalMs,
   };
 }
 
@@ -367,20 +366,24 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
       return 0;
     }
 
-    const runner = buildRunner();
+    const wantsDiscover = args.mode === "discover" || args.mode === "all";
+    const wantsRefresh = args.mode === "refresh" || args.mode === "all";
+    const discoverRunner = wantsDiscover ? buildRunner() : undefined;
+    const refreshRunner = wantsRefresh ? buildRunner() : undefined;
+    const tripsRunner = args.mode === "all" ? buildRunner() : undefined;
     const geocoder = buildGeocoder();
     const stats: { mode: Mode; dryRun: boolean; discover?: DiscoverStats; refresh?: DispatchStats | { due: number }; haiku?: HaikuUsage; ms?: number; pruned?: PruneCounts; trips?: TripRunStats } = {
       mode: args.mode,
       dryRun: args.dryRun,
     };
 
-    let afterDiscover: HaikuUsage | undefined;
-    if (args.mode === "discover" || args.mode === "all") {
+    const usages: HaikuUsage[] = [];
+    if (discoverRunner) {
       const discoverRunId = randomUUID();
       stats.discover = await runDiscover({
         db,
         ff,
-        runner,
+        runner: discoverRunner,
         geocoder,
         now: now(),
         runId: discoverRunId,
@@ -388,18 +391,21 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
         onlyHouseholdId: args.householdId,
         limits: { maxSearches: args.maxSessions },
       });
-      afterDiscover = runner.usage?.();
-      if (afterDiscover) finishRun(db, discoverRunId, now().toISOString(), { ...stats.discover, haiku: afterDiscover });
+      const discoverUsage = discoverRunner.usage?.();
+      if (discoverUsage) {
+        usages.push(discoverUsage);
+        finishRun(db, discoverRunId, now().toISOString(), { ...stats.discover, haiku: discoverUsage });
+      }
     }
-    if (args.mode === "refresh" || args.mode === "all") {
+    if (refreshRunner) {
       if (args.dryRun) {
         stats.refresh = { due: listDueForRecheck(db, now().toISOString(), args.maxSessions).length };
       } else {
         const runId = startRun(db, "refresh", now().toISOString());
         try {
-          stats.refresh = await runDispatch({ db, runner, ff, now: now(), runId, maxChecks: args.maxSessions });
-          const total = runner.usage?.();
-          const refreshHaiku = total && usageSince(total, afterDiscover);
+          stats.refresh = await runDispatch({ db, runner: refreshRunner, ff, now: now(), runId, maxChecks: args.maxSessions });
+          const refreshHaiku = refreshRunner.usage?.();
+          if (refreshHaiku) usages.push(refreshHaiku);
           finishRun(db, runId, now().toISOString(), refreshHaiku ? { ...stats.refresh, haiku: refreshHaiku } : stats.refresh);
         } catch (e) {
           finishRun(db, runId, now().toISOString(), null, (e as Error).message);
@@ -407,11 +413,19 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
         }
       }
     }
-    if (args.mode === "all") {
-      stats.trips = await runTrips({ db, ff, runner, now: now(), runId: randomUUID(), dryRun: args.dryRun, onlyHouseholdId: args.householdId });
+    if (tripsRunner) {
+      try {
+        stats.trips = await runTrips({ db, ff, runner: tripsRunner, now: now(), runId: randomUUID(), dryRun: args.dryRun, onlyHouseholdId: args.householdId });
+      } catch (e) {
+        // A trip failure is reported in the notice; it never changes the exit code.
+        err(`events-pipeline trips failed: ${e instanceof Error ? e.message : String(e)}`);
+        stats.trips = { households: 0, active: 0, refreshed: 0, created: 0, retired: 0, failed: 1 };
+      }
+      const tripsUsage = tripsRunner.usage?.();
+      if (tripsUsage) usages.push(tripsUsage);
     }
     if (args.mode === "all" && !args.dryRun) stats.pruned = pruneLocalState(db, now().toISOString());
-    stats.haiku = runner.usage?.();
+    stats.haiku = usages.length > 0 ? usages.reduce(addUsage) : undefined;
     stats.ms = Date.now() - t0;
     if (!args.dryRun) {
       const d = stats.discover;
@@ -426,6 +440,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
             errors: d?.errors ?? 0,
             ...(stats.haiku ? { costUsd: stats.haiku.costUsd } : {}),
           },
+          ...(stats.trips ? { trips: { active: stats.trips.active, created: stats.trips.created, failed: stats.trips.failed } } : {}),
         },
         now().toISOString(),
         notify,

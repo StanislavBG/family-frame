@@ -33,6 +33,7 @@ export type JobOutcome =
         error?: string;
       }[];
       summary?: { published: number; candidates: number; errors: number; costUsd?: number };
+      trips?: { active: number; created: number; failed: number };
     }
   | { ok: false; error: string };
 
@@ -115,8 +116,17 @@ export function planNotices(
     const s = outcome.summary;
     notices.push({
       title: "Events daily run finished",
-      body: `Published ${s.published} of ${s.candidates} candidates, ${s.errors} errors${cost(s.costUsd)}`,
+      body: `Published ${s.published} of ${s.candidates} candidates, ${s.errors} errors${cost(s.costUsd)}${
+        outcome.trips ? `. Trip ideas: ${outcome.trips.active} active, ${outcome.trips.created} new` : ""
+      }`,
       urgency: "low",
+    });
+  }
+  if (outcome.trips && outcome.trips.failed > 0) {
+    notices.push({
+      title: "Events trip ideas failed",
+      body: `${outcome.trips.failed} trip idea${outcome.trips.failed === 1 ? "" : "s"} failed this run (${outcome.trips.active} active, ${outcome.trips.created} new).`,
+      urgency: "normal",
     });
   }
   return { notices, next: CLEARED };
