@@ -52,6 +52,7 @@ export const rawCandidateSchema = z
     maxPrice: z.number().min(0).optional(),
     currency: z.string().max(8).optional(),
     ticketUrl: httpsUrl.optional(),
+    registrationUrl: httpsUrl.optional(),
     registrationRequired: z.boolean().optional(),
     ageMin: z.number().int().min(0).max(120).optional(),
     ageMax: z.number().int().min(0).max(120).optional(),
@@ -120,6 +121,7 @@ export const RAW_CANDIDATES_JSON_SCHEMA = {
           maxPrice: num,
           currency: str(8),
           ticketUrl: urlProp,
+          registrationUrl: urlProp,
           registrationRequired: bool,
           ageMin: { type: "integer", minimum: 0, maximum: 120 },
           ageMax: { type: "integer", minimum: 0, maximum: 120 },
@@ -392,8 +394,9 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
       ...(c.maxPrice !== undefined ? { maxPrice: c.maxPrice } : {}),
       ...(opt(c.priceText) ? { priceText: opt(c.priceText) } : {}),
       ticketRequired: !!c.ticketUrl,
-      registrationRequired: c.registrationRequired ?? false,
+      registrationRequired: c.registrationRequired ?? !!c.registrationUrl,
       ...(c.ticketUrl ? { ticketUrl: c.ticketUrl } : {}),
+      ...(c.registrationUrl ? { registrationUrl: c.registrationUrl } : {}),
     },
     audience: {
       ageBands: c.ageBands && c.ageBands.length > 0 ? Array.from(new Set(c.ageBands)) : ["all-ages"],
@@ -471,7 +474,13 @@ export function mergeDuplicate(existing: FfEvent, incoming: FfEvent): FfEvent {
 
   const richerCost = completeness(incoming.cost) > completeness(existing.cost) ? incoming.cost : existing.cost;
   const admission = incoming.cost.admission ?? richerCost.admission;
-  const cost = admission ? { ...richerCost, admission } : richerCost;
+  const otherCost = richerCost === incoming.cost ? existing.cost : incoming.cost;
+  const registrationUrl = richerCost.registrationUrl ?? otherCost.registrationUrl;
+  const cost = {
+    ...richerCost,
+    ...(admission ? { admission } : {}),
+    ...(registrationUrl ? { registrationUrl } : {}),
+  };
   const location =
     completeness(incoming.location) > completeness(existing.location) ? incoming.location : existing.location;
 

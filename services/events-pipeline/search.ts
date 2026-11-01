@@ -213,6 +213,7 @@ export function buildSearchPrompt(
     "- Return distinct events: no duplicates of the same event on different listing sites.",
     "- Include recurring family activities (library story times, farm days, museum free days, nature programs) as one candidate with `occurrences` listing the upcoming dates.",
     "- From the official or venue page, include the venue's full street address and postal code, and parking (cost, where, tips) and accessibility notes when stated; omit them if not found.",
+    "- Put a sign-up or enrolment page (classes, courses, camps) in registrationUrl and a ticket-buying page in ticketUrl; never put one in the other field.",
     "- Do not repeat events already known.",
   );
   if (known.length > 0) {

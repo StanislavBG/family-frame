@@ -207,3 +207,10 @@ test("close-to-home prompt asks for things within about 5 miles; general prompt 
   assert.ok(general.includes("events near Portland, Oregon, United States (within 30 km)."));
   assert.ok(!general.includes("Focus: close to home"));
 });
+
+test("output rules separate registrationUrl from ticketUrl", () => {
+  const props = RAW_CANDIDATES_JSON_SCHEMA.properties.candidates.items.properties as Record<string, unknown>;
+  assert.ok("registrationUrl" in props);
+  const prompt = buildSearchPrompt(task, { ...area, radiusKm: 25 }, [], "Family");
+  assert.match(prompt, /sign-up or enrolment page.*registrationUrl.*ticket-buying page in ticketUrl/);
+});

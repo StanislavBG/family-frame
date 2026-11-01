@@ -161,3 +161,24 @@ test("recurrenceText over 200 characters is clipped at a word boundary with an e
   assert.match(t.slice(0, -1), /(Saturday|Sunday|morning|Every|and)$/);
   assert.equal(ffEventSchema.safeParse(e).success, true);
 });
+
+test("registrationUrl is copied and implies registrationRequired", () => {
+  const url = "https://club.example/enrol";
+  assert.equal(rawCandidateSchema.safeParse({ ...base, registrationUrl: "http://club.example" }).success, false);
+  const e = ok({ ...base, registrationUrl: url });
+  assert.equal(e.cost.registrationUrl, url);
+  assert.equal(e.cost.registrationRequired, true);
+  assert.equal(ok({ ...base, registrationUrl: url, registrationRequired: false }).cost.registrationRequired, false);
+  assert.equal("registrationUrl" in ok(base).cost, false);
+});
+
+test("mergeDuplicate keeps registrationUrl from either side", () => {
+  const url = "https://club.example/enrol";
+  const plain = ok(base);
+  const withUrl = ok({ ...base, registrationUrl: url });
+  assert.equal(mergeDuplicate(plain, withUrl).cost.registrationUrl, url);
+  assert.equal(mergeDuplicate(withUrl, plain).cost.registrationUrl, url);
+  const richPlain = ok({ ...base, minPrice: 5, maxPrice: 9, priceText: "$5-9", currency: "USD" });
+  assert.equal(mergeDuplicate(richPlain, withUrl).cost.registrationUrl, url);
+  assert.equal(mergeDuplicate(withUrl, richPlain).cost.registrationUrl, url);
+});
