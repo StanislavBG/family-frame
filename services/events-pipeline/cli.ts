@@ -15,7 +15,7 @@ import { runTrips, type TripRunStats } from "./trips-run";
 import { runWatch, type WatchResult } from "./watch";
 
 const MIN_NODE = [22, 13] as const;
-const LOCK_STALE_MS = 3 * 3600000;
+const LOCK_STALE_MS = 4.5 * 3600000;
 const DAY_MS = 86_400_000;
 const DEFAULT_MAX_SESSIONS = 45;
 const DEFAULT_WATCH_MAX_SESSIONS = 20;
@@ -96,7 +96,7 @@ export function readConfig(env: NodeJS.ProcessEnv, mode: Mode, home: string): Cl
   };
 }
 
-/** Exclusive lock file; a lock older than 2 h is treated as stale and replaced. Returns a release fn or null if held. */
+/** Exclusive lock file; a lock older than 4.5 h is treated as stale and replaced. Returns a release fn or null if held. */
 export function acquireLock(path: string, now: number = Date.now()): (() => void) | null {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {

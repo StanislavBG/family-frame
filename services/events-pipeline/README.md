@@ -54,7 +54,7 @@ Each run prints one JSON stats line and exits 0 (ok, or skipped because another 
 
 ## Locking
 
-An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapping; a lock older than 2 hours is treated as stale and replaced.
+An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapping; a lock older than 4.5 hours is treated as stale and replaced (the daily run is limited to 4 hours).
 
 ## Cost caps
 
