@@ -108,6 +108,41 @@ test("listDueForRecheck orders by next_check_at and skips ended/cancelled", () =
   db.close();
 });
 
+test("listDueForRecheck checks held upcoming events first, then upcoming, then the rest", () => {
+  const db = openEventsDb(":memory:");
+  const sched = (start: string, end?: string, occ: { start: string; end?: string }[] = []) => ({
+    ...SAMPLE_EVENT.schedule,
+    start,
+    end,
+    occurrences: occ,
+  });
+  const past = sched("2026-10-01T10:00:00-07:00", "2026-10-01T12:00:00-07:00");
+  const future = sched("2026-11-20T10:00:00-08:00", "2026-11-20T12:00:00-08:00");
+  upsertEvent(db, ev("unheld-old", { schedule: future }), "p", "2026-10-01T00:00:00.000Z");
+  upsertEvent(db, ev("held-new", { schedule: future }), "p", "2026-10-20T00:00:00.000Z");
+  upsertEvent(db, ev("held-past", { schedule: past }), "p", "2026-09-01T00:00:00.000Z");
+  upsertEvent(db, ev("unheld-past", { schedule: past }), "p", "2026-09-02T00:00:00.000Z");
+  upsertEvent(
+    db,
+    ev("held-occ", {
+      schedule: sched("2026-10-01T10:00:00-07:00", undefined, [{ start: "2026-11-05T10:00:00-08:00" }]),
+    }),
+    "p",
+    "2026-10-25T00:00:00.000Z",
+  );
+  upsertEvent(db, ev("date-only", { schedule: sched("2026-11-02", "2026-11-02") }), "p", "2026-10-26T00:00:00.000Z");
+  for (const id of ["held-new", "held-past", "held-occ"]) {
+    recordRecommendation(db, { householdId: "h1", eventId: id, publishedAt: "t", publishedHash: "x" });
+  }
+  const now = "2026-11-02T08:00:00.000Z";
+  assert.deepEqual(
+    listDueForRecheck(db, now, 10).map((e) => e.id),
+    ["held-new", "held-occ", "unheld-old", "date-only", "held-past", "unheld-past"],
+  );
+  assert.deepEqual(listDueForRecheck(db, now, 3).map((e) => e.id), ["held-new", "held-occ", "unheld-old"]);
+  db.close();
+});
+
 test("lastSearchAt returns the latest timestamp", () => {
   const db = openEventsDb(":memory:");
   assert.equal(lastSearchAt(db, "p", "2w", "parks"), null);

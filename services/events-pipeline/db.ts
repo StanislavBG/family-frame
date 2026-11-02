@@ -196,17 +196,39 @@ export function listEventsInArea(db: EventsDb, areaKey: string, fromIso: string,
     .map((r) => JSON.parse(str(r.json)) as FfEvent);
 }
 
-/** Events whose next_check_at has passed, oldest first, skipping ended or cancelled ones. */
+/** True when the event's end, start or any occurrence start/end is on or after nowIso's calendar date. */
+export function isStillToCome(event: FfEvent, nowIso: string): boolean {
+  const today = nowIso.slice(0, 10);
+  const s = event.schedule;
+  const values = [s.end, s.start, ...(s.occurrences ?? []).flatMap((o) => [o.start, o.end])];
+  return values.some((v) => typeof v === "string" && v.slice(0, 10) >= today);
+}
+
+/**
+ * Events whose next_check_at has passed, skipping ended or cancelled ones.
+ * Order: held by a household and still to come, other still to come, the rest;
+ * within a group oldest next_check_at first, then id. The limit applies last.
+ */
 export function listDueForRecheck(db: EventsDb, nowIso: string, limit: number): FfEvent[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT json FROM events
-       WHERE next_check_at <= ? AND status NOT IN ('ended', 'cancelled')
-       ORDER BY next_check_at, id
-       LIMIT ?`,
+      `SELECT id, json, next_check_at,
+         EXISTS (SELECT 1 FROM recommendations r WHERE r.event_id = events.id) AS held
+       FROM events
+       WHERE next_check_at <= ? AND status NOT IN ('ended', 'cancelled')`,
     )
-    .all(nowIso, limit)
-    .map((r) => JSON.parse(str(r.json)) as FfEvent);
+    .all(nowIso);
+  const ranked = rows.map((r) => {
+    const event = JSON.parse(str(r.json)) as FfEvent;
+    const upcoming = isStillToCome(event, nowIso);
+    const rank = upcoming ? (Number(r.held) ? 0 : 1) : 2;
+    return { event, rank, next: str(r.next_check_at), id: str(r.id) };
+  });
+  ranked.sort(
+    (a, b) =>
+      a.rank - b.rank || (a.next < b.next ? -1 : a.next > b.next ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+  return ranked.slice(0, Math.max(0, limit)).map((x) => x.event);
 }
 
 // ---- households ----
