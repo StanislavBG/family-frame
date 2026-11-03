@@ -1,6 +1,7 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { areaKey as areaKeyOf, canonicalAreaKeyFromLegacy } from "./geo";
+import { hasOfficialSource } from "../../shared/events-sources";
 import { ffEventSchema, type FfEvent, type HouseholdResponse, type RecommendationInput } from "../../shared/events";
 
 export type EventsDb = DatabaseSync;
@@ -206,7 +207,8 @@ export function isStillToCome(event: FfEvent, nowIso: string): boolean {
 
 /**
  * Events whose next_check_at has passed, skipping ended or cancelled ones.
- * Order: held by a household and still to come, other still to come, the rest;
+ * Order: held, still to come and without an official source; other held and still to come;
+ * other still to come; the rest;
  * within a group oldest next_check_at first, then id. The limit applies last.
  */
 export function listDueForRecheck(db: EventsDb, nowIso: string, limit: number): FfEvent[] {
@@ -221,7 +223,8 @@ export function listDueForRecheck(db: EventsDb, nowIso: string, limit: number): 
   const ranked = rows.map((r) => {
     const event = JSON.parse(str(r.json)) as FfEvent;
     const upcoming = isStillToCome(event, nowIso);
-    const rank = upcoming ? (Number(r.held) ? 0 : 1) : 2;
+    const held = Number(r.held) > 0;
+    const rank = upcoming ? (held ? (hasOfficialSource(event) ? 1 : 0) : 2) : 3;
     return { event, rank, next: str(r.next_check_at), id: str(r.id) };
   });
   ranked.sort(
@@ -399,6 +402,24 @@ export function listRecommendationsForHousehold(db: EventsDb, householdId: strin
       publishedHash: str(r.published_hash),
       response: strOrNull(r.response) as HouseholdResponse | null,
     }));
+}
+
+/** Remove one household's recommendation row for an event. */
+export function deleteRecommendation(db: EventsDb, householdId: string, eventId: string): void {
+  db.prepare("DELETE FROM recommendations WHERE household_id = ? AND event_id = ?").run(householdId, eventId);
+}
+
+/** Remove an event and any recommendation rows still pointing at it. */
+export function deleteEvent(db: EventsDb, id: string): void {
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM recommendations WHERE event_id = ?").run(id);
+    db.prepare("DELETE FROM events WHERE id = ?").run(id);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 /** Ids of households that currently hold a recommendation for the event. */
