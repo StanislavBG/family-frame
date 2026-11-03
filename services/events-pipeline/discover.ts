@@ -33,6 +33,10 @@ import type { FfClient, FfHousehold, FfState } from "./ff-client";
 import { householdProfile } from "../../shared/events-profile";
 import { areaKey as areaKeyOf, estimateDriveMinutes, geocodeHousehold, tripTypeFor, type Geocoder } from "./geo";
 import type { HaikuRunner } from "./haiku";
+import { hasOfficialSource } from "../../shared/events-sources";
+import { createLinkChecker, type LinkResult, type LinkStats } from "./links";
+
+type LinkChecker = ReturnType<typeof createLinkChecker>;
 import { isNearDuplicate, mergeDuplicate, normalizeCandidate } from "./normalize";
 import { rankForHousehold, type BusyInterval, type RankLimits } from "./rank";
 import { ageBandsFromAges, planSearchTasks, runSearchTask, type WindowKey } from "./search";
@@ -69,6 +73,7 @@ export interface DiscoverStats {
   classes: number;
   geocodeHits: number;
   geocodeMisses: number;
+  linkCheck: LinkStats;
   phaseMs: { prepare: number; search: number; rank: number; explain: number; publish: number };
 }
 
@@ -82,6 +87,8 @@ export interface DiscoverOptions {
   dryRun?: boolean;
   onlyHouseholdId?: string;
   limits?: DiscoverLimits;
+  /** Link checker; created lazily on first use when omitted. */
+  links?: Pick<LinkChecker, "check" | "stats">;
   /** Monotonic millisecond clock for phase timings. */
   clock?: () => number;
 }
@@ -102,6 +109,8 @@ const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(
 const bump = (m: Record<string, number>, key: string): void => {
   m[key] = (m[key] ?? 0) + 1;
 };
+const BAD_LINK = new Set(["dead", "moved", "refused"]);
+const isBadLink = (r: LinkResult | undefined): boolean => !!r && BAD_LINK.has(r.status);
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
 /** Local YYYY-MM-DD of an instant in a household timezone; UTC if missing or invalid. */
@@ -124,6 +133,8 @@ function parseFeedback(raw: unknown[]): FeedbackEntry[] {
 
 export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats> {
   const { db, ff, runner, geocoder, now, runId, dryRun = false, onlyHouseholdId, limits = {}, clock = () => performance.now() } = opts;
+  let lazyLinks: Pick<LinkChecker, "check" | "stats"> | undefined = opts.links;
+  const links = (): Pick<LinkChecker, "check" | "stats"> => (lazyLinks ??= createLinkChecker());
   const stats: DiscoverStats = {
     households: 0,
     purged: 0,
@@ -144,6 +155,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     classes: 0,
     geocodeHits: 0,
     geocodeMisses: 0,
+    linkCheck: { ok: 0, dead: 0, moved: 0, blocked: 0, refused: 0, error: 0 },
     phaseMs: { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 },
   };
   const phaseRaw = { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 };
@@ -231,7 +243,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
       radiusKm: Math.max(...group.map((g) => g.state.preferences.maxDistanceKm)),
     };
     const known = (): { title: string; date: string }[] => [
-      ...listEventsInArea(db, areaKey, startedAt, horizonIso).map((e) => ({ title: e.title, date: e.schedule.start.slice(0, 10) })),
+      ...listEventsInArea(db, areaKey, startedAt, horizonIso).filter(hasOfficialSource).map((e) => ({ title: e.title, date: e.schedule.start.slice(0, 10) })),
       ...group.flatMap((g) => g.state.recommendations.map((r) => ({ title: r.title, date: r.start.slice(0, 10) }))),
     ];
     const tasks = planSearchTasks({
@@ -275,15 +287,45 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
       });
       stats.candidates += res.candidates.length;
       stats.invalidCandidates += res.invalid;
-      for (const raw of res.candidates) {
+      const checked = await Promise.all(
+        res.candidates.map(async (raw) => {
+          try {
+            const norm = normalizeCandidate(raw, { now, defaultTimezone });
+            if (!norm.ok) return { norm } as const;
+            const ev = norm.event;
+            const official = ev.sources[0]?.kind === "official" ? ev.sources[0].url : undefined;
+            const [off, reg, tix] = await Promise.all([
+              official ? links().check(official) : undefined,
+              ev.cost.registrationUrl ? links().check(ev.cost.registrationUrl) : undefined,
+              ev.cost.ticketUrl ? links().check(ev.cost.ticketUrl) : undefined,
+            ]);
+            return { norm, off, reg, tix } as const;
+          } catch (e) {
+            return { error: e } as const;
+          }
+        }),
+      );
+      for (const item of checked) {
         try {
-          const norm = normalizeCandidate(raw, { now, defaultTimezone });
+          if ("error" in item) throw item.error;
+          const { norm } = item;
           if (!norm.ok) {
             stats.normalizeRejected += 1;
             bump(stats.normalizeRejectReasons, norm.reason || "invalid");
             continue;
           }
           const incoming = norm.event;
+          if (isBadLink(item.off)) {
+            stats.normalizeRejected += 1;
+            bump(stats.normalizeRejectReasons, "official source dead");
+            continue;
+          }
+          if (isBadLink(item.reg)) delete incoming.cost.registrationUrl;
+          if (isBadLink(item.tix)) {
+            delete incoming.cost.ticketUrl;
+            incoming.cost.ticketRequired = false;
+          }
+          if (item.off?.status === "ok") incoming.verification.confidence = 0.8;
           const loc = incoming.location;
           if (!loc.online && (loc.lat === undefined || loc.lon === undefined)) {
             // Public event location only; never the household's address.
@@ -339,7 +381,14 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
   for (const a of active) {
     const hhId = a.h.householdId;
     try {
-      const events: FfEvent[] = listEventsInArea(db, a.areaKey, startedAt, horizonIso);
+      const events: FfEvent[] = [];
+      for (const e of listEventsInArea(db, a.areaKey, startedAt, horizonIso)) {
+        if (hasOfficialSource(e)) events.push(e);
+        else {
+          stats.skipped += 1;
+          bump(stats.skippedByReason, "no official source");
+        }
+      }
       const knownIds = new Set(a.state.recommendations.map((r) => r.eventId));
       const knownFps = new Set(a.state.recommendations.map((r) => r.fingerprint));
       for (const r of listRecommendationsForHousehold(db, hhId)) {
@@ -477,6 +526,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     }
   }
 
+  if (lazyLinks) stats.linkCheck = lazyLinks.stats();
   for (const k of Object.keys(phaseRaw) as (keyof typeof phaseRaw)[]) stats.phaseMs[k] = Math.max(0, Math.round(phaseRaw[k]));
   finishRun(db, runId, new Date().toISOString(), stats);
   return stats;

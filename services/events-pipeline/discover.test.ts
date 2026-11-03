@@ -6,6 +6,9 @@ import { runDiscover } from "./discover";
 import type { FfClient, FfHousehold, FfState } from "./ff-client";
 import type { HaikuResult, HaikuRunner } from "./haiku";
 import { areaKey } from "./geo";
+import type { LinkStatus } from "./links";
+import { upsertEvent } from "./db";
+import { normalizeCandidate } from "./normalize";
 
 const now = new Date("2026-10-10T12:00:00Z");
 const address = { line1: "1 Main St", city: "Portland", region: "OR", country: "United States", timezone: "America/Los_Angeles" };
@@ -86,8 +89,25 @@ const found = (...c: unknown[]) => (): HaikuResult => ({ ok: true, data: { candi
 const geocoder = { geocode: async () => ({ lat: 45.5, lon: -122.6 }) };
 const limits = { maxTasksPerArea: 1 };
 
+const zeroStats = { ok: 0, dead: 0, moved: 0, blocked: 0, refused: 0, error: 0 };
+function fakeLinks(statusFor: (url: string) => LinkStatus = () => "ok") {
+  const urls: string[] = [];
+  const counts = { ...zeroStats };
+  return {
+    urls,
+    check: async (url: string) => {
+      urls.push(url);
+      const status = statusFor(url);
+      counts[status] += 1;
+      return { status };
+    },
+    stats: () => ({ ...counts }),
+  };
+}
+const okLinks = fakeLinks();
+
 function run(over: Partial<Parameters<typeof runDiscover>[0]> & Pick<Parameters<typeof runDiscover>[0], "ff" | "runner">) {
-  return runDiscover({ db: openEventsDb(":memory:"), geocoder, now, runId: "run1", limits, ...over });
+  return runDiscover({ db: openEventsDb(":memory:"), links: okLinks, geocoder, now, runId: "run1", limits, ...over });
 }
 
 test("revoked household is purged with its recommendations", async () => {
@@ -95,7 +115,7 @@ test("revoked household is purged with its recommendations", async () => {
   upsertHousehold(db, { id: "gone", address, addressHash: "x", lat: 1, lon: 2, areaKey: areaKey(address), profile: null, updatedAt: "t" });
   recordRecommendation(db, { householdId: "gone", eventId: "e1", publishedAt: "t", publishedHash: "h" });
   const f = fakeFf([household("h1")], {});
-  const stats = await runDiscover({ db, geocoder, now, runId: "r", limits, ff: f.ff, runner: fakeRunner(found()) });
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r", limits, ff: f.ff, runner: fakeRunner(found()) });
   assert.equal(stats.purged, 1);
   assert.deepEqual(listHouseholds(db).map((h) => h.id), ["h1"]);
   assert.equal(listRecommendationsForHousehold(db, "gone").length, 0);
@@ -111,7 +131,7 @@ test("state is read before any search", async () => {
 test("new candidate is published and recorded locally", async () => {
   const db = openEventsDb(":memory:");
   const f = fakeFf([household("h1")], {});
-  const stats = await runDiscover({ db, geocoder, now, runId: "r", limits, ff: f.ff, runner: fakeRunner(found(candidate)) });
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r", limits, ff: f.ff, runner: fakeRunner(found(candidate)) });
   assert.equal(stats.newEvents, 1);
   assert.equal(stats.published, 1);
   assert.equal(f.puts.length, 1);
@@ -123,11 +143,11 @@ test("duplicate candidate is merged and not re-published", async () => {
   const db = openEventsDb(":memory:");
   const f = fakeFf([household("h1")], {});
   const runner = fakeRunner(found(candidate, { ...candidate, title: "Riverside Family Pumpkin Festival!", sourceUrls: ["https://other.example/p"] }));
-  const first = await runDiscover({ db, geocoder, now, runId: "r1", limits, ff: f.ff, runner });
+  const first = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r1", limits, ff: f.ff, runner });
   assert.equal(first.newEvents, 1);
   assert.equal(first.merged, 1);
   assert.equal(first.published, 1);
-  const second = await runDiscover({ db, geocoder, now, runId: "r2", limits: { ...limits, maxTasksPerArea: 3 }, ff: f.ff, runner });
+  const second = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r2", limits: { ...limits, maxTasksPerArea: 3 }, ff: f.ff, runner });
   assert.equal(second.newEvents, 0);
   assert.equal(second.published, 0);
   assert.equal(f.puts.length, 1);
@@ -145,7 +165,7 @@ test("event clashing with a busy interval is skipped", async () => {
 test("dryRun makes no ff writes", async () => {
   const db = openEventsDb(":memory:");
   const f = fakeFf([household("h1")], {});
-  const stats = await runDiscover({ db, geocoder, now, runId: "r", limits, dryRun: true, ff: f.ff, runner: fakeRunner(found(candidate)) });
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r", limits, dryRun: true, ff: f.ff, runner: fakeRunner(found(candidate)) });
   assert.equal(stats.published, 1);
   assert.equal(f.calls.some((c) => c.startsWith("put:") || c === "recordRun"), false);
   assert.equal(listRecommendationsForHousehold(db, "h1").length, 0);
@@ -154,9 +174,9 @@ test("dryRun makes no ff writes", async () => {
 test("rate limit stops searching but still publishes from the repository", async () => {
   const db = openEventsDb(":memory:");
   const f = fakeFf([household("h1")], {});
-  await runDiscover({ db, geocoder, now, runId: "r1", limits, dryRun: true, ff: f.ff, runner: fakeRunner(found(candidate)) });
+  await runDiscover({ db, links: okLinks, geocoder, now, runId: "r1", limits, dryRun: true, ff: f.ff, runner: fakeRunner(found(candidate)) });
   const limited = fakeRunner(() => ({ ok: false, reason: "rate-limited", detail: "429" }));
-  const stats = await runDiscover({ db, geocoder, now, runId: "r2", limits, ff: f.ff, runner: limited });
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r2", limits, ff: f.ff, runner: limited });
   assert.equal(stats.searches, 1);
   assert.equal(stats.published, 1);
   assert.equal(f.puts.length, 1);
@@ -178,7 +198,7 @@ test("household is marked discovered after a successful pass, also in dry-run", 
   for (const dryRun of [false, true]) {
     const db = openEventsDb(":memory:");
     const f = fakeFf([household("h1")], {});
-    await runDiscover({ db, geocoder, now, runId: "r", limits, dryRun, ff: f.ff, runner: fakeRunner(found(candidate)) });
+    await runDiscover({ db, links: okLinks, geocoder, now, runId: "r", limits, dryRun, ff: f.ff, runner: fakeRunner(found(candidate)) });
     assert.equal(listHouseholds(db)[0].lastDiscoveredAt, now.toISOString());
   }
 });
@@ -306,9 +326,9 @@ const grown = { ...classCand, end: "2026-11-20T12:00:00-07:00" };
 async function twoPasses(first: unknown, second: unknown, dryRun = false) {
   const db = openEventsDb(":memory:");
   const f = fakeFf([household("h1")], {});
-  await runDiscover({ db, geocoder, now, runId: "r1", limits, ff: f.ff, runner: fakeRunner(found(first)) });
+  await runDiscover({ db, links: okLinks, geocoder, now, runId: "r1", limits, ff: f.ff, runner: fakeRunner(found(first)) });
   const putsBefore = f.puts.length;
-  const stats = await runDiscover({ db, geocoder, now, runId: "r2", limits, dryRun, ff: f.ff, runner: fakeRunner(found(second)) });
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r2", limits, dryRun, ff: f.ff, runner: fakeRunner(found(second)) });
   return { stats, pushes: f.puts.length - putsBefore, f };
 }
 
@@ -341,4 +361,71 @@ test("ended class recommendations leave state.known and classes are counted", as
   const stats = await run({ ff: f.ff, runner: fakeRunner(found(again)) });
   assert.equal(stats.published, 1);
   assert.equal(stats.classes, 1);
+});
+
+const regCand = { ...candidate, registrationUrl: "https://riversidefarm.example/signup", ticketUrl: "https://riversidefarm.example/tickets" };
+
+test("dead official source rejects the candidate before storing", async () => {
+  const db = openEventsDb(":memory:");
+  const f = fakeFf([household("h1")], {});
+  const links = fakeLinks((u) => (u === candidate.officialUrl ? "dead" : "ok"));
+  const stats = await runDiscover({ db, links, geocoder, now, runId: "r", limits, ff: f.ff, runner: fakeRunner(found(candidate)) });
+  assert.equal(stats.normalizeRejected, 1);
+  assert.equal(stats.normalizeRejectReasons["official source dead"], 1);
+  assert.equal(stats.newEvents, 0);
+  assert.equal(stats.published, 0);
+  assert.equal(stats.linkCheck.dead, 1);
+});
+
+test("moved official source rejects the candidate", async () => {
+  const f = fakeFf([household("h1")], {});
+  const links = fakeLinks(() => "moved");
+  const stats = await run({ ff: f.ff, links, runner: fakeRunner(found(candidate)) });
+  assert.equal(stats.normalizeRejectReasons["official source dead"], 1);
+  assert.equal(stats.newEvents, 0);
+});
+
+test("dead registration and ticket links are dropped, event kept at confidence 0.8", async () => {
+  const f = fakeFf([household("h1")], {});
+  const links = fakeLinks((u) => (u === candidate.officialUrl ? "ok" : "dead"));
+  const stats = await run({ ff: f.ff, links, runner: fakeRunner(found(regCand)) });
+  assert.equal(stats.newEvents, 1);
+  assert.equal(stats.published, 1);
+  const ev = f.puts[0].event;
+  assert.equal(ev.cost.registrationUrl, undefined);
+  assert.equal(ev.cost.ticketUrl, undefined);
+  assert.equal(ev.cost.ticketRequired, false);
+  assert.equal(ev.verification.confidence, 0.8);
+});
+
+test("blocked official source keeps confidence 0.7", async () => {
+  const f = fakeFf([household("h1")], {});
+  await run({ ff: f.ff, links: fakeLinks(() => "blocked"), runner: fakeRunner(found(candidate)) });
+  assert.equal(f.puts[0].event.verification.confidence, 0.7);
+});
+
+test("stored pre-gate event with only listing sources is never published", async () => {
+  const db = openEventsDb(":memory:");
+  const norm = normalizeCandidate(candidate, { now, defaultTimezone: "America/Los_Angeles" });
+  assert.ok(norm.ok);
+  if (!norm.ok) return;
+  norm.event.sources = [{ ...norm.event.sources[0], url: "https://allevents.in/x", kind: "listing" }];
+  upsertEvent(db, norm.event, areaKey(address), "9999-12-31T00:00:00.000Z");
+  const f = fakeFf([household("h1")], {});
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r", limits, ff: f.ff, runner: fakeRunner(found()) });
+  assert.equal(stats.published, 0);
+  assert.equal(f.puts.length, 0);
+  assert.equal(stats.skippedByReason["no official source"], 1);
+});
+
+test("a run with no candidates never calls check; linkCheck is in stats", async () => {
+  const links = fakeLinks();
+  const f = fakeFf([household("h1")], {});
+  const none = await run({ ff: f.ff, links, runner: fakeRunner(found()) });
+  assert.equal(links.urls.length, 0);
+  assert.deepEqual(none.linkCheck, zeroStats);
+  const links2 = fakeLinks();
+  const one = await run({ ff: f.ff, links: links2, runner: fakeRunner(found(candidate)) });
+  assert.ok(links2.urls.length >= 1);
+  assert.equal(one.linkCheck.ok, links2.urls.length);
 });
