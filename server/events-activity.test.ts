@@ -33,11 +33,37 @@ test("needsSignUp, isSignUpActivity", () => {
 });
 
 test("signUpUrl precedence", () => {
-  const base = { organizer: { name: "o", url: "https://org.example" }, sources: [{ url: "https://src.example" }] };
-  assert.equal(signUpUrl({ ...base, cost: cost({ registrationUrl: "https://r.example" }) } as any), "https://r.example");
-  assert.equal(signUpUrl({ ...base, cost: cost({ registrationRequired: true }) } as any), "https://org.example");
-  assert.equal(signUpUrl({ sources: base.sources, cost: cost({ registrationRequired: true }) } as any), "https://src.example");
-  assert.equal(signUpUrl({ ...base, cost: cost() } as any), undefined);
+  const org = { name: "o", url: "https://org.example" };
+  const official = { url: "https://org.example/event", kind: "official" };
+  const listing = { url: "https://src.example", kind: "listing" };
+  const reg = (registrationUrl: string, o: any = {}) => cost({ registrationUrl, ...o });
+  // activekids registrationUrl, no official source, no organizer
+  assert.equal(signUpUrl({ sources: [listing], cost: reg("https://www.activekids.com/x") } as any), undefined);
+  // activekids registrationUrl plus an official source
+  assert.equal(
+    signUpUrl({ sources: [listing, official], cost: reg("https://www.activekids.com/x") } as any),
+    "https://org.example/event",
+  );
+  // registration-platform tenant
+  assert.equal(
+    signUpUrl({ sources: [listing], cost: reg("https://app.amilia.com/store/en/tenant") } as any),
+    "https://app.amilia.com/store/en/tenant",
+  );
+  // registrationUrl on the organizer's domain is official
+  assert.equal(
+    signUpUrl({ organizer: org, sources: [], cost: reg("https://org.example/signup") } as any),
+    "https://org.example/signup",
+  );
+  // listing organizer url is not returned
+  assert.equal(
+    signUpUrl({ organizer: { name: "o", url: "https://www.parentmap.com/x" }, sources: [listing], cost: cost({ registrationRequired: true }) } as any),
+    undefined,
+  );
+  // organizer url fallback when sign-up needed and no official source
+  assert.equal(signUpUrl({ organizer: org, sources: [listing], cost: cost({ registrationRequired: true }) } as any), "https://org.example");
+  // listing-only event with registrationRequired
+  assert.equal(signUpUrl({ sources: [listing], cost: cost({ registrationRequired: true }) } as any), undefined);
+  assert.equal(signUpUrl({ organizer: org, sources: [official], cost: cost() } as any), undefined);
 });
 
 test("isOngoingClass", () => {

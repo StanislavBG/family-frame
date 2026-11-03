@@ -66,12 +66,12 @@ describe("EventsDayCard", () => {
     const cls = item("c1", {
       title: "Swim lessons",
       schedule,
-      cost: { ...SAMPLE_EVENT.cost, registrationUrl: "https://swim.example/signup" },
+      cost: { ...SAMPLE_EVENT.cost, registrationUrl: "https://riversidefarm.example/signup" },
     });
     const html = render(cls, "2026-10-24", "open");
     expect(html).toContain("Tuesdays at 4 PM");
     expect(html).not.toContain("Suggested visit");
-    expect(html).toContain('href="https://swim.example/signup"');
+    expect(html).toContain('href="https://riversidefarm.example/signup"');
     expect(html).toContain('target="_blank"');
     expect(html).toContain("Sign up");
   });

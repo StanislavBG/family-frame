@@ -63,10 +63,10 @@ describe("EventsClassesShelf", () => {
 
   it("links to the event page and shows Sign up only with a url", () => {
     const withUrl = render([
-      kids("k1", { cost: { ...SAMPLE_EVENT.cost, registrationUrl: "https://example.com/join" } }),
+      kids("k1", { cost: { ...SAMPLE_EVENT.cost, registrationUrl: "https://riversidefarm.example/join" } }),
     ]);
     expect(withUrl).toContain('href="/k1"');
-    expect(withUrl).toContain('href="https://example.com/join"');
+    expect(withUrl).toContain('href="https://riversidefarm.example/join"');
     expect(withUrl).toContain('target="_blank"');
     expect(withUrl).toContain('rel="noopener noreferrer"');
     const none = render([

@@ -9,7 +9,7 @@ import { formatWhen, type EventItem } from "@/lib/events";
 
 (globalThis as { React?: typeof React }).React = React;
 vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
-const { EventHero } = await import("./event-hero");
+const { EventHero, officialSiteLink } = await import("./event-hero");
 
 const ID = "e1";
 const TESTID = 'data-testid="link-event-registration"';
@@ -53,19 +53,20 @@ describe("EventHero Sign up pill", () => {
     expect(html).not.toContain("Organizer website");
   });
 
-  it("keeps Organizer website when its URL differs from the sign-up URL", () => {
+  it("shows Official site and drops Organizer website for the same domain", () => {
     const html = render(
-      base({ cost: { ...SAMPLE_EVENT.cost, registrationRequired: true, registrationUrl: "https://signup.example/" } }),
+      base({ cost: { ...SAMPLE_EVENT.cost, registrationRequired: true, registrationUrl: "https://org.example/signup" } }),
     );
     expect(html).toContain(TESTID);
-    expect(html).toContain("https://signup.example/");
-    expect(html).toContain("Organizer website");
+    expect(html).toContain("https://org.example/signup");
+    expect(html).toContain("Official site: org.example");
+    expect(html).not.toContain("Organizer website");
   });
 
   it("shows no Sign up pill without a sign-up need", () => {
     const html = render(base({}));
     expect(html).not.toContain(TESTID);
-    expect(html).toContain("Organizer website");
+    expect(html).toContain("Official site: org.example");
   });
 });
 
@@ -106,5 +107,22 @@ describe("EventHero when line", () => {
     expect(html).not.toContain("See the class website for times");
     const when = /data-testid="text-event-when">([^<]*)</.exec(html)?.[1] ?? "";
     expect(when).toBe(formatWhen(base({}).schedule));
+  });
+});
+
+describe("officialSiteLink", () => {
+  const src = (url: string, kind: string) => ({ url, kind });
+  it("prefers the official source over organizer.url", () => {
+    const l = officialSiteLink({
+      organizer: { name: "o", url: "https://other.example/" },
+      sources: [src("https://a.example/e", "listing"), src("https://www.official.example/e", "official")],
+    } as any);
+    expect(l).toEqual({ href: "https://www.official.example/e", domain: "official.example" });
+  });
+  it("returns null for a listing organizer.url and no official source", () => {
+    expect(officialSiteLink({ organizer: { name: "o", url: "https://www.parentmap.com/x" }, sources: [] } as any)).toBeNull();
+  });
+  it("uses a non-listing organizer.url and strips www.", () => {
+    expect(officialSiteLink({ organizer: { name: "o", url: "https://www.org.example/" }, sources: [] } as any)?.domain).toBe("org.example");
   });
 });

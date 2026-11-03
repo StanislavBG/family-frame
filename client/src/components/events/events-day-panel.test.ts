@@ -51,11 +51,11 @@ const cls = (over: Partial<FfEvent["schedule"]> = {}, url?: string) =>
 
 describe("EventsDayPanel classes", () => {
   it("groups an ongoing class with its schedule, sign up link and no suggested visit", () => {
-    const html = render([cls({ recurrenceText: "Tuesdays at 4 PM" }, "https://swim.example/signup")]);
+    const html = render([cls({ recurrenceText: "Tuesdays at 4 PM" }, "https://riversidefarm.example/signup")]);
     expect(html).toContain('data-testid="events-day-classes"');
     expect(html).toContain("Classes you can sign up for");
     expect(html).toContain("Tuesdays at 4 PM");
-    expect(html).toContain('href="https://swim.example/signup"');
+    expect(html).toContain('href="https://riversidefarm.example/signup"');
     expect(html).not.toContain("Suggested visit");
     expect(html).not.toContain("Hours not listed");
     expect(html).not.toContain("Open all day");

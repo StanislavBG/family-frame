@@ -13,7 +13,8 @@ import { useFitScale } from "@/hooks/use-fit-scale";
 import { buildEventFacts, distanceText, hasMapLocation, mapUrl, whereSummary } from "@/lib/event-detail";
 import { cn } from "@/lib/utils";
 import { isOngoingClass, signUpUrl } from "@shared/events-activity";
-import type { Trip } from "@shared/events";
+import type { FfEvent, Trip } from "@shared/events";
+import { isListingUrl, isRegistrationPlatformUrl, officialSourceUrl, registrableDomain } from "@shared/events-sources";
 import {
   CATEGORY_META,
   formatClock,
@@ -165,6 +166,29 @@ function BackLink() {
   );
 }
 
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+/** The event's own page: first official source, else a non-listing organizer URL. */
+export function officialSiteLink(
+  event: Pick<FfEvent, "sources" | "organizer">,
+): { href: string; domain: string } | null {
+  const candidates = [officialSourceUrl(event), event.organizer?.url];
+  for (let i = 0; i < candidates.length; i++) {
+    const href = candidates[i];
+    if (!href) continue;
+    if (i === 1 && (isListingUrl(href) || isRegistrationPlatformUrl(href))) continue;
+    const domain = hostOf(href);
+    if (domain) return { href, domain };
+  }
+  return null;
+}
+
 export function EventHero({ eventId }: { eventId: string }) {
   const { data: item, isLoading, error } = useEventItem(eventId);
   const markSeen = useMarkSeen(eventId);
@@ -219,11 +243,18 @@ export function EventHero({ eventId }: { eventId: string }) {
     goingNames.length > 0 && (item.response === "going" || item.response === "interested")
       ? `${item.response === "going" ? "Going" : "Interested"}: ${goingNames.join(", ")}`
       : null;
+  const site = officialSiteLink(event);
+  const sameSite = (url: string) => {
+    const a = hostOf(url);
+    const b = site ? hostOf(site.href) : null;
+    return !!a && !!b && registrableDomain(a) === registrableDomain(b);
+  };
   const actions: { href: string; label: string; testId?: string; Icon?: LucideIcon }[] = [
     ...(hasMap ? [{ href: mapUrl(location), label: "Google Maps", testId: "link-event-map", Icon: MapPin }] : []),
     ...(cost.ticketUrl ? [{ href: cost.ticketUrl, label: "Buy tickets", testId: "link-event-tickets" }] : []),
     ...(signUp ? [{ href: signUp, label: "Sign up", testId: "link-event-registration" }] : []),
-    ...(organizer?.url && organizer.url !== signUp ? [{ href: organizer.url, label: "Organizer website" }] : []),
+    ...(site && site.href !== signUp ? [{ href: site.href, label: `Official site: ${site.domain}`, testId: "link-event-official" }] : []),
+    ...(organizer?.url && organizer.url !== signUp && !(site && sameSite(organizer.url)) ? [{ href: organizer.url, label: "Organizer website" }] : []),
   ];
 
   return (

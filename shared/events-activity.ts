@@ -4,6 +4,7 @@
  * local pipeline. Uses only existing event fields (ffEventSchema is strict).
  */
 import type { AgeBand, FfEvent } from "./events";
+import { classifySource, isListingUrl, isRegistrationPlatformUrl, officialSourceUrl } from "./events-sources";
 import { dayWindows } from "./events-visit";
 
 export const CLASS_TAG = "class";
@@ -31,9 +32,17 @@ export function isSignUpActivity(event: Pick<FfEvent, "title" | "tags" | "cost">
 export function signUpUrl(
   event: Pick<FfEvent, "cost" | "organizer" | "sources">,
 ): string | undefined {
-  if (event.cost?.registrationUrl) return event.cost.registrationUrl;
+  const reg = event.cost?.registrationUrl;
+  if (reg) {
+    const c = classifySource(reg, event.organizer?.url);
+    if (c === "official" || c === "registration") return reg;
+  }
   if (!needsSignUp(event)) return undefined;
-  return event.organizer?.url ?? event.sources?.[0]?.url ?? undefined;
+  const official = officialSourceUrl(event);
+  if (official) return official;
+  const org = event.organizer?.url;
+  if (org && !isListingUrl(org) && !isRegistrationPlatformUrl(org)) return org;
+  return undefined;
 }
 
 /** A class with no dated session: it runs on an ongoing basis. */
