@@ -25,6 +25,8 @@ test("buildReport renders runs, losses and recommendations without private data"
     searchFailures: { timeout: 1 },
     skippedByReason: { "too-far": 3 },
     ranked: 4,
+    linkCheck: { ok: 9, dead: 2, moved: 1, blocked: 3, refused: 0, error: 4 },
+    officialCheck: { confirmed: 5, rejected: 2, unavailable: 1 },
     phaseMs: { prepare: 10, search: 2000, rank: 300, explain: 400, publish: 50 },
     haiku: { sessions: 9, ok: 8, refused: 0, failures: {}, costUsd: 0.5, totalMs: 1000 },
   };
@@ -59,6 +61,8 @@ test("buildReport renders runs, losses and recommendations without private data"
   assert.match(md, /P[DS]T/);
   assert.match(md, /no-date: 5/);
   assert.match(md, /too-far: 3/);
+  assert.match(md, /- link check: ok 9, dead 2, moved 1, blocked 3, refused 0, error 4/);
+  assert.match(md, /- official page check: confirmed 5, rejected 2, unavailable 1/);
   assert.match(md, /Event e2[\s\S]*Event e1/);
   assert.match(md, /0\.80 \| 3\.1/);
   assert.match(md, /Cost per published rec: \$0\.2500/);
@@ -66,5 +70,16 @@ test("buildReport renders runs, losses and recommendations without private data"
   for (const secret of [STREET, "secrethash123", "45.512345", "-122.654321", "kids"]) {
     assert.ok(!md.includes(secret), secret);
   }
+  db.close();
+});
+
+test("buildReport shows - for missing link and official check stats", () => {
+  const db = openEventsDb(":memory:");
+  db.prepare("INSERT INTO runs (id, kind, started_at, finished_at, stats_json, error) VALUES (?, ?, ?, ?, ?, ?)").run(
+    "r1", "discover", "2026-10-10T17:00:00.000Z", "2026-10-10T17:01:30.000Z", JSON.stringify({ phaseMs: { prepare: 1 } }), null,
+  );
+  const md = buildReport(db, { now: new Date("2026-10-10T18:00:00.000Z") });
+  assert.match(md, /- link check: -\n/);
+  assert.match(md, /- official page check: -\n/);
   db.close();
 });

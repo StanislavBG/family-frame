@@ -13,6 +13,10 @@ import {
   getEvent,
   getEventByFingerprint,
   getGeocode,
+  getOfficialCheck,
+  listRejectedEventIds,
+  markEventRejected,
+  markOfficialChecked,
   lastSearchAt,
   listDueForRecheck,
   listHouseholds,
@@ -53,7 +57,7 @@ test("schema creation is idempotent and sets user_version", () => {
   for (const t of ["events", "households", "recommendations", "search_log", "geocode_cache", "runs"]) {
     assert.ok(before.includes(t), t);
   }
-  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 4);
+  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 5);
   db.close();
 });
 
@@ -194,7 +198,7 @@ test("opening a v3 database rewrites area keys to the canonical form once", () =
     );
   const again = openEventsDb(path);
   assert.deepEqual(keys(again), [["santa clara|us"], ["santa clara|us"], ["santa clara|us"]]);
-  assert.equal(again.prepare("PRAGMA user_version").get()?.user_version, 4);
+  assert.equal(again.prepare("PRAGMA user_version").get()?.user_version, 5);
   // A row edited after migration must survive a second open untouched.
   again.prepare("UPDATE events SET area_key = 'x|y' WHERE id = 'e0'").run();
   again.close();
@@ -269,4 +273,28 @@ test("deleteRecommendation and deleteEvent remove only their rows", () => {
   assert.deepEqual(listHouseholdsHoldingEvent(db, "a"), []);
   assert.ok(getEvent(db, "b"));
   db.close();
+});
+
+test("v4 database migrates to v5 with rows intact; official-check helpers round-trip", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ev-v5-"));
+  const path = join(dir, "events.db");
+  const old = new DatabaseSync(path);
+  old.exec(`CREATE TABLE events (id TEXT PRIMARY KEY, fingerprint TEXT UNIQUE, area_key TEXT, json TEXT, start_at TEXT, end_at TEXT, status TEXT, first_seen_at TEXT, last_checked_at TEXT, next_check_at TEXT, updated_at TEXT)`);
+  old.prepare("INSERT INTO events (id, fingerprint, area_key) VALUES ('e1', 'fp1', 'a|b')").run();
+  old.exec("PRAGMA user_version = 4");
+  old.close();
+  const db = openEventsDb(path);
+  assert.equal(db.prepare("PRAGMA user_version").get()?.user_version, 5);
+  assert.equal(db.prepare("SELECT fingerprint FROM events WHERE id = 'e1'").get()?.fingerprint, "fp1");
+  assert.deepEqual(getOfficialCheck(db, "e1"), { checkedAt: null, rejectedReason: null });
+  assert.deepEqual(getOfficialCheck(db, "nope"), { checkedAt: null, rejectedReason: null });
+  markOfficialChecked(db, "e1", "2026-10-10T00:00:00.000Z", "quote");
+  assert.deepEqual(getOfficialCheck(db, "e1"), { checkedAt: "2026-10-10T00:00:00.000Z", rejectedReason: null });
+  assert.equal(listRejectedEventIds(db, "a|b").size, 0);
+  markEventRejected(db, "e1", "not offered", "2026-10-11T00:00:00.000Z");
+  assert.equal(getOfficialCheck(db, "e1").rejectedReason, "not offered");
+  assert.deepEqual(Array.from(listRejectedEventIds(db, "a|b")), ["e1"]);
+  assert.equal(listRejectedEventIds(db, "other").size, 0);
+  db.close();
+  openEventsDb(path).close();
 });

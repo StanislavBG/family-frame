@@ -13,6 +13,10 @@ import {
   deleteHousehold,
   getEvent,
   getEventByFingerprint,
+  getOfficialCheck,
+  listRejectedEventIds,
+  markEventRejected,
+  markOfficialChecked,
   listEventsInArea,
   listHouseholds as listLocalHouseholds,
   listRecommendationsForHousehold,
@@ -27,8 +31,9 @@ import {
   type EventsDb,
 } from "./db";
 import { nextCheckAt, pushEvent, type DispatchStats } from "./dispatch";
-import { CLASS_TAG, isClassTitle } from "../../shared/events-activity";
+import { CLASS_TAG, isClassTitle, isSignUpActivity } from "../../shared/events-activity";
 import { explainBatch } from "./explain";
+import { verifyPicks, type VerifyOutcome } from "./verify";
 import type { FfClient, FfHousehold, FfState } from "./ff-client";
 import { householdProfile } from "../../shared/events-profile";
 import { areaKey as areaKeyOf, estimateDriveMinutes, geocodeHousehold, tripTypeFor, type Geocoder } from "./geo";
@@ -44,6 +49,7 @@ import { ageBandsFromAges, planSearchTasks, runSearchTask, type WindowKey } from
 const DAY_MS = 86_400_000;
 const NEVER = "9999-12-31T00:00:00.000Z";
 const SEARCH_HORIZON_DAYS = 90;
+const OFFICIAL_RECHECK_MS = 7 * DAY_MS;
 
 export interface DiscoverLimits {
   /** Hard cap on search sessions in this run. */
@@ -51,6 +57,8 @@ export interface DiscoverLimits {
   /** Search tasks planned per area. */
   maxTasksPerArea?: number;
   rank?: RankLimits;
+  /** Search sessions held back for the official page check (default min(8, maxSearches / 4)). */
+  verifyReserve?: number;
 }
 
 export interface DiscoverStats {
@@ -74,6 +82,7 @@ export interface DiscoverStats {
   geocodeHits: number;
   geocodeMisses: number;
   linkCheck: LinkStats;
+  officialCheck: { confirmed: number; rejected: number; unavailable: number };
   phaseMs: { prepare: number; search: number; rank: number; explain: number; publish: number };
 }
 
@@ -156,6 +165,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     geocodeHits: 0,
     geocodeMisses: 0,
     linkCheck: { ok: 0, dead: 0, moved: 0, blocked: 0, refused: 0, error: 0 },
+    officialCheck: { confirmed: 0, rejected: 0, unavailable: 0 },
     phaseMs: { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 },
   };
   const phaseRaw = { prepare: 0, search: 0, rank: 0, explain: 0, publish: 0 };
@@ -229,7 +239,11 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
   // 3. Search once per area, then normalize, de-duplicate and store.
   const horizonIso = new Date(now.getTime() + SEARCH_HORIZON_DAYS * DAY_MS).toISOString();
   const maxSearches = limits.maxSearches ?? Infinity;
+  const verifyReserve = Math.max(0, limits.verifyReserve ?? Math.min(8, Math.floor(maxSearches / 4)));
+  const searchCap = maxSearches - verifyReserve;
   let stopped = false;
+  // Only a runner failure (budget-exhausted or rate-limited) switches explain and verify to the refusing runner.
+  let runnerFailed = false;
   const byArea = new Map<string, Active[]>();
   for (const a of active) byArea.set(a.areaKey, [...(byArea.get(a.areaKey) ?? []), a]);
 
@@ -261,7 +275,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
     const defaultTimezone = first.timezone ?? group[0].h.timezone ?? "UTC";
 
     for (const task of tasks) {
-      if (stats.searches >= maxSearches) {
+      if (stats.searches >= searchCap) {
         stopped = true;
         break;
       }
@@ -271,6 +285,7 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
         bump(stats.searchFailures, res.reason);
         if (res.reason === "rate-limited" || res.reason === "budget-exhausted") {
           stopped = true;
+          runnerFailed = true;
           break;
         }
         stats.errors += 1;
@@ -375,15 +390,20 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
   phaseRaw.search = rankPhaseStart - searchStart;
 
   // 4. Rank, explain and publish per household, from whatever the repository holds.
-  const explainRunner: HaikuRunner = stopped
+  const explainRunner: HaikuRunner = runnerFailed
     ? { run: async () => ({ ok: false, reason: "budget-exhausted", detail: "search stopped" }) }
     : runner;
+  const officialOutcomes = new Map<string, VerifyOutcome>();
   for (const a of active) {
     const hhId = a.h.householdId;
     try {
       const events: FfEvent[] = [];
+      const rejectedIds = listRejectedEventIds(db, a.areaKey);
       for (const e of listEventsInArea(db, a.areaKey, startedAt, horizonIso)) {
-        if (hasOfficialSource(e)) events.push(e);
+        if (rejectedIds.has(e.id)) {
+          stats.skipped += 1;
+          bump(stats.skippedByReason, "official page check failed");
+        } else if (hasOfficialSource(e)) events.push(e);
         else {
           stats.skipped += 1;
           bump(stats.skippedByReason, "no official source");
@@ -424,11 +444,48 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
       stats.classes += ranked.picks.filter((p) => p.isClass).length;
       stats.closeToHome += ranked.picks.filter((p) => p.closeToHome).length;
       for (const sk of ranked.skipped) bump(stats.skippedByReason, sk.reason.endsWith(" window full") ? "window full" : sk.reason);
+      // Sign-up picks must be confirmed on their official page (fail closed).
+      const dueCutoff = now.getTime() - OFFICIAL_RECHECK_MS;
+      const due = ranked.picks.filter((p) => {
+        if (!isSignUpActivity(p.event)) return false;
+        const at = getOfficialCheck(db, p.event.id).checkedAt;
+        const t = at ? Date.parse(at) : NaN;
+        return !(Number.isFinite(t) && t >= dueCutoff);
+      });
+      const toVerify = due.filter((p) => !officialOutcomes.has(p.event.id)).map((p) => p.event);
+      if (toVerify.length > 0) {
+        const res = await verifyPicks(explainRunner, links(), toVerify, now);
+        for (const [id, o] of Array.from(res.entries())) {
+          officialOutcomes.set(id, o);
+          stats.officialCheck[o.kind] += 1;
+        }
+      }
+      const dueIds = new Set(due.map((p) => p.event.id));
+      const picks: typeof ranked.picks = [];
+      for (const p of ranked.picks) {
+        if (!dueIds.has(p.event.id)) {
+          picks.push(p);
+          continue;
+        }
+        const o = officialOutcomes.get(p.event.id);
+        if (o?.kind === "confirmed") {
+          upsertEvent(db, o.event, a.areaKey, nextCheckAt(o.event, now) ?? NEVER);
+          markOfficialChecked(db, o.event.id, now.toISOString(), o.evidence);
+          picks.push({ ...p, event: o.event });
+        } else if (o?.kind === "rejected") {
+          markEventRejected(db, p.event.id, o.reason, now.toISOString());
+          stats.skipped += 1;
+          bump(stats.skippedByReason, "official page check failed");
+        } else {
+          stats.skipped += 1;
+          bump(stats.skippedByReason, "official page check unavailable");
+        }
+      }
       const explainStart = clock();
       phaseRaw.rank += explainStart - rankStart;
 
       const items: RecommendationInput[] = [];
-      if (ranked.picks.length > 0) {
+      if (picks.length > 0) {
         const texts = await explainBatch(
           explainRunner,
           {
@@ -438,9 +495,9 @@ export async function runDiscover(opts: DiscoverOptions): Promise<DiscoverStats>
             preferenceLines: a.learned.lines,
             profileLines: householdProfile(a.h.memberAges).lines,
           },
-          ranked.picks.map((p) => ({ event: p.event, matchReasons: p.matchReasons, distanceKm: p.distanceKm })),
+          picks.map((p) => ({ event: p.event, matchReasons: p.matchReasons, distanceKm: p.distanceKm })),
         );
-        for (const p of ranked.picks) {
+        for (const p of picks) {
           const t = texts.get(p.event.id);
           if (!t) continue;
           const driveMinutes = p.distanceKm !== undefined ? estimateDriveMinutes(p.distanceKm) : undefined;

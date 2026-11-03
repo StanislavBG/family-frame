@@ -107,6 +107,11 @@ function parseStats(text: unknown): RunCells {
 const cell = (v: number | null, digits = 0): string => (v === null ? "-" : digits ? v.toFixed(digits) : String(v));
 const esc = (s: unknown): string => String(s ?? "").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 
+function countsLine(v: unknown, keys: string[]): string {
+  if (!isObj(v)) return "-";
+  return keys.map((k) => `${k} ${num(v[k]) ?? 0}`).join(", ");
+}
+
 function topCounts(v: unknown): string {
   if (!isObj(v)) return "none";
   const entries = Object.entries(v)
@@ -167,6 +172,8 @@ export function buildReport(db: EventsDb, opts: ReportOptions): string {
       `Run started ${fmt(discoverAt)}`,
       `- normalize reject reasons: ${topCounts(s.normalizeRejectReasons)}`,
       `- search failures: ${topCounts(s.searchFailures)}`,
+      `- link check: ${countsLine(s.linkCheck, ["ok", "dead", "moved", "blocked", "refused", "error"])}`,
+      `- official page check: ${countsLine(s.officialCheck, ["confirmed", "rejected", "unavailable"])}`,
       `- skipped by reason: ${topCounts(s.skippedByReason)}`,
       `- phase timings: ${phases}`,
     );

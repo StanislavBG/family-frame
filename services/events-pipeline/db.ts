@@ -6,7 +6,7 @@ import { ffEventSchema, type FfEvent, type HouseholdResponse, type Recommendatio
 
 export type EventsDb = DatabaseSync;
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS events (
@@ -86,6 +86,11 @@ export function openEventsDb(path: string): EventsDb {
   const hCols = db.prepare("PRAGMA table_info(households)").all();
   for (const col of ["last_discovered_at", "last_triggered_at"]) {
     if (!hCols.some((c) => c.name === col)) db.exec(`ALTER TABLE households ADD COLUMN ${col} TEXT`);
+  }
+  // v5: official page check and rejection marks on events.
+  const eCols = db.prepare("PRAGMA table_info(events)").all();
+  for (const col of ["official_checked_at", "official_evidence", "rejected_reason", "rejected_at"]) {
+    if (!eCols.some((c) => c.name === col)) db.exec(`ALTER TABLE events ADD COLUMN ${col} TEXT`);
   }
   // v4: canonical '<city>|<country>' area keys, so one city shares a single search cache.
   if (priorVersion < 4) migrateAreaKeys(db);
@@ -170,6 +175,28 @@ export function upsertEvent(db: EventsDb, event: FfEvent, areaKey: string, nextC
     e.verification.lastCheckedAt,
     nextCheckAt,
     new Date().toISOString(),
+  );
+}
+
+export function markOfficialChecked(db: EventsDb, id: string, iso: string, evidence: string): void {
+  db.prepare("UPDATE events SET official_checked_at = ?, official_evidence = ? WHERE id = ?").run(iso, evidence, id);
+}
+
+export function markEventRejected(db: EventsDb, id: string, reason: string, iso: string): void {
+  db.prepare("UPDATE events SET rejected_reason = ?, rejected_at = ? WHERE id = ?").run(reason, iso, id);
+}
+
+export function getOfficialCheck(db: EventsDb, id: string): { checkedAt: string | null; rejectedReason: string | null } {
+  const r = db.prepare("SELECT official_checked_at, rejected_reason FROM events WHERE id = ?").get(id);
+  return {
+    checkedAt: r?.official_checked_at == null ? null : String(r.official_checked_at),
+    rejectedReason: r?.rejected_reason == null ? null : String(r.rejected_reason),
+  };
+}
+
+export function listRejectedEventIds(db: EventsDb, areaKey: string): Set<string> {
+  return new Set(
+    db.prepare("SELECT id FROM events WHERE area_key = ? AND rejected_at IS NOT NULL").all(areaKey).map((r) => String(r.id)),
   );
 }
 

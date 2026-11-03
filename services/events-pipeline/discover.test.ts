@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { eventPreferencesSchema, type RecommendationInput } from "../../shared/events";
-import { listHouseholds, listRecommendationsForHousehold, openEventsDb, upsertHousehold, recordRecommendation } from "./db";
+import { getOfficialCheck, listRejectedEventIds, listHouseholds, listRecommendationsForHousehold, openEventsDb, upsertHousehold, recordRecommendation } from "./db";
 import { runDiscover } from "./discover";
 import type { FfClient, FfHousehold, FfState } from "./ff-client";
 import type { HaikuResult, HaikuRunner } from "./haiku";
@@ -79,6 +79,36 @@ function fakeRunner(searchResult: () => HaikuResult, calls: string[] = []): Haik
       if (input.prompt.startsWith("Find real")) {
         calls.push("search");
         return searchResult();
+      }
+      return { ok: false, reason: "failed", detail: "no explain in tests" };
+    },
+  };
+}
+
+/** Search results as given; official page checks confirm each event as it was claimed. */
+function confirmingRunner(searchResult: () => HaikuResult): HaikuRunner {
+  return {
+    run: async (input) => {
+      if (input.prompt.startsWith("Find real")) return searchResult();
+      if (input.prompt.startsWith("You check whether")) {
+        const evs = JSON.parse(input.prompt.slice(input.prompt.lastIndexOf("\nEvents:\n") + 9)) as {
+          eventId: string;
+          claimedSchedule: { start: string; end?: string };
+        }[];
+        return {
+          ok: true,
+          data: {
+            items: evs.map((e) => ({
+              eventId: e.eventId,
+              confirmed: true,
+              currentlyOffered: true,
+              providerName: "Riverside Farm",
+              start: e.claimedSchedule.start,
+              ...(e.claimedSchedule.end ? { end: e.claimedSchedule.end } : {}),
+              evidence: "page",
+            })),
+          },
+        };
       }
       return { ok: false, reason: "failed", detail: "no explain in tests" };
     },
@@ -326,9 +356,9 @@ const grown = { ...classCand, end: "2026-11-20T12:00:00-07:00" };
 async function twoPasses(first: unknown, second: unknown, dryRun = false) {
   const db = openEventsDb(":memory:");
   const f = fakeFf([household("h1")], {});
-  await runDiscover({ db, links: okLinks, geocoder, now, runId: "r1", limits, ff: f.ff, runner: fakeRunner(found(first)) });
+  await runDiscover({ db, links: okLinks, geocoder, now, runId: "r1", limits, ff: f.ff, runner: confirmingRunner(found(first)) });
   const putsBefore = f.puts.length;
-  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r2", limits, dryRun, ff: f.ff, runner: fakeRunner(found(second)) });
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r2", limits, dryRun, ff: f.ff, runner: confirmingRunner(found(second)) });
   return { stats, pushes: f.puts.length - putsBefore, f };
 }
 
@@ -358,7 +388,7 @@ test("ended class recommendations leave state.known and classes are counted", as
   const live = recRow("Chess Lessons", "2026-09-01T10:00:00-07:00", { end: "2026-11-01T12:00:00-07:00", eventId: "old2", fingerprint: "fp2" });
   const f = fakeFf([household("h1")], { h1: state("h1", { recommendations: [ended, live] as FfState["recommendations"] }) });
   const again = { ...classCand, title: "Old Pottery Class", end: "2026-11-20T12:00:00-07:00" };
-  const stats = await run({ ff: f.ff, runner: fakeRunner(found(again)) });
+  const stats = await run({ ff: f.ff, runner: confirmingRunner(found(again)) });
   assert.equal(stats.published, 1);
   assert.equal(stats.classes, 1);
 });
@@ -388,14 +418,14 @@ test("moved official source rejects the candidate", async () => {
 test("dead registration and ticket links are dropped, event kept at confidence 0.8", async () => {
   const f = fakeFf([household("h1")], {});
   const links = fakeLinks((u) => (u === candidate.officialUrl ? "ok" : "dead"));
-  const stats = await run({ ff: f.ff, links, runner: fakeRunner(found(regCand)) });
+  const stats = await run({ ff: f.ff, links, runner: confirmingRunner(found(regCand)) });
   assert.equal(stats.newEvents, 1);
   assert.equal(stats.published, 1);
   const ev = f.puts[0].event;
   assert.equal(ev.cost.registrationUrl, undefined);
   assert.equal(ev.cost.ticketUrl, undefined);
   assert.equal(ev.cost.ticketRequired, false);
-  assert.equal(ev.verification.confidence, 0.8);
+  assert.equal(ev.verification.confidence, 0.9); // confirmed on the official page
 });
 
 test("blocked official source keeps confidence 0.7", async () => {
@@ -428,4 +458,128 @@ test("a run with no candidates never calls check; linkCheck is in stats", async 
   const one = await run({ ff: f.ff, links: links2, runner: fakeRunner(found(candidate)) });
   assert.ok(links2.urls.length >= 1);
   assert.equal(one.linkCheck.ok, links2.urls.length);
+});
+
+// --- official page check ---
+const classCandidate = {
+  ...candidate,
+  title: "Toddler Swim Class",
+  description: "Weekly swim lessons.",
+  officialUrl: "https://riversidefarm.example/swim",
+  sourceUrls: ["https://riversidefarm.example/swim"],
+};
+
+const isVerify = (prompt: string) => prompt.startsWith("You check whether");
+
+function verifyRunner(
+  verify: (prompt: string) => HaikuResult,
+  seen: { verify: number; other: string[] } = { verify: 0, other: [] },
+) {
+  const runner: HaikuRunner = {
+    run: async (input) => {
+      if (input.prompt.startsWith("Find real")) return found(classCandidate)();
+      if (isVerify(input.prompt)) {
+        seen.verify += 1;
+        return verify(input.prompt);
+      }
+      return { ok: false, reason: "failed", detail: "no explain in tests" };
+    },
+  };
+  return { runner, seen };
+}
+
+const confirmedFor = (prompt: string, over: Record<string, unknown> = {}): HaikuResult => {
+  const ids = Array.from(prompt.matchAll(/"eventId":"([^"]+)"/g)).map((m) => m[1]);
+  return {
+    ok: true,
+    data: {
+      items: ids.map((eventId) => ({
+        eventId,
+        confirmed: true,
+        currentlyOffered: true,
+        providerName: "Riverside Farm",
+        start: "2026-10-20T16:00:00-07:00",
+        isFree: false,
+        minPrice: 150,
+        currency: "USD",
+        evidence: "Tuesdays 4pm, $150",
+        ...over,
+      })),
+    },
+  };
+};
+
+test("a failed verify session publishes none of its picks", async () => {
+  const f = fakeFf([household("h1")], {});
+  const { runner } = verifyRunner(() => ({ ok: false, reason: "failed", detail: "boom" }));
+  const stats = await run({ ff: f.ff, runner });
+  assert.equal(stats.published, 0);
+  assert.equal(f.puts.length, 0);
+  assert.equal(stats.officialCheck.unavailable, 1);
+  assert.equal(stats.skippedByReason["official page check unavailable"], 1);
+});
+
+test("a rejected pick is marked and not ranked on the next run", async () => {
+  const db = openEventsDb(":memory:");
+  const f = fakeFf([household("h1")], {});
+  const { runner, seen } = verifyRunner((p) => confirmedFor(p, { confirmed: false }));
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r1", limits, ff: f.ff, runner });
+  assert.equal(stats.officialCheck.rejected, 1);
+  assert.equal(stats.published, 0);
+  assert.equal(stats.skippedByReason["official page check failed"], 1);
+  const rejected = listRejectedEventIds(db, areaKey(address));
+  assert.equal(rejected.size, 1);
+  assert.ok(getOfficialCheck(db, Array.from(rejected)[0]).rejectedReason);
+  const again = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r2", limits, ff: f.ff, runner });
+  assert.equal(seen.verify, 1);
+  assert.equal(again.published, 0);
+  assert.equal(again.officialCheck.rejected, 0);
+});
+
+test("a confirmed pick's schedule and price are what gets published, and it is not rechecked within 7 days", async () => {
+  const db = openEventsDb(":memory:");
+  const f = fakeFf([household("h1")], {});
+  const { runner, seen } = verifyRunner((p) => confirmedFor(p));
+  const stats = await runDiscover({ db, links: okLinks, geocoder, now, runId: "r1", limits, ff: f.ff, runner });
+  assert.equal(stats.officialCheck.confirmed, 1);
+  assert.equal(f.puts.length, 1);
+  const ev = f.puts[0].event;
+  assert.equal(new Date(ev.schedule.start).toISOString(), new Date("2026-10-20T16:00:00-07:00").toISOString());
+  assert.equal(ev.cost.minPrice, 150);
+  assert.ok(getOfficialCheck(db, ev.id).checkedAt);
+  await runDiscover({ db, links: okLinks, geocoder, now, runId: "r2", limits, ff: f.ff, runner });
+  assert.equal(seen.verify, 1);
+});
+
+test("a non-sign-up pick is never sent to verify", async () => {
+  const f = fakeFf([household("h1")], {});
+  const seen = { verify: 0, other: [] as string[] };
+  const runner: HaikuRunner = {
+    run: async (input) => {
+      if (input.prompt.startsWith("Find real")) return found(candidate)();
+      if (isVerify(input.prompt)) seen.verify += 1;
+      return { ok: false, reason: "failed", detail: "x" };
+    },
+  };
+  const stats = await run({ ff: f.ff, runner });
+  assert.equal(seen.verify, 0);
+  assert.equal(stats.published, 1);
+  assert.deepEqual(stats.officialCheck, { confirmed: 0, rejected: 0, unavailable: 0 });
+});
+
+test("reaching the search cap still runs verify", async () => {
+  const f = fakeFf([household("h1")], {});
+  const { runner, seen } = verifyRunner((p) => confirmedFor(p));
+  const stats = await run({ ff: f.ff, runner, limits: { maxTasksPerArea: 3, maxSearches: 1 } });
+  assert.equal(stats.searches, 1);
+  assert.equal(seen.verify, 1);
+  assert.equal(stats.officialCheck.confirmed, 1);
+  assert.equal(stats.published, 1);
+});
+
+test("verifyReserve holds search sessions back", async () => {
+  const f = fakeFf([household("h1")], {});
+  const { runner } = verifyRunner((p) => confirmedFor(p));
+  const stats = await run({ ff: f.ff, runner, limits: { maxTasksPerArea: 5, maxSearches: 4, verifyReserve: 3 } });
+  assert.equal(stats.searches, 1);
 });
