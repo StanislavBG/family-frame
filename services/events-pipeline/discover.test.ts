@@ -17,6 +17,9 @@ const candidate = {
   city: "Portland",
   country: "United States",
   category: "kids-activities",
+  organizerName: "Riverside Farm",
+  organizerUrl: "https://riversidefarm.example/",
+  officialUrl: "https://riversidefarm.example/festival",
   sourceUrls: ["https://riversidefarm.example/festival"],
 };
 

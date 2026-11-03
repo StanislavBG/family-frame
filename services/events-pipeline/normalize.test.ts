@@ -13,6 +13,9 @@ const base = {
   city: "Portland",
   country: "United States",
   category: "holiday-seasonal",
+  organizerName: "Riverside Farm",
+  organizerUrl: "https://riversidefarm.example/",
+  officialUrl: "https://riversidefarm.example/festival",
   sourceUrls: ["https://riversidefarm.example/festival"],
 };
 
@@ -109,7 +112,7 @@ test("normalized candidates carry cost.admission", () => {
   assert.equal(ok({ ...base, isFree: true }).cost.admission, "free");
   assert.equal(ok({ ...base, category: "nature-animals", minPrice: 12, currency: "USD" }).cost.admission, "paid-entry");
   assert.equal(
-    ok({ ...base, category: "music-performance", minPrice: 30, ticketUrl: "https://tickets.example/x" }).cost.admission,
+    ok({ ...base, category: "music-performance", minPrice: 30, ticketUrl: "https://riversidefarm.example/tickets" }).cost.admission,
     "ticketed",
   );
 });
@@ -163,8 +166,8 @@ test("recurrenceText over 200 characters is clipped at a word boundary with an e
 });
 
 test("registrationUrl is copied and implies registrationRequired", () => {
-  const url = "https://club.example/enrol";
-  assert.equal(rawCandidateSchema.safeParse({ ...base, registrationUrl: "http://club.example" }).success, false);
+  const url = "https://riversidefarm.example/enrol";
+  assert.equal(rawCandidateSchema.safeParse({ ...base, registrationUrl: "http://riversidefarm.example" }).success, false);
   const e = ok({ ...base, registrationUrl: url });
   assert.equal(e.cost.registrationUrl, url);
   assert.equal(e.cost.registrationRequired, true);
@@ -173,7 +176,7 @@ test("registrationUrl is copied and implies registrationRequired", () => {
 });
 
 test("mergeDuplicate keeps registrationUrl from either side", () => {
-  const url = "https://club.example/enrol";
+  const url = "https://riversidefarm.example/enrol";
   const plain = ok(base);
   const withUrl = ok({ ...base, registrationUrl: url });
   assert.equal(mergeDuplicate(plain, withUrl).cost.registrationUrl, url);
@@ -257,4 +260,62 @@ test("ages given in months are stored in years", () => {
     assert.equal(e.audience.ageMax, wantMax);
     assert.equal(ffEventSchema.safeParse(e).success, true);
   }
+});
+
+// ---- original source policy ----
+
+const reason = (raw: unknown) => {
+  const r = normalizeCandidate(raw, opts);
+  return r.ok ? "accepted" : r.reason;
+};
+
+test("candidates without an official source or organizer are rejected", () => {
+  assert.equal(reason({ ...base, officialUrl: "https://eventful.example/x", sourceUrls: ["https://eventful.example/x"] }), "no original source");
+  assert.equal(reason({ ...base, officialUrl: "https://allevents.in/x", organizerUrl: "https://allevents.in/" }), "no original source");
+  assert.equal(reason({ ...base, officialUrl: undefined }), "no original source");
+  assert.equal(reason({ ...base, organizerName: undefined }), "no organizer");
+  assert.equal(reason({ ...base, organizerUrl: undefined }), "no organizer");
+});
+
+test("accepted events store the official source first with real kinds", () => {
+  const e = ok({
+    ...base,
+    sourceUrls: ["https://allevents.in/x", "https://riversidefarm.example/festival"],
+    sourceTitles: ["Listing", "Festival"],
+  });
+  assert.deepEqual(e.organizer, { name: "Riverside Farm", url: "https://riversidefarm.example/" });
+  assert.equal(e.sources[0].url, "https://riversidefarm.example/festival");
+  assert.equal(e.sources[0].kind, "official");
+  assert.equal(e.sources[1].kind, "listing");
+  assert.equal(e.sources.length, 2);
+  assert.equal(e.verification.confidence, 0.7);
+});
+
+test("listing sign-up and ticket links are dropped, platform tenants kept", () => {
+  const dropped = ok({
+    ...base,
+    registrationUrl: "https://www.activekids.com/x",
+    ticketUrl: "https://seatgeek.com/x",
+  });
+  assert.equal("registrationUrl" in dropped.cost, false);
+  assert.equal("ticketUrl" in dropped.cost, false);
+  assert.equal(dropped.cost.ticketRequired, false);
+  const kept = ok({ ...base, registrationUrl: "https://app.amilia.com/store/en/riverside/shop" });
+  assert.equal(kept.cost.registrationUrl, "https://app.amilia.com/store/en/riverside/shop");
+});
+
+test("merging a pre-gate event with a gated one puts the official source first", () => {
+  const gated = ok(base);
+  const old = {
+    ...gated,
+    organizer: undefined,
+    sources: [
+      { url: "https://allevents.in/x", kind: "listing" as const, retrievedAt: gated.firstSeenAt },
+    ],
+  };
+  delete (old as { organizer?: unknown }).organizer;
+  const m = mergeDuplicate(old, gated);
+  assert.equal(m.sources[0].kind, "official");
+  assert.equal(m.sources[0].url, "https://riversidefarm.example/festival");
+  assert.equal(m.organizer?.name, "Riverside Farm");
 });

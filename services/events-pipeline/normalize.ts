@@ -11,6 +11,8 @@ import {
   type FfEvent,
 } from "../../shared/events";
 import { CLASS_TAG } from "../../shared/events-activity";
+import { classifySource, hasOfficialSource, sourceKindFor } from "../../shared/events-sources";
+import { applySourcePolicy } from "./sources";
 
 // Normalizer between untrusted web-search output and the repository. All
 // candidate text is data: it is validated, stripped and stored, never evaluated.
@@ -73,6 +75,7 @@ export const rawCandidateSchema = z
     tags: z.array(z.string().max(60)).max(EVENTS_LIMITS.maxTags).optional(),
     organizerName: z.string().max(300).optional(),
     organizerUrl: httpsUrl.optional(),
+    officialUrl: httpsUrl.optional(),
     imageUrl: httpsUrl.optional(),
     sourceUrls: z.array(httpsUrl).min(1).max(EVENTS_LIMITS.maxSources),
     sourceTitles: z.array(z.string().max(300)).max(EVENTS_LIMITS.maxSources).optional(),
@@ -96,7 +99,7 @@ export const RAW_CANDIDATES_JSON_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "description", "start", "city", "country", "category", "sourceUrls"],
+        required: ["title", "description", "start", "city", "country", "category", "sourceUrls", "organizerName", "organizerUrl", "officialUrl"],
         properties: {
           title: str(300),
           description: str(8000),
@@ -143,6 +146,7 @@ export const RAW_CANDIDATES_JSON_SCHEMA = {
           tags: { type: "array", maxItems: EVENTS_LIMITS.maxTags, items: str(60) },
           organizerName: str(300),
           organizerUrl: urlProp,
+          officialUrl: urlProp,
           imageUrl: urlProp,
           sourceUrls: { type: "array", minItems: 1, maxItems: EVENTS_LIMITS.maxSources, items: urlProp },
           sourceTitles: { type: "array", maxItems: EVENTS_LIMITS.maxSources, items: str(300) },
@@ -309,6 +313,21 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
   const c = parsed.data;
   const nowIso = opts.now.toISOString();
 
+  const organizerNameClean = opt(c.organizerName);
+  if (!organizerNameClean || !c.organizerUrl) return { ok: false, reason: "no organizer" };
+  const organizerUrl = c.organizerUrl;
+  if (!c.officialUrl || classifySource(c.officialUrl, organizerUrl) !== "official") {
+    return { ok: false, reason: "no original source" };
+  }
+  const officialUrl = c.officialUrl;
+  const keepLink = (u: string | undefined): string | undefined => {
+    if (!u) return undefined;
+    const k = classifySource(u, organizerUrl);
+    return k === "official" || k === "registration" ? u : undefined;
+  };
+  const ticketUrl = keepLink(c.ticketUrl);
+  const registrationUrl = keepLink(c.registrationUrl);
+
   const tz = opt(c.timezone) ?? opts.defaultTimezone;
   if (!validTimezone(tz)) return { ok: false, reason: `invalid timezone: ${tz}` };
 
@@ -366,9 +385,12 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
 
   const currency = c.currency?.trim().toUpperCase();
   const tags = withClassTag(Array.from(new Set((c.tags ?? []).map(cleanText).filter(Boolean))), c.isClass === true);
-  const organizerName = opt(c.organizerName);
   const recurrenceText = clipText(opt(c.recurrenceText), 200);
-  const sourceUrls = Array.from(new Set(c.sourceUrls));
+  const ordered = Array.from(new Set([officialUrl, ...c.sourceUrls]));
+  const titleFor = (url: string) => {
+    const i = c.sourceUrls.indexOf(url);
+    return i >= 0 ? opt(c.sourceTitles?.[i]) : undefined;
+  };
 
   const event: FfEvent = {
     schemaVersion: 1,
@@ -407,10 +429,10 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
       ...(c.minPrice !== undefined ? { minPrice: c.minPrice } : {}),
       ...(c.maxPrice !== undefined ? { maxPrice: c.maxPrice } : {}),
       ...(opt(c.priceText) ? { priceText: opt(c.priceText) } : {}),
-      ticketRequired: !!c.ticketUrl,
-      registrationRequired: c.registrationRequired ?? !!c.registrationUrl,
-      ...(c.ticketUrl ? { ticketUrl: c.ticketUrl } : {}),
-      ...(c.registrationUrl ? { registrationUrl: c.registrationUrl } : {}),
+      ticketRequired: !!ticketUrl,
+      registrationRequired: c.registrationRequired ?? !!registrationUrl,
+      ...(ticketUrl ? { ticketUrl } : {}),
+      ...(registrationUrl ? { registrationUrl } : {}),
     },
     audience: {
       ageBands: c.ageBands && c.ageBands.length > 0 ? Array.from(new Set(c.ageBands)) : ["all-ages"],
@@ -419,20 +441,18 @@ export function normalizeCandidate(raw: unknown, opts: NormalizeOptions): Normal
       familyFriendly: c.familyFriendly ?? true,
       languages: c.language ? [c.language.trim()] : [],
     },
-    ...(organizerName
-      ? { organizer: { name: organizerName, ...(c.organizerUrl ? { url: c.organizerUrl } : {}) } }
-      : {}),
+    organizer: { name: organizerNameClean, url: organizerUrl },
     ...(c.imageUrl ? { media: { imageUrl: c.imageUrl } } : {}),
-    sources: sourceUrls.map((url, i) => ({
+    sources: ordered.slice(0, EVENTS_LIMITS.maxSources).map((url) => ({
       url,
-      ...(opt(c.sourceTitles?.[i]) ? { title: opt(c.sourceTitles?.[i]) } : {}),
+      ...(titleFor(url) ? { title: titleFor(url) } : {}),
       ...(hostOf(url) ? { publisher: hostOf(url) } : {}),
-      kind: "listing" as const,
+      kind: url === officialUrl ? ("official" as const) : sourceKindFor(classifySource(url, organizerUrl)),
       retrievedAt: nowIso,
     })),
     status: "scheduled",
     updates: [],
-    verification: { lastCheckedAt: nowIso, checkCount: 0, confidence: 0.6 },
+    verification: { lastCheckedAt: nowIso, checkCount: 0, confidence: 0.7 },
     firstSeenAt: nowIso,
   };
 
@@ -517,7 +537,8 @@ export function mergeDuplicate(existing: FfEvent, incoming: FfEvent): FfEvent {
   const schedule =
     isClass && windowEndMs(incoming.schedule) > windowEndMs(existing.schedule) ? incoming.schedule : existing.schedule;
 
-  return {
+  const officialSide = hasOfficialSource(existing) || !hasOfficialSource(incoming) ? existing : incoming;
+  return applySourcePolicy({
     ...existing,
     schedule,
     description: incoming.description.length > existing.description.length ? incoming.description : existing.description,
@@ -528,9 +549,9 @@ export function mergeDuplicate(existing: FfEvent, incoming: FfEvent): FfEvent {
     ),
     location,
     cost,
-    organizer: existing.organizer ?? incoming.organizer,
+    organizer: officialSide.organizer ?? existing.organizer ?? incoming.organizer,
     media: existing.media ?? incoming.media,
     sources,
     firstSeenAt,
-  };
+  });
 }
