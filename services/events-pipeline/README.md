@@ -40,9 +40,13 @@ Local job that finds events for households that opted in, publishes them to Fami
 
 Each run prints one JSON stats line and exits 0 (ok, or skipped because another run holds the lock) or 1 (error); exit 2 means bad usage or config. `status` prints household and upcoming-event counts (next 14 days, 15-30, 31-90, later) and the last runs, with no addresses or tokens.
 
+`npm run events:run -- purge-signups [--dry-run] [--household <id>]`
+
+One-off cleanup for the original-source gate. For each sharing household it withdraws (and deletes locally) every sign-up recommendation that is still `new` and not linked to the calendar, and drops local rows already withdrawn; answered or linked ones are kept. It then deletes local events that no household holds and that are sign-up activities or lack an official source, and marks held events without an official source as due so the next re-check finds the organizer's page or withdraws them. `--dry-run` only counts and changes nothing; `--household` limits the households. It takes the same lock as the other modes and prints one JSON line (`households` with `withdrawn`, `kept`, `titles`; `deletedEvents`; `markedDue`).
+
 ## Profiling a run
 
-`npm run events:run -- report [--household <id>] [--runs <n>]` prints a Markdown profile of the last `n` runs (default 10) from the local DB: a runs table (Haiku sessions, cost, searches, candidates, normalize rejected, ranked, published), where candidates were lost (reject reasons, search failures, skipped by reason, phase timings of the latest discover run) and the published recommendations per household with cost per recommendation. It needs no `FF_*` config, makes no network calls and shows no addresses or tokens. See `docs/events.md` section 8 for the stats fields.
+`npm run events:run -- report [--household <id>] [--runs <n>]` prints a Markdown profile of the last `n` runs (default 10) from the local DB: a runs table (Haiku sessions, cost, searches, candidates, normalize rejected, ranked, published), where candidates were lost (reject reasons, search failures, skipped by reason, phase timings of the latest discover run, a `link check` line with ok/dead/moved/blocked/refused/error counts and an `official page check` line with confirmed/rejected/unavailable counts) and the published recommendations per household with cost per recommendation. It needs no `FF_*` config, makes no network calls and shows no addresses or tokens. See `docs/events.md` section 8 for the stats fields.
 
 ## Notifications
 
