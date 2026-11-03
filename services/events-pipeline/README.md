@@ -58,7 +58,7 @@ One-off cleanup for the original-source gate. For each sharing household it with
 
 ## Locking
 
-An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapping; a lock older than 4.5 hours is treated as stale and replaced (the daily run is limited to 4 hours).
+An exclusive lock file `<EVENTS_DB_PATH>.lock` keeps two cron runs from overlapping; a lock older than 4.5 hours is treated as stale and replaced (the daily run is limited to 4 hours). To end inside that limit, `all` stops starting new re-checks 195 minutes after it starts (a check already running finishes); the remaining due events roll over to the next run.
 
 ## Cost caps
 

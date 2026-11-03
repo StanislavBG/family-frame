@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addUsage, acquireLock, acquireLockWithWait, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
+import { ALL_REFRESH_STOP_MS, addUsage, acquireLock, acquireLockWithWait, main, nodeVersionOk, parseArgs, type CliDeps } from "./cli";
 import { openEventsDb, startRun, finishRun } from "./db";
 import type { FfClient } from "./ff-client";
 import type { Notice } from "./notify";
@@ -461,4 +461,25 @@ test("purge-signups runs under the lock and prints the stats line", async () => 
   const line = JSON.parse(h.lines[h.lines.length - 1]);
   assert.deepEqual(line, { mode: "purge-signups", dryRun: true, households: [], deletedEvents: 0, markedDue: 0 });
   assert.equal(existsSync(`${dbPath}.lock`), false, "lock released");
+});
+
+test("all hands runDispatch a stop time at start + ALL_REFRESH_STOP_MS; refresh hands none", async () => {
+  const env = { FF_BASE_URL: "http://localhost:5000", FF_SERVICE_TOKEN: "ff_svc_secret" };
+  for (const mode of ["all", "refresh"] as const) {
+    const h = harness(env);
+    const seen: { stopAtMs?: number }[] = [];
+    h.deps.runDispatch = async (opts) => {
+      seen.push(opts);
+      return { checked: 0, changed: 0, cancelled: 0, pushed: 0, failed: 0, linksRemoved: 0, withdrawn: 0, stoppedAtDeadline: false };
+    };
+    const before = Date.now();
+    assert.equal(await main([mode], h.deps), 0);
+    const after = Date.now();
+    assert.equal(seen.length, 1);
+    if (mode === "all") {
+      assert.ok(seen[0].stopAtMs! >= before + ALL_REFRESH_STOP_MS && seen[0].stopAtMs! <= after + ALL_REFRESH_STOP_MS);
+    } else {
+      assert.equal(seen[0].stopAtMs, undefined);
+    }
+  }
 });

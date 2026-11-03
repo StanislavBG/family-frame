@@ -130,7 +130,7 @@ test("cancellation is pushed to two households", async () => {
   ]);
   const { ff, pushes } = fakeFf();
   const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "r1" });
-  assert.deepEqual(stats, { checked: 1, changed: 1, cancelled: 1, pushed: 2, failed: 0, linksRemoved: 0, withdrawn: 0 });
+  assert.deepEqual(stats, { checked: 1, changed: 1, cancelled: 1, pushed: 2, failed: 0, linksRemoved: 0, withdrawn: 0, stoppedAtDeadline: false });
   assert.equal(runner.calls.length, 1);
   assert.deepEqual(pushes.map((p) => [p.householdId, p.status]), [["h1", "cancelled"], ["h2", "cancelled"]]);
   const saved = getEvent(db, "e1")!;
@@ -172,7 +172,7 @@ test("no change only bumps lastCheckedAt", async () => {
   seed(db, ev("e3", 20), ["h1"]);
   const { ff, pushes } = fakeFf();
   const stats = await runDispatch({ db, runner: fakeRunner([okData(NO_CHANGE)]), ff, links: fakeLinks(), now: NOW, runId: "r3" });
-  assert.deepEqual(stats, { checked: 1, changed: 0, cancelled: 0, pushed: 0, failed: 0, linksRemoved: 0, withdrawn: 0 });
+  assert.deepEqual(stats, { checked: 1, changed: 0, cancelled: 0, pushed: 0, failed: 0, linksRemoved: 0, withdrawn: 0, stoppedAtDeadline: false });
   const saved = getEvent(db, "e3")!;
   assert.equal(saved.verification.lastCheckedAt, NOW.toISOString());
   assert.equal(saved.verification.lastChangedAt, undefined);
@@ -411,4 +411,25 @@ test("backfill accepts a registration-platform link that works", async () => {
   await runDispatch({ db, runner: fakeRunner([signUpResult(url)]), ff, links: fakeLinks(), now: NOW, runId: "b3" });
   assert.equal(pushes.length, 1);
   assert.equal(getEvent(db, "b3")!.cost.registrationUrl, url);
+});
+
+test("stopAtMs: no new re-check starts once the clock passes it", async () => {
+  const db = openEventsDb(":memory:");
+  for (const id of ["d1", "d2", "d3", "d4"]) seed(db, ev(id, 5), []);
+  const runner = fakeRunner([okData(NO_CHANGE), okData(NO_CHANGE), okData(NO_CHANGE), okData(NO_CHANGE)]);
+  const clock = () => (runner.calls.length >= 2 ? 1000 : 0);
+  const stats = await runDispatch({ db, runner, ff: fakeFf().ff, links: fakeLinks(), now: NOW, runId: "t1", stopAtMs: 1000, clock });
+  assert.equal(runner.calls.length, 2);
+  assert.equal(stats.checked, 2);
+  assert.equal(stats.stoppedAtDeadline, true);
+});
+
+test("without stopAtMs every due event is checked", async () => {
+  const db = openEventsDb(":memory:");
+  for (const id of ["d1", "d2", "d3", "d4"]) seed(db, ev(id, 5), []);
+  const runner = fakeRunner([okData(NO_CHANGE), okData(NO_CHANGE), okData(NO_CHANGE), okData(NO_CHANGE)]);
+  const stats = await runDispatch({ db, runner, ff: fakeFf().ff, links: fakeLinks(), now: NOW, runId: "t2", maxChecks: 10, clock: () => 1e15 });
+  assert.equal(runner.calls.length, 4);
+  assert.equal(stats.checked, 4);
+  assert.equal(stats.stoppedAtDeadline, false);
 });

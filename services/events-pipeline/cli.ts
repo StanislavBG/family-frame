@@ -16,6 +16,8 @@ import { runTrips, type TripRunStats } from "./trips-run";
 import { runWatch, type WatchResult } from "./watch";
 
 const MIN_NODE = [22, 13] as const;
+/** In `all` mode, no new re-check starts this long after the run began, so the daily run ends inside its 4-hour limit. */
+export const ALL_REFRESH_STOP_MS = 195 * 60_000;
 const LOCK_STALE_MS = 4.5 * 3600000;
 const DAY_MS = 86_400_000;
 const DEFAULT_MAX_SESSIONS = 45;
@@ -219,6 +221,7 @@ export interface CliDeps {
   makeRunner?: (opts: { maxSessions: number; cwd: string }) => HaikuRunner & { usage?(): HaikuUsage };
   makeGeocoder?: (db: EventsDb, userAgent: string) => Geocoder;
   runWatch?: typeof runWatch;
+  runDispatch?: typeof runDispatch;
   notify?: (n: Notice) => void;
   tmpRoot?: string;
   sleep?: (ms: number) => Promise<void>;
@@ -410,7 +413,15 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
       } else {
         const runId = startRun(db, "refresh", now().toISOString());
         try {
-          stats.refresh = await runDispatch({ db, runner: refreshRunner, ff, now: now(), runId, maxChecks: args.maxSessions });
+          stats.refresh = await (deps.runDispatch ?? runDispatch)({
+            db,
+            runner: refreshRunner,
+            ff,
+            now: now(),
+            runId,
+            maxChecks: args.maxSessions,
+            ...(args.mode === "all" ? { stopAtMs: t0 + ALL_REFRESH_STOP_MS } : {}),
+          });
           const refreshHaiku = refreshRunner.usage?.();
           if (refreshHaiku) usages.push(refreshHaiku);
           finishRun(db, runId, now().toISOString(), refreshHaiku ? { ...stats.refresh, haiku: refreshHaiku } : stats.refresh);

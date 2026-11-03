@@ -44,6 +44,8 @@ export interface DispatchStats {
   /** Set by runDispatch; optional so push-only callers (discover) can build the stats without them. */
   linksRemoved?: number;
   withdrawn?: number;
+  /** True when runDispatch stopped starting re-checks because the stop time passed. */
+  stoppedAtDeadline?: boolean;
 }
 
 type RunStats = Required<DispatchStats>;
@@ -60,6 +62,10 @@ export interface DispatchOptions extends Omit<PushOptions, "ff"> {
   ff: Pick<FfClient, "putRecommendations" | "getState" | "withdraw">;
   links?: Pick<LinkChecker, "check">;
   maxChecks?: number;
+  /** Epoch ms: no new re-check starts once clock() reaches it (a running check finishes). */
+  stopAtMs?: number;
+  /** Clock for stopAtMs; defaults to Date.now. */
+  clock?: () => number;
 }
 
 const badLink = (r: { status: string }): boolean => r.status === "dead" || r.status === "moved" || r.status === "refused";
@@ -425,8 +431,13 @@ export async function runDispatch(opts: DispatchOptions): Promise<RunStats> {
   const { db, runner, now, maxChecks = 20 } = opts;
   const links = opts.links ?? createLinkChecker();
   const states = new Map<string, Promise<StateResult>>();
-  const stats: RunStats = { checked: 0, changed: 0, cancelled: 0, pushed: 0, failed: 0, linksRemoved: 0, withdrawn: 0 };
+  const stats: RunStats = { checked: 0, changed: 0, cancelled: 0, pushed: 0, failed: 0, linksRemoved: 0, withdrawn: 0, stoppedAtDeadline: false };
+  const clock = opts.clock ?? Date.now;
   for (const stored of listDueForRecheck(db, now.toISOString(), maxChecks)) {
+    if (opts.stopAtMs !== undefined && clock() >= opts.stopAtMs) {
+      stats.stoppedAtDeadline = true;
+      break;
+    }
     const areaKey = areaKeyOf(db, stored.id);
     // Source policy, then link-check the official source, sign-up and ticket links.
     let event = applySourcePolicy(stored);
