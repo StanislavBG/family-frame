@@ -442,3 +442,23 @@ test("all builds one runner per phase; trips run even when discover and refresh 
   assert.equal(JSON.parse(row.stats_json).haiku.sessions, 45);
   assert.ok(out.trips, "trips stage ran");
 });
+
+test("parseArgs accepts purge-signups with --dry-run and --household", () => {
+  const a = parseArgs(["purge-signups", "--dry-run", "--household", "h1"]);
+  assert.equal(a.mode, "purge-signups");
+  assert.equal(a.dryRun, true);
+  assert.equal(a.householdId, "h1");
+});
+
+test("purge-signups runs under the lock and prints the stats line", async () => {
+  const h = harness({ FF_BASE_URL: "http://localhost:5000", FF_SERVICE_TOKEN: "ff_svc_x" });
+  const dbPath = h.deps.env!.EVENTS_DB_PATH!;
+  h.deps.makeRunner = () => {
+    throw new Error("no runner expected");
+  };
+  h.deps.makeFf = () => ({ listHouseholds: async () => [] }) as unknown as FfClient;
+  assert.equal(await main(["purge-signups", "--dry-run"], h.deps), 0);
+  const line = JSON.parse(h.lines[h.lines.length - 1]);
+  assert.deepEqual(line, { mode: "purge-signups", dryRun: true, households: [], deletedEvents: 0, markedDue: 0 });
+  assert.equal(existsSync(`${dbPath}.lock`), false, "lock released");
+});

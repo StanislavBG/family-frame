@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { finishRun, listDueForRecheck, openEventsDb, pruneLocalState, startRun, type EventsDb, type PruneCounts } from "./db";
 import { runDiscover, type DiscoverStats } from "./discover";
+import { runPurgeSignups } from "./purge";
 import { runDispatch, type DispatchStats } from "./dispatch";
 import { createFfClient, type FfClient } from "./ff-client";
 import { createGeocoder, type Geocoder } from "./geo";
@@ -20,7 +21,7 @@ const DAY_MS = 86_400_000;
 const DEFAULT_MAX_SESSIONS = 45;
 const DEFAULT_WATCH_MAX_SESSIONS = 20;
 
-export type Mode = "discover" | "refresh" | "all" | "watch" | "status" | "report";
+export type Mode = "discover" | "refresh" | "all" | "watch" | "status" | "report" | "purge-signups";
 
 export interface CliArgs {
   mode: Mode;
@@ -30,9 +31,9 @@ export interface CliArgs {
   runs?: number;
 }
 
-const MODES: readonly string[] = ["discover", "refresh", "all", "watch", "status", "report"];
+const MODES: readonly string[] = ["discover", "refresh", "all", "watch", "status", "report", "purge-signups"];
 
-export const USAGE = "usage: events:run <discover|refresh|all|watch|status|report> [--dry-run] [--household <id>] [--max-sessions <n>]\n       events:run report [--household <id>] [--runs <n>]";
+export const USAGE = "usage: events:run <discover|refresh|all|watch|status|report|purge-signups> [--dry-run] [--household <id>] [--max-sessions <n>]\n       events:run report [--household <id>] [--runs <n>]";
 
 /** Parse argv (without node and script). Throws an Error with a one-line message on bad input. */
 export function parseArgs(argv: string[]): CliArgs {
@@ -366,6 +367,12 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
       return 0;
     }
 
+    if (args.mode === "purge-signups") {
+      const purged = await runPurgeSignups({ db, ff, now: now(), dryRun: args.dryRun, onlyHouseholdId: args.householdId });
+      out(JSON.stringify({ mode: purged.mode, dryRun: purged.dryRun, households: purged.households, deletedEvents: purged.deletedEvents, markedDue: purged.markedDue }));
+      return 0;
+    }
+
     const wantsDiscover = args.mode === "discover" || args.mode === "all";
     const wantsRefresh = args.mode === "refresh" || args.mode === "all";
     const discoverRunner = wantsDiscover ? buildRunner() : undefined;
@@ -451,7 +458,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     err(`events-pipeline failed: ${message}`);
-    if (db && !args.dryRun) {
+    if (db && !args.dryRun && args.mode !== "purge-signups") {
       notifyOutcome(db, args.mode, { ok: false, error: message }, now().toISOString(), notify);
     }
     return 1;

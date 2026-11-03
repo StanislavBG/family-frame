@@ -543,3 +543,17 @@ export function listPublishedForHousehold(
       return { eventId: str(r.event_id), published: json ? (JSON.parse(json) as RecommendationInput) : null };
     });
 }
+
+/** Every stored event (id and parsed JSON), for maintenance sweeps. */
+export function listAllEvents(db: EventsDb): { id: string; event: FfEvent }[] {
+  return db
+    .prepare("SELECT id, json FROM events ORDER BY id")
+    .all()
+    .map((r) => ({ id: str(r.id), event: JSON.parse(str(r.json)) as FfEvent }));
+}
+
+/** Set an event's next_check_at; returns true when the value changed. */
+export function setNextCheckAt(db: EventsDb, id: string, iso: string): boolean {
+  const res = db.prepare("UPDATE events SET next_check_at = ? WHERE id = ? AND (next_check_at IS NOT ? )").run(iso, id, iso);
+  return Number(res.changes) > 0;
+}
