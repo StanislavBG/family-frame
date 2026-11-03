@@ -10,7 +10,9 @@ import {
   type RecommendationInput,
 } from "../../shared/events";
 import {
+  deleteEvent,
   deleteHousehold,
+  deleteRecommendation,
   getPublishedRecommendation,
   listDueForRecheck,
   listHouseholdsHoldingEvent,
@@ -19,8 +21,13 @@ import {
   type EventsDb,
 } from "./db";
 import { needsSignUp } from "../../shared/events-activity";
-import type { FfClient } from "./ff-client";
+import { classifySource, hasOfficialSource, officialSourceUrl } from "../../shared/events-sources";
+import type { FfClient, FfState } from "./ff-client";
 import type { HaikuRunner } from "./haiku";
+import { createLinkChecker } from "./links";
+
+type LinkChecker = ReturnType<typeof createLinkChecker>;
+import { applySourcePolicy } from "./sources";
 
 const DAY_MS = 86400000;
 const RETRY_AFTER_FAILURE_MS = 6 * 3600000;
@@ -34,16 +41,28 @@ export interface DispatchStats {
   cancelled: number;
   pushed: number;
   failed: number;
+  /** Set by runDispatch; optional so push-only callers (discover) can build the stats without them. */
+  linksRemoved?: number;
+  withdrawn?: number;
 }
 
-export interface DispatchOptions {
+type RunStats = Required<DispatchStats>;
+
+export interface PushOptions {
   db: EventsDb;
   runner: HaikuRunner;
   ff: Pick<FfClient, "putRecommendations">;
   now: Date;
-  maxChecks?: number;
   runId: string;
 }
+
+export interface DispatchOptions extends Omit<PushOptions, "ff"> {
+  ff: Pick<FfClient, "putRecommendations" | "getState" | "withdraw">;
+  links?: Pick<LinkChecker, "check">;
+  maxChecks?: number;
+}
+
+const badLink = (r: { status: string }): boolean => r.status === "dead" || r.status === "moved" || r.status === "refused";
 
 /**
  * When an event should next be re-read: daily within 3 days of its start (and
@@ -99,6 +118,13 @@ const checkResultSchema = z.object({
       postalCode: z.string().optional(),
       parkingNotes: z.string().optional(),
       accessibilityNotes: z.string().optional(),
+    })
+    .optional(),
+  official: z
+    .object({
+      organizerName: z.string().max(200).optional(),
+      organizerUrl: z.string().max(2000).optional(),
+      officialUrl: z.string().max(2000).optional(),
     })
     .optional(),
   confidence: z.number().min(0).max(1),
@@ -162,6 +188,15 @@ export const CHECK_JSON_SCHEMA = {
         accessibilityNotes: str("Step-free access, restrooms, short"),
       },
     },
+    official: {
+      type: "object",
+      description: "Only when asked for the organizer's own page",
+      properties: {
+        organizerName: str("Name of the organizer or venue running the event"),
+        organizerUrl: str("https URL of the organizer's own website"),
+        officialUrl: str("https URL of the organizer's own current page for this event"),
+      },
+    },
     confidence: { type: "number", minimum: 0, maximum: 1 },
   },
 } as const;
@@ -177,7 +212,7 @@ function missingLocationFields(event: FfEvent): string[] {
   return LOCATION_FIELDS.filter((f) => !event.location[f.key]?.trim()).map((f) => f.label);
 }
 
-function buildPrompt(event: FfEvent): string {
+function buildPrompt(event: FfEvent, askOfficial = false): string {
   const urls = event.sources.map((s) => `- ${s.url}`).join("\n");
   const missing = missingLocationFields(event);
   const wantsSignUpUrl = needsSignUp(event) && !event.cost?.registrationUrl;
@@ -199,8 +234,16 @@ function buildPrompt(event: FfEvent): string {
           "return its https URL in cost.registrationUrl. Never guess a URL.",
         ]
       : []),
+    ...(askOfficial
+      ? [
+          "This event has no working official source page. Find the organizer's own current page for this exact event with WebSearch,",
+          "then open it with WebFetch. Return organizerName, organizerUrl (the organizer's own website) and officialUrl (that event page,",
+          "on the organizer's own domain) in official. Aggregators, listing sites, ticket resellers and social pages do not count.",
+          "If you cannot find the organizer's own page for this event, omit official. Never guess a URL.",
+        ]
+      : []),
     "",
-    "Source URLs:",
+    "Source URLs (the official page is listed first when present):",
     urls,
     "",
     "<event>",
@@ -217,7 +260,26 @@ const STATUS_KIND: Partial<Record<FfEvent["status"], EventUpdateKind>> = {
   scheduled: "reinstated",
 };
 
-function applyResult(event: FfEvent, result: CheckResult, now: Date): { updated: FfEvent; changed: boolean } {
+/** A sign-up link the model returned that is well formed, https and official or a registration platform. */
+function signUpCandidate(event: FfEvent, result: CheckResult): string | undefined {
+  const raw = result.cost?.registrationUrl;
+  if (result.confidence < MIN_CONFIDENCE || event.cost?.registrationUrl || typeof raw !== "string") return undefined;
+  try {
+    const u = new URL(raw.trim());
+    if (u.protocol !== "https:" || u.href.length > 2000) return undefined;
+    const cls = classifySource(u.href, event.organizer?.url);
+    return cls === "official" || cls === "registration" ? u.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function applyResult(
+  event: FfEvent,
+  result: CheckResult,
+  now: Date,
+  signUpLinkOk: boolean,
+): { updated: FfEvent; changed: boolean } {
   const nowIso = now.toISOString();
   const accepted = result.confidence >= MIN_CONFIDENCE;
   const changes = accepted ? result.changes : [];
@@ -250,18 +312,8 @@ function applyResult(event: FfEvent, result: CheckResult, now: Date): { updated:
       field: "location",
     } as (typeof newUpdates)[number]);
   }
-  const { registrationUrl: rawUrl, ...resultCost } = result.cost ?? {};
-  let signUpUrl: string | undefined;
-  if (accepted && !event.cost?.registrationUrl && typeof rawUrl === "string") {
-    try {
-      const u = new URL(rawUrl.trim());
-      if (u.protocol === "https:" && u.href.length <= 2000) {
-        signUpUrl = u.href;
-      }
-    } catch {
-      // malformed link: dropped
-    }
-  }
+  const { registrationUrl: _raw, ...resultCost } = result.cost ?? {};
+  const signUpUrl = signUpLinkOk ? signUpCandidate(event, result) : undefined;
   const filledSignUp = signUpUrl !== undefined;
   const changed = newUpdates.length > 0;
   const verification = {
@@ -294,7 +346,7 @@ function areaKeyOf(db: EventsDb, id: string): string {
   return String(db.prepare("SELECT area_key FROM events WHERE id = ?").get(id)?.area_key ?? "");
 }
 
-export async function pushEvent(opts: DispatchOptions, event: FfEvent, stats: DispatchStats): Promise<void> {
+export async function pushEvent(opts: PushOptions, event: FfEvent, stats: DispatchStats): Promise<void> {
   const { db, ff, runId, now } = opts;
   for (const householdId of listHouseholdsHoldingEvent(db, event.id)) {
     const stored = getPublishedRecommendation(db, householdId, event.id);
@@ -320,13 +372,86 @@ export async function pushEvent(opts: DispatchOptions, event: FfEvent, stats: Di
   }
 }
 
+type StateResult = FfState | { notSharing: true } | null;
+
+/**
+ * Withdraw an event from households that have not answered it. Answered or calendar-linked
+ * recommendations stay. Returns true when no household holds the event any more.
+ */
+async function withdrawEvent(
+  opts: DispatchOptions,
+  eventId: string,
+  states: Map<string, Promise<StateResult>>,
+  stats: RunStats,
+): Promise<boolean> {
+  const { db, ff } = opts;
+  for (const householdId of listHouseholdsHoldingEvent(db, eventId)) {
+    let pending = states.get(householdId);
+    if (!pending) {
+      pending = ff.getState(householdId).catch(() => null);
+      states.set(householdId, pending);
+    }
+    const state = await pending;
+    if (!state) {
+      stats.failed += 1;
+      continue;
+    }
+    if ("notSharing" in state) {
+      deleteHousehold(db, householdId);
+      continue;
+    }
+    const rec = state.recommendations.find((r) => r.eventId === eventId);
+    if (rec && !(rec.response === "new" && !rec.calendarLinked)) continue;
+    try {
+      const res = await ff.withdraw(householdId, eventId);
+      if ("notSharing" in res) {
+        deleteHousehold(db, householdId);
+        continue;
+      }
+      deleteRecommendation(db, householdId, eventId);
+    } catch {
+      stats.failed += 1;
+    }
+  }
+  if (listHouseholdsHoldingEvent(db, eventId).length === 0) {
+    deleteEvent(db, eventId);
+    return true;
+  }
+  return false;
+}
+
 /** Re-check due events against their sources, store real changes and push them to every holding household. */
-export async function runDispatch(opts: DispatchOptions): Promise<DispatchStats> {
+export async function runDispatch(opts: DispatchOptions): Promise<RunStats> {
   const { db, runner, now, maxChecks = 20 } = opts;
-  const stats: DispatchStats = { checked: 0, changed: 0, cancelled: 0, pushed: 0, failed: 0 };
-  for (const event of listDueForRecheck(db, now.toISOString(), maxChecks)) {
-    const areaKey = areaKeyOf(db, event.id);
-    const res = await runner.run({ prompt: buildPrompt(event), jsonSchema: CHECK_JSON_SCHEMA });
+  const links = opts.links ?? createLinkChecker();
+  const states = new Map<string, Promise<StateResult>>();
+  const stats: RunStats = { checked: 0, changed: 0, cancelled: 0, pushed: 0, failed: 0, linksRemoved: 0, withdrawn: 0 };
+  for (const stored of listDueForRecheck(db, now.toISOString(), maxChecks)) {
+    const areaKey = areaKeyOf(db, stored.id);
+    // Source policy, then link-check the official source, sign-up and ticket links.
+    let event = applySourcePolicy(stored);
+    let preChanged = JSON.stringify(event) !== JSON.stringify(stored);
+    const officialUrl = officialSourceUrl(event);
+    const [officialRes, regRes, ticketRes] = await Promise.all([
+      officialUrl ? links.check(officialUrl) : Promise.resolve(null),
+      event.cost?.registrationUrl ? links.check(event.cost.registrationUrl) : Promise.resolve(null),
+      event.cost?.ticketUrl ? links.check(event.cost.ticketUrl) : Promise.resolve(null),
+    ]);
+    const cost = { ...event.cost };
+    if (regRes && badLink(regRes)) {
+      delete cost.registrationUrl;
+      stats.linksRemoved += 1;
+      preChanged = true;
+    }
+    if (ticketRes && badLink(ticketRes)) {
+      delete cost.ticketUrl;
+      stats.linksRemoved += 1;
+      preChanged = true;
+    }
+    event = { ...event, cost };
+    const askOfficial = !officialUrl || (officialRes !== null && badLink(officialRes));
+
+    const res = await runner.run({ prompt: buildPrompt(event, askOfficial), jsonSchema: CHECK_JSON_SCHEMA });
     if (!res.ok) {
       if (res.reason === "rate-limited" || res.reason === "budget-exhausted") break;
       stats.failed += 1;
@@ -339,21 +464,74 @@ export async function runDispatch(opts: DispatchOptions): Promise<DispatchStats>
       reschedule(db, event, areaKey, now);
       continue;
     }
+
+    // Official source: adopt the model's find when it is the organizer's own live page, else withdraw.
+    let adopted: { organizer: NonNullable<FfEvent["organizer"]>; url: string } | null = null;
+    if (askOfficial) {
+      const f = parsed.data.official;
+      if (parsed.data.confidence >= MIN_CONFIDENCE && f?.officialUrl && f.organizerUrl) {
+        try {
+          const o = new URL(f.organizerUrl.trim());
+          const u = new URL(f.officialUrl.trim());
+          if (
+            o.protocol === "https:" &&
+            u.protocol === "https:" &&
+            classifySource(u.href, o.href) === "official" &&
+            !badLink(await links.check(u.href))
+          ) {
+            adopted = {
+              organizer: { ...event.organizer, name: f.organizerName?.trim() || event.organizer?.name || o.hostname, url: o.href },
+              url: u.href,
+            };
+          }
+        } catch {
+          // malformed link: treated as no find
+        }
+      }
+      if (!adopted) {
+        stats.checked += 1;
+        stats.withdrawn += 1;
+        const gone = await withdrawEvent(opts, event.id, states, stats);
+        if (!gone) {
+          upsertEvent(db, event, areaKey, new Date(now.getTime() + RETRY_AFTER_FAILURE_MS).toISOString());
+        }
+        continue;
+      }
+    }
+
+    const candidate = signUpCandidate(event, parsed.data);
+    const signUpOk = candidate ? !badLink(await links.check(candidate)) : false;
     let outcome: { updated: FfEvent; changed: boolean };
     try {
-      outcome = applyResult(event, parsed.data, now);
+      outcome = applyResult(event, parsed.data, now, signUpOk);
+      if (adopted) {
+        const source = {
+          url: adopted.url,
+          publisher: adopted.organizer.name,
+          kind: "official" as const,
+          retrievedAt: now.toISOString(),
+        };
+        const rest = outcome.updated.sources.filter((s) => s.url !== adopted!.url && s.url !== officialUrl);
+        outcome = {
+          updated: applySourcePolicy(
+            ffEventSchema.parse({ ...outcome.updated, organizer: adopted.organizer, sources: [source, ...rest] }),
+          ),
+          changed: true,
+        };
+      }
     } catch {
       stats.failed += 1;
       reschedule(db, event, areaKey, now);
       continue;
     }
-    const { updated, changed } = outcome;
+    const updated = outcome.updated;
+    const changed = outcome.changed || preChanged;
     const next = updated.status === "cancelled" ? NEVER : (nextCheckAt(updated, now) ?? NEVER);
     upsertEvent(db, updated, areaKey, next);
     stats.checked += 1;
     if (!changed) continue;
     stats.changed += 1;
-    if (updated.status === "cancelled" && event.status !== "cancelled") stats.cancelled += 1;
+    if (updated.status === "cancelled" && stored.status !== "cancelled") stats.cancelled += 1;
     await pushEvent(opts, updated, stats);
   }
   return stats;

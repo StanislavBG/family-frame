@@ -6,7 +6,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SAMPLE_EVENT, type FfEvent } from "../../shared/events";
 import {
+  deleteEvent,
   deleteHousehold,
+  deleteRecommendation,
   finishRun,
   getEvent,
   getEventByFingerprint,
@@ -232,5 +234,39 @@ test("pruneLocalState drops stale rows, keeps live ones and households", () => {
   assert.equal(listHouseholds(db).length, 1);
   assert.ok(getGeocode(db, "q1"));
   assert.deepEqual(pruneLocalState(db, now), { events: 0, recommendations: 0, searchLog: 0, runs: 0 });
+  db.close();
+});
+
+test("listDueForRecheck puts held upcoming events without an official source first", () => {
+  const db = openEventsDb(":memory:");
+  const future = { ...SAMPLE_EVENT.schedule, start: "2026-11-20T10:00:00-08:00", end: "2026-11-20T12:00:00-08:00", occurrences: [] };
+  const listingOnly = SAMPLE_EVENT.sources.filter((s) => s.kind !== "official");
+  upsertEvent(db, ev("held-official", { schedule: future }), "p", "2026-10-01T00:00:00.000Z");
+  upsertEvent(db, ev("held-none", { schedule: future, sources: listingOnly }), "p", "2026-10-20T00:00:00.000Z");
+  upsertEvent(db, ev("unheld-none", { schedule: future, sources: listingOnly }), "p", "2026-10-02T00:00:00.000Z");
+  for (const id of ["held-official", "held-none"]) {
+    recordRecommendation(db, { householdId: "h1", eventId: id, publishedAt: "t", publishedHash: "x" });
+  }
+  assert.deepEqual(
+    listDueForRecheck(db, "2026-11-02T08:00:00.000Z", 10).map((e) => e.id),
+    ["held-none", "held-official", "unheld-none"],
+  );
+  db.close();
+});
+
+test("deleteRecommendation and deleteEvent remove only their rows", () => {
+  const db = openEventsDb(":memory:");
+  upsertEvent(db, ev("a"), "p", "2026-10-01T00:00:00.000Z");
+  upsertEvent(db, ev("b"), "p", "2026-10-01T00:00:00.000Z");
+  for (const [h, e] of [["h1", "a"], ["h2", "a"], ["h1", "b"]]) {
+    recordRecommendation(db, { householdId: h, eventId: e, publishedAt: "t", publishedHash: "x" });
+  }
+  deleteRecommendation(db, "h1", "a");
+  assert.deepEqual(listHouseholdsHoldingEvent(db, "a"), ["h2"]);
+  assert.deepEqual(listHouseholdsHoldingEvent(db, "b"), ["h1"]);
+  deleteEvent(db, "a");
+  assert.equal(getEvent(db, "a"), null);
+  assert.deepEqual(listHouseholdsHoldingEvent(db, "a"), []);
+  assert.ok(getEvent(db, "b"));
   db.close();
 });

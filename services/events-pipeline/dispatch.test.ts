@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { SAMPLE_EVENT, SAMPLE_RECOMMENDATION_INPUT, EVENTS_LIMITS, type FfEvent } from "../../shared/events";
 import type { HaikuResult, HaikuRunInput, HaikuRunner } from "./haiku";
 import type { FfClient } from "./ff-client";
+import type { LinkResult } from "./links";
 import {
   getEvent,
+  listRecommendationsForHousehold,
   listHouseholds,
   listHouseholdsHoldingEvent,
   openEventsDb,
@@ -57,10 +59,23 @@ function fakeRunner(results: HaikuResult[]): HaikuRunner & { calls: HaikuRunInpu
   };
 }
 
-function fakeFf(notSharing: string[] = []) {
+function fakeLinks(bad: string[] = []) {
+  const checked: string[] = [];
+  return {
+    checked,
+    async check(url: string): Promise<LinkResult> {
+      checked.push(url);
+      return bad.includes(url) ? { status: "dead", httpStatus: 404 } : { status: "ok", httpStatus: 200, finalUrl: url };
+    },
+  };
+}
+
+function fakeFf(notSharing: string[] = [], responses: Record<string, { response: string; calendarLinked?: boolean }> = {}, eventId = "") {
+  const withdrawn: string[] = [];
+  const stateCalls: string[] = [];
   const pushes: { householdId: string; ids: string[]; status: string; updates: number }[] = [];
   const ff = {
-    async putRecommendations(householdId, body) {
+    async putRecommendations(householdId: string, body: Parameters<FfClient["putRecommendations"]>[1]) {
       if (notSharing.includes(householdId)) return { notSharing: true as const };
       pushes.push({
         householdId,
@@ -70,8 +85,21 @@ function fakeFf(notSharing: string[] = []) {
       });
       return { created: 0, updated: 1, unchanged: 0, ids: [], changed: [] };
     },
-  } as Pick<FfClient, "putRecommendations">;
-  return { ff, pushes };
+    async getState(householdId: string) {
+      stateCalls.push(householdId);
+      if (notSharing.includes(householdId)) return { notSharing: true as const };
+      const r = responses[householdId];
+      return {
+        householdId,
+        recommendations: r ? [{ eventId, response: r.response, calendarLinked: r.calendarLinked ?? false }] : [],
+      };
+    },
+    async withdraw(householdId: string) {
+      withdrawn.push(householdId);
+      return { deleted: true };
+    },
+  } as unknown as Pick<FfClient, "putRecommendations" | "getState" | "withdraw">;
+  return { ff, pushes, withdrawn, stateCalls };
 }
 
 const okData = (data: unknown): HaikuResult => ({ ok: true, data });
@@ -101,8 +129,8 @@ test("cancellation is pushed to two households", async () => {
     }),
   ]);
   const { ff, pushes } = fakeFf();
-  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "r1" });
-  assert.deepEqual(stats, { checked: 1, changed: 1, cancelled: 1, pushed: 2, failed: 0 });
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "r1" });
+  assert.deepEqual(stats, { checked: 1, changed: 1, cancelled: 1, pushed: 2, failed: 0, linksRemoved: 0, withdrawn: 0 });
   assert.equal(runner.calls.length, 1);
   assert.deepEqual(pushes.map((p) => [p.householdId, p.status]), [["h1", "cancelled"], ["h2", "cancelled"]]);
   const saved = getEvent(db, "e1")!;
@@ -128,7 +156,7 @@ test("price change is appended to updates and cost updated", async () => {
     }),
   ]);
   const { ff, pushes } = fakeFf();
-  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "r2" });
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "r2" });
   assert.equal(stats.changed, 1);
   assert.equal(stats.cancelled, 0);
   const saved = getEvent(db, "e2")!;
@@ -143,8 +171,8 @@ test("no change only bumps lastCheckedAt", async () => {
   const db = openEventsDb(":memory:");
   seed(db, ev("e3", 20), ["h1"]);
   const { ff, pushes } = fakeFf();
-  const stats = await runDispatch({ db, runner: fakeRunner([okData(NO_CHANGE)]), ff, now: NOW, runId: "r3" });
-  assert.deepEqual(stats, { checked: 1, changed: 0, cancelled: 0, pushed: 0, failed: 0 });
+  const stats = await runDispatch({ db, runner: fakeRunner([okData(NO_CHANGE)]), ff, links: fakeLinks(), now: NOW, runId: "r3" });
+  assert.deepEqual(stats, { checked: 1, changed: 0, cancelled: 0, pushed: 0, failed: 0, linksRemoved: 0, withdrawn: 0 });
   const saved = getEvent(db, "e3")!;
   assert.equal(saved.verification.lastCheckedAt, NOW.toISOString());
   assert.equal(saved.verification.lastChangedAt, undefined);
@@ -156,7 +184,7 @@ test("failed check is rescheduled in 6 hours", async () => {
   const db = openEventsDb(":memory:");
   seed(db, ev("e4", 5), ["h1"]);
   const runner = fakeRunner([{ ok: false, reason: "bad-output", detail: "nope" }]);
-  const stats = await runDispatch({ db, runner, ff: fakeFf().ff, now: NOW, runId: "r4" });
+  const stats = await runDispatch({ db, runner, ff: fakeFf().ff, links: fakeLinks(), now: NOW, runId: "r4" });
   assert.equal(stats.failed, 1);
   assert.equal(stats.checked, 0);
   const row = db.prepare("SELECT next_check_at FROM events WHERE id = 'e4'").get();
@@ -168,7 +196,7 @@ test("rate limit stops the loop", async () => {
   seed(db, ev("e5", 5), []);
   seed(db, ev("e6", 6), []);
   const runner = fakeRunner([{ ok: false, reason: "rate-limited", detail: "429" }]);
-  const stats = await runDispatch({ db, runner, ff: fakeFf().ff, now: NOW, runId: "r5" });
+  const stats = await runDispatch({ db, runner, ff: fakeFf().ff, links: fakeLinks(), now: NOW, runId: "r5" });
   assert.equal(runner.calls.length, 1);
   assert.equal(stats.failed, 0);
   assert.equal(stats.checked, 0);
@@ -181,7 +209,7 @@ test("notSharing household is purged", async () => {
     okData({ status: "scheduled", changes: [{ kind: "time-changed", summary: "Starts an hour later" }], confidence: 0.9 }),
   ]);
   const { ff, pushes } = fakeFf(["h1"]);
-  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "r6" });
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "r6" });
   assert.equal(stats.pushed, 1);
   assert.deepEqual(pushes.map((p) => p.householdId), ["h2"]);
   assert.deepEqual(listHouseholds(db).map((h) => h.id), ["h2"]);
@@ -206,7 +234,7 @@ test("recheck fills missing parking note and pushes a details-changed update", a
     }),
   ]);
   const { ff, pushes } = fakeFf();
-  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "r8" });
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "r8" });
   assert.equal(stats.changed, 1);
   assert.equal(stats.pushed, 1);
   assert.equal(pushes.length, 1);
@@ -229,7 +257,7 @@ test("recheck never overwrites an existing address and pushes nothing", async ()
     okData({ status: "scheduled", changes: [], location: { address: "99 Other Rd" }, confidence: 0.9 }),
   ]);
   const { ff, pushes } = fakeFf();
-  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "r9" });
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "r9" });
   assert.equal(stats.changed, 0);
   assert.equal(pushes.length, 0);
   assert.equal(getEvent(db, "e9")!.location.address, "1 Main St");
@@ -243,14 +271,14 @@ const signUpResult = (registrationUrl: string) =>
 test("recheck fills missing sign-up link without a Changed update, and pushes", async () => {
   const db = openEventsDb(":memory:");
   seed(db, signUpEvent("s1"), ["h1"]);
-  const runner = fakeRunner([signUpResult("https://example.org/register")]);
+  const runner = fakeRunner([signUpResult("https://riversidefarm.example/register")]);
   const { ff, pushes } = fakeFf();
-  const stats = await runDispatch({ db, runner, ff, now: NOW, runId: "s1" });
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "s1" });
   assert.match(runner.calls[0].prompt, /registrationUrl/);
   assert.equal(stats.pushed, 1);
   assert.equal(pushes.length, 1);
   const saved = getEvent(db, "s1")!;
-  assert.equal(saved.cost.registrationUrl, "https://example.org/register");
+  assert.equal(saved.cost.registrationUrl, "https://riversidefarm.example/register");
   assert.equal(saved.updates.length, 0);
   assert.equal(saved.verification.lastChangedAt, undefined);
 });
@@ -260,7 +288,7 @@ for (const [name, bad] of [["http", "http://example.org/register"], ["malformed"
     const db = openEventsDb(":memory:");
     seed(db, signUpEvent("s2"), ["h1"]);
     const { ff, pushes } = fakeFf();
-    const stats = await runDispatch({ db, runner: fakeRunner([signUpResult(bad)]), ff, now: NOW, runId: "s2" });
+    const stats = await runDispatch({ db, runner: fakeRunner([signUpResult(bad)]), ff, links: fakeLinks(), now: NOW, runId: "s2" });
     assert.equal(stats.failed, 0);
     assert.equal(pushes.length, 0);
     assert.equal(getEvent(db, "s2")!.cost.registrationUrl, undefined);
@@ -269,11 +297,118 @@ for (const [name, bad] of [["http", "http://example.org/register"], ["malformed"
 
 test("recheck keeps a stored sign-up link and does not ask for one", async () => {
   const db = openEventsDb(":memory:");
-  seed(db, signUpEvent("s3", "https://example.org/old"), ["h1"]);
-  const runner = fakeRunner([signUpResult("https://example.org/new")]);
+  seed(db, signUpEvent("s3", "https://riversidefarm.example/old"), ["h1"]);
+  const runner = fakeRunner([signUpResult("https://riversidefarm.example/new")]);
   const { ff, pushes } = fakeFf();
-  await runDispatch({ db, runner, ff, now: NOW, runId: "s3" });
+  await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "s3" });
   assert.doesNotMatch(runner.calls[0].prompt, /sign-up link is stored/);
   assert.equal(pushes.length, 0);
-  assert.equal(getEvent(db, "s3")!.cost.registrationUrl, "https://example.org/old");
+  assert.equal(getEvent(db, "s3")!.cost.registrationUrl, "https://riversidefarm.example/old");
+});
+
+const noOfficial = (id: string, patch: Partial<FfEvent> = {}) =>
+  ev(id, 5, { sources: SAMPLE_EVENT.sources.filter((x) => x.kind !== "official"), ...patch });
+
+test("dead registration link is removed and the event pushed", async () => {
+  const db = openEventsDb(":memory:");
+  const dead = "https://riversidefarm.example/register";
+  seed(db, signUpEvent("l1", dead), ["h1"]);
+  const { ff, pushes } = fakeFf();
+  const stats = await runDispatch({ db, runner: fakeRunner([okData(NO_CHANGE)]), ff, links: fakeLinks([dead]), now: NOW, runId: "l1" });
+  assert.equal(stats.linksRemoved, 1);
+  assert.equal(stats.pushed, 1);
+  assert.equal(pushes.length, 1);
+  const saved = getEvent(db, "l1")!;
+  assert.equal(saved.cost.registrationUrl, undefined);
+  assert.equal(saved.updates.length, 0);
+});
+
+test("no official source and no valid find: withdrawn for new holders only", async () => {
+  const db = openEventsDb(":memory:");
+  seed(db, noOfficial("w1"), ["new1", "going", "linked", "new2"]);
+  const { ff, withdrawn, stateCalls } = fakeFf([], {
+    new1: { response: "new" },
+    going: { response: "going" },
+    linked: { response: "new", calendarLinked: true },
+  }, "w1");
+  const runner = fakeRunner([okData(NO_CHANGE)]);
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks(), now: NOW, runId: "w1" });
+  assert.match(runner.calls[0].prompt, /officialUrl/);
+  assert.equal(stats.withdrawn, 1);
+  assert.deepEqual(withdrawn.sort(), ["new1", "new2"]);
+  assert.deepEqual(stateCalls.sort(), ["going", "linked", "new1", "new2"]);
+  assert.deepEqual(listHouseholdsHoldingEvent(db, "w1"), ["going", "linked"]);
+  assert.equal(listRecommendationsForHousehold(db, "new1").length, 0);
+  assert.ok(getEvent(db, "w1"));
+});
+
+test("event row is deleted once no household holds it", async () => {
+  const db = openEventsDb(":memory:");
+  seed(db, noOfficial("w2"), ["h1", "h2"]);
+  const { ff, withdrawn } = fakeFf(["h2"], { h1: { response: "new" } }, "w2");
+  const stats = await runDispatch({ db, runner: fakeRunner([okData(NO_CHANGE)]), ff, links: fakeLinks(), now: NOW, runId: "w2" });
+  assert.equal(stats.withdrawn, 1);
+  assert.deepEqual(withdrawn, ["h1"]);
+  assert.equal(getEvent(db, "w2"), null);
+  assert.deepEqual(listHouseholdsHoldingEvent(db, "w2"), []);
+});
+
+test("an aggregator officialUrl from the model is withdrawn", async () => {
+  const db = openEventsDb(":memory:");
+  seed(db, noOfficial("w3"), ["h1"]);
+  const find = { organizerName: "X", organizerUrl: "https://www.activekids.com", officialUrl: "https://www.activekids.com/e/1" };
+  const { ff, withdrawn } = fakeFf([], { h1: { response: "new" } }, "w3");
+  const stats = await runDispatch({
+    db, runner: fakeRunner([okData({ ...NO_CHANGE, official: find })]), ff, links: fakeLinks(), now: NOW, runId: "w3",
+  });
+  assert.equal(stats.withdrawn, 1);
+  assert.deepEqual(withdrawn, ["h1"]);
+  assert.equal(getEvent(db, "w3"), null);
+});
+
+test("a dead official source is replaced by a valid find, which becomes the first source", async () => {
+  const db = openEventsDb(":memory:");
+  const base = ev("o1", 5);
+  seed(db, base, ["h1"]);
+  const oldUrl = base.sources.find((x) => x.kind === "official")!.url;
+  const find = {
+    organizerName: "Riverside Farm",
+    organizerUrl: "https://riversidefarm.example",
+    officialUrl: "https://riversidefarm.example/events/pumpkins-2026",
+  };
+  const { ff, pushes, withdrawn } = fakeFf();
+  const runner = fakeRunner([okData({ ...NO_CHANGE, official: find })]);
+  const stats = await runDispatch({ db, runner, ff, links: fakeLinks([oldUrl]), now: NOW, runId: "o1" });
+  assert.match(runner.calls[0].prompt, /officialUrl/);
+  assert.equal(stats.withdrawn, 0);
+  assert.equal(withdrawn.length, 0);
+  assert.equal(pushes.length, 1);
+  const saved = getEvent(db, "o1")!;
+  assert.equal(saved.sources[0].url, find.officialUrl);
+  assert.equal(saved.sources[0].kind, "official");
+  assert.equal(saved.organizer?.url, "https://riversidefarm.example/");
+});
+
+test("backfill rejects an aggregator link and a dead link", async () => {
+  for (const [id, url, bad] of [
+    ["b1", "https://www.activekids.com/register/1", []],
+    ["b2", "https://riversidefarm.example/dead", ["https://riversidefarm.example/dead"]],
+  ] as const) {
+    const db = openEventsDb(":memory:");
+    seed(db, signUpEvent(id), ["h1"]);
+    const { ff, pushes } = fakeFf();
+    await runDispatch({ db, runner: fakeRunner([signUpResult(url)]), ff, links: fakeLinks([...bad]), now: NOW, runId: id });
+    assert.equal(pushes.length, 0);
+    assert.equal(getEvent(db, id)!.cost.registrationUrl, undefined);
+  }
+});
+
+test("backfill accepts a registration-platform link that works", async () => {
+  const db = openEventsDb(":memory:");
+  seed(db, signUpEvent("b3"), ["h1"]);
+  const url = "https://riverside.activecommunities.com/signup/1";
+  const { ff, pushes } = fakeFf();
+  await runDispatch({ db, runner: fakeRunner([signUpResult(url)]), ff, links: fakeLinks(), now: NOW, runId: "b3" });
+  assert.equal(pushes.length, 1);
+  assert.equal(getEvent(db, "b3")!.cost.registrationUrl, url);
 });
