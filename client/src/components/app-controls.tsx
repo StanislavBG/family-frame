@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, createContext, useContext, useRef } f
 import { useLocation } from "wouter";
 import { radioService } from "@/lib/radio-service";
 import { useQuery } from "@tanstack/react-query";
+import { unreadCountQueryOptions } from "@/lib/api";
 import { appIdForPath, useAppLayout } from "@/lib/app-registry";
 import { AppSettingsSheet } from "@/components/app-settings";
 
@@ -201,11 +202,9 @@ export function HeaderControls() {
 
   const { isEnabled } = useAppLayout();
 
-  const { data: unreadData } = useQuery<{ count: number }>({
-    queryKey: ["/api/messages/unread-count"],
-    refetchInterval: 30000,
-    enabled: isEnabled("messages"),
-  });
+  const { data: unreadData } = useQuery<{ count: number }>(
+    unreadCountQueryOptions({ enabled: isEnabled("messages"), poll: false }),
+  );
 
   const unreadCount = isEnabled("messages") ? unreadData?.count || 0 : 0;
 

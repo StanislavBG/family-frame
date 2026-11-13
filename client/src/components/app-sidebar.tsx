@@ -1,6 +1,7 @@
 import { Home, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { unreadCountQueryOptions } from "@/lib/api";
 import {
   Sidebar,
   SidebarContent,
@@ -25,11 +26,9 @@ export function AppSidebar() {
 
   const { layout, isEnabled } = useAppLayout();
 
-  const { data: unreadData } = useQuery<{ count: number }>({
-    queryKey: ["/api/messages/unread-count"],
-    refetchInterval: 30000,
-    enabled: isEnabled("messages"),
-  });
+  const { data: unreadData } = useQuery<{ count: number }>(
+    unreadCountQueryOptions({ enabled: isEnabled("messages"), poll: true }),
+  );
 
   const unreadCount = unreadData?.count || 0;
 

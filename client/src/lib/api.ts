@@ -100,6 +100,21 @@ export const queryKeys = {
 } as const;
 
 /**
+ * Shared options for the messages unread-count badge. Exactly one
+ * always-mounted observer (AppSidebar) passes poll: true; every other
+ * observer passes poll: false and reads the shared cache. TanStack Query
+ * gives each observer its own refetchInterval timer, so two pollers would
+ * double the requests.
+ */
+export function unreadCountQueryOptions({ enabled, poll }: { enabled: boolean; poll: boolean }) {
+  return {
+    queryKey: queryKeys.messages.unreadCount(),
+    enabled,
+    refetchInterval: poll ? (30_000 as const) : (false as const),
+  };
+}
+
+/**
  * Helper to invalidate multiple query keys at once.
  */
 export function invalidateQueries(...keys: readonly (readonly string[])[]): void {
