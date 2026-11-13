@@ -86,6 +86,15 @@ systemctl --user list-timers
 tail ~/.local/state/family-frame-events/watch.log
 ```
 
+The units call `/usr/bin/node services/events-pipeline/launch.mjs <mode>` directly (no npm, sh or tsx), so each watch tick is one process. After pulling a change to the units (such as the switch from `npm run events:run` to `launch.mjs`), re-copy them and reload:
+
+```
+cp systemd/family-frame-events-* ~/.config/systemd/user/
+systemctl --user daemon-reload
+```
+
+`launch.mjs` bundles `cli.ts` with esbuild into `.cache/events-pipeline/` (git-ignored) on first run and reuses it; it rebuilds itself when any bundled source file or the launcher changes, so there is nothing to clear by hand.
+
 The daily timer has `Persistent=true`, so a missed 05:30 run starts after the laptop wakes or boots. The watch timer runs every 5 minutes and does not catch up.
 
 Cron (`crontab.example`) remains an alternative for always-on machines. Use one or the other, not both.

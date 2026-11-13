@@ -8,7 +8,7 @@ WorkingDirectory=%h/Projects/family-frame
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=EVENTS_ENV_FILE=%h/.config/family-frame-events/env
 Environment=NODE_OPTIONS=--disable-warning=ExperimentalWarning
-ExecStart=/usr/bin/npm run --silent events:run -- watch
+ExecStart=/usr/bin/node services/events-pipeline/launch.mjs watch
 StandardOutput=append:%h/.local/state/family-frame-events/watch.log
 StandardError=append:%h/.local/state/family-frame-events/watch.log
 Nice=10

@@ -71,3 +71,21 @@ test("the launcher gives the same exit code and output as cli.ts under tsx", () 
   // The bundle must not auto-run main() on import: one run only, so usage prints once.
   assert.equal(viaLauncher.stderr.split("unknown argument").length - 1, 1);
 });
+
+test("events:run and both systemd units start the plain-node launcher, not tsx", () => {
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { scripts: Record<string, string> };
+  const run = pkg.scripts["events:run"];
+  assert.ok(run, "events:run script exists");
+  assert.ok(!run.includes("tsx"), `events:run must not use tsx: ${run}`);
+  assert.equal(run, "node services/events-pipeline/launch.mjs");
+  for (const [unit, mode] of [
+    ["family-frame-events-watch.service", "watch"],
+    ["family-frame-events-daily.service", "all"],
+  ] as const) {
+    const text = readFileSync(join(here, "systemd", unit), "utf8");
+    const execLines = text.split("\n").filter((l) => l.startsWith("ExecStart="));
+    assert.equal(execLines.length, 1, `${unit} has one ExecStart`);
+    assert.ok(execLines[0].includes("launch.mjs"), `${unit}: ${execLines[0]}`);
+    assert.equal(execLines[0], `ExecStart=/usr/bin/node services/events-pipeline/launch.mjs ${mode}`);
+  }
+});
