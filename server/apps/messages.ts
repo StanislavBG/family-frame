@@ -1,9 +1,40 @@
 import type { Express, Request, Response } from "express";
 import { randomUUID } from "crypto";
-import { updateUserData } from "../firebase";
+import { getFirebaseDb, updateUserData } from "../firebase";
 import { asyncHandler, getOrCreateUser, toArray } from "../middleware";
 import type { Message, Note } from "@shared/schema";
 import { insertMessageSchema } from "@shared/schema";
+
+/** Minimal slice of the RTDB API used by countUnreadMessages (lets tests pass a fake). */
+export interface UnreadCountDb {
+  ref(path: string): { once(event: "value"): Promise<{ val(): unknown; exists(): boolean }> };
+}
+
+function countUnread(messages: unknown): number {
+  return toArray<Message>(messages as any).filter((m: Message) => !m.isRead).length;
+}
+
+/**
+ * Unread count without downloading the whole users/<uid> tree: reads only the messages
+ * child plus `clerkId` (always set by getDefaultUserData) to tell whether the user exists.
+ * A missing user goes through the fallback (getOrCreateUser), which creates it as before.
+ */
+export async function countUnreadMessages(
+  db: UnreadCountDb,
+  userId: string,
+  username: string,
+  fallback: (userId: string, username: string) => Promise<{ messages?: unknown }> = getOrCreateUser,
+): Promise<number> {
+  const [idSnap, messagesSnap] = await Promise.all([
+    db.ref(`users/${userId}/clerkId`).once("value"),
+    db.ref(`users/${userId}/messages`).once("value"),
+  ]);
+  if (!idSnap.exists()) {
+    const userData = await fallback(userId, username);
+    return countUnread(userData.messages);
+  }
+  return countUnread(messagesSnap.val());
+}
 
 export function registerMessagesRoutes(app: Express): void {
   // ===== MESSAGING ENDPOINTS =====
@@ -44,10 +75,7 @@ export function registerMessagesRoutes(app: Express): void {
         return;
       }
 
-      const userData = await getOrCreateUser(userId, username);
-      const messages = toArray<Message>(userData.messages as any);
-      const unreadCount = messages.filter((m: Message) => !m.isRead).length;
-
+      const unreadCount = await countUnreadMessages(getFirebaseDb(), userId, username);
       res.json({ count: unreadCount });
   }));
 
