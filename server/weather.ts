@@ -1,6 +1,7 @@
 import type { WeatherData, DailyForecast, HourlyForecast } from "@shared/schema";
 import { getWeatherInfo } from "@shared/weather-codes";
 import { getAppBaseUrl } from "./config";
+import { FETCH_TIMEOUT_MS } from "./route-helpers";
 
 interface OpenMeteoResponse {
   timezone: string;
@@ -41,11 +42,16 @@ interface GeocodingResult {
   longitude: number;
 }
 
-export async function geocodeCity(city: string, country?: string): Promise<GeocodingResult | null> {
+export async function geocodeCity(
+  city: string,
+  country?: string,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+): Promise<GeocodingResult | null> {
   try {
     // Try with city only first (Open-Meteo works better this way)
     const response = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=5&language=en&format=json`
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=5&language=en&format=json`,
+      { signal: AbortSignal.timeout(timeoutMs) },
     );
     
     if (!response.ok) {
@@ -97,7 +103,7 @@ export function pickTodayIndex(dailyDates: string[], currentLocalTime?: string):
   return idx >= 0 ? idx : 0;
 }
 
-export async function getWeather(lat: number, lon: number): Promise<{
+export async function getWeather(lat: number, lon: number, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<{
   current: WeatherData;
   daily: DailyForecast[];
   hourly: HourlyForecast[];
@@ -105,7 +111,8 @@ export async function getWeather(lat: number, lon: number): Promise<{
 } | null> {
   try {
     const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day&hourly=temperature_2m,weather_code,precipitation_probability,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,precipitation_sum,sunrise,sunset&timezone=auto&forecast_days=7&past_days=1`
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day&hourly=temperature_2m,weather_code,precipitation_probability,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,precipitation_sum,sunrise,sunset&timezone=auto&forecast_days=7&past_days=1`,
+      { signal: AbortSignal.timeout(timeoutMs) },
     );
 
     if (!response.ok) {
@@ -159,7 +166,11 @@ export async function getWeather(lat: number, lon: number): Promise<{
   }
 }
 
-export async function reverseGeocode(lat: number, lon: number): Promise<{ city: string; country: string } | null> {
+export async function reverseGeocode(
+  lat: number,
+  lon: number,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+): Promise<{ city: string; country: string } | null> {
   try {
     const nominatimResponse = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
@@ -167,6 +178,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<{ city: 
         headers: {
           "User-Agent": `FamilyFrame/1.0 (${getAppBaseUrl()})`,
         },
+        signal: AbortSignal.timeout(timeoutMs),
       }
     );
 
