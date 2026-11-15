@@ -5,3 +5,5 @@ server/public
 vite.config.ts.*
 *.tar.gz
 .cache/
+.env
+.env.*

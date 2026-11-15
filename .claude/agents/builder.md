@@ -15,7 +15,9 @@ in the Git pane and clicks Publish; never try to do that part.
 
 ## Release command
 
-Run from the main checkout `/home/bilko/Projects/family-frame`:
+Run from any checkout of this repo; `script/release.ts` finds the main checkout itself
+(the first entry of `git worktree list`). It refuses to run when the main checkout is on `main`
+with uncommitted tracked changes; commit or discard them first.
 
 ```bash
 npm run release -- --dry-run     # always first: shows what would merge and what is held
