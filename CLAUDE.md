@@ -12,7 +12,7 @@ Local services (Events pipeline, mail intake) live in `services/`.
 - `npm run dev` - Express + Vite on port 5000; loads `.env` when present
 - `npm run build` / `npm start` - production build and run
 - `npm run check` - tsc over `client/src`, `shared`, `server`
-- `npm test` - vitest + node:test for `server/*.test.ts` and `script/*.test.ts`
+- `npm test` - vitest + node:test for `server/*.test.ts` and `script/*.test.ts`, including the markdown drift check (`script/docs-check.test.ts`)
 - `npm run docs:check` - markdown drift check
 - `npm run events:test` | `events:check` | `events:run` - Node 22; outside `npm test` and `check`
 - `npm run inbox:test` | `inbox:check` | `inbox:run` - mail intake; outside `npm test` and `check`
