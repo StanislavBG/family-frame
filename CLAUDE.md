@@ -1,440 +1,63 @@
+<!-- md-network-map owner: Bilko last-review: 2026-11-15 -->
 # Family Frame
 
-## Overview
+PWA "The Window Between Homes": households share a wall-display dashboard of apps.
+Apps and manifests live in `shared/apps.ts`; stack and versions in `package.json`
+(React 18 + Vite + Tailwind/shadcn in `client/`, Express in `server/`, Zod schemas in `shared/`).
+External services: Clerk (auth), Firebase Realtime Database, Open-Meteo (no key), Google Photos and Pixabay.
+Local services (Events pipeline, mail intake) live in `services/`.
 
-Family Frame is a Progressive Web App (PWA) designed as "The Window Between Homes" - a dedicated social platform for households to share information and stay connected. It transforms smart screens into family-oriented display devices with a "grandma-friendly" design philosophy for multi-generational use.
+## Commands
 
-## Core Features
+- `npm run dev` - Express + Vite on port 5000; loads `.env` when present
+- `npm run build` / `npm start` - production build and run
+- `npm run check` - tsc over `client/src`, `shared`, `server`
+- `npm test` - vitest + node:test for `server/*.test.ts` and `script/*.test.ts`
+- `npm run docs:check` - markdown drift check
+- `npm run events:test` | `events:check` | `events:run` - Node 22; outside `npm test` and `check`
+- `npm run inbox:test` | `inbox:check` | `inbox:run` - mail intake; outside `npm test` and `check`
+- `npm run release -- --dry-run` - see Release below
 
-- **Clock**: Real-time display with timezone support
-- **Weather**: Current conditions and forecasts via Open-Meteo API (supports Celsius/Fahrenheit)
-- **Photos**: Digital photo frame powered by Google Photos or Pixabay with customizable slideshow intervals
-- **Calendar**: Shared family events with birthday tracking; Day view is an hour-by-hour plan of existing events with participants, location and notes
-- **Messages**: Household messaging system with unread count tracking
-- **Radio**: Bulgarian radio station streaming with metadata display
-- **Baby Songs**: Age-specific nursery rhymes (0-6 years)
-- **TV**: Bulgarian television channels streaming (HLS-based)
-- **Shopping List**: Shared grocery/shopping lists
-- **Utilities**: Bill tiles (electricity, gas, water, internet) built from agent-published time-series tagged `utilities`
-- **Stocks**: Market tracking (Dow Jones, Bitcoin, Real Estate, MSFT, CRM, ISRG)
-- **Notepad**: Shared note-taking
-- **Chores**: Shared household chore tracking
-- **Recipes**: Shared family recipes
-- **Screensaver**: Full-screen ambient display mode for mounted screens
-- **Household Connections**: Connect and view family members' homes with real-time weather
+## Rules that apply everywhere
 
-## Tech Stack
+- Local dev uses the production Firebase database: local writes change real data.
+- Secrets live in `.env` (git-ignored) and Replit Secrets; the GitHub repo is public.
+- Identity comes only from `server/auth.ts` (verified Clerk session or `ff_pat_` token).
+- Agent data (mail, datasets, media, metrics) is private per account and never
+  exposed through household connections.
+- The street address lives only at `householdProfiles/<uid>`; LLM prompts never
+  contain addresses, names or birthdays.
+- Every `claude -p` call pins `--model` (`services/events-pipeline/haiku.ts`).
+- The files in `.claude/rules/` load when you touch matching files.
 
-### Frontend
-- React 18 with TypeScript
-- Vite for build and dev server
-- Tailwind CSS with custom "Hearth & Heritage" warm color palette
-- shadcn/ui component library (Radix UI primitives)
-- React Query for server state management
-- Wouter for client-side routing
-- Clerk for authentication
-- HLS.js for video streaming
-- Framer Motion for animations
+## Where to look
 
-### Backend
-- Express.js with TypeScript
-- Firebase Realtime Database for user data storage
-- Clerk JWT verification for auth
-
-### External Services
-- Clerk: Authentication and user management
-- Firebase: Real-time data (notes, messages, events, settings)
-- Open-Meteo API: Weather data (no API key required)
-- Google Photos API: Photo sync via OAuth picker
-- Pixabay API: Stock photo source for the photo frame
-
-## Project Structure
-
-```
-/family-frame
-├── client/                      # React frontend (Vite SPA)
-│   └── src/
-│       ├── App.tsx             # Main app with auth flow
-│       ├── main.tsx            # React entry point
-│       ├── index.css           # Global styles (Tailwind + custom utilities)
-│       ├── pages/              # Route pages (home, clock, weather, photos, calendar, messages, radio, tv, baby-songs, shopping, stocks, notepad, chores, recipes, screensaver, settings, ...)
-│       ├── components/
-│       │   ├── ui/             # shadcn components
-│       │   ├── person/         # People app person views (Satchel design; see below)
-│       │   ├── events/         # Events app UI (hero, month view, day view, filter bar, classes shelf, actions, preferences)
-│       │   ├── calendar/       # Calendar Day view UI (calendar-day-view.tsx)
-│       │   ├── app-sidebar.tsx # Navigation sidebar
-│       │   ├── app-picker.tsx  # Settings > Apps shelf (add, set up, configure apps via AppPage)
-│       │   ├── app-page.tsx    # AppPage: the one structured page for every app (setup needs, settings)
-│       │   ├── empty-state.tsx # Reusable empty state component
-│       │   ├── fullscreen-button.tsx # Reusable fullscreen toggle
-│       │   └── [widgets].tsx   # Clock, Weather, Stock widgets
-│       ├── hooks/
-│       │   ├── use-fullscreen.ts # Fullscreen hook with auto-enter support
-│       │   ├── use-fit-scale.ts # Scale content to fit its container height (wall displays)
-│       │   └── use-today.ts    # Local YYYY-MM-DD that rolls over at midnight
-│       └── lib/
-│           ├── api.ts          # Query keys, mutation helpers
-│           ├── agent-data.ts   # Typed hooks and URL builders for mail and data routes
-│           ├── calendar-day.ts # Pure Day view layout and time formatting logic
-│           ├── events.ts       # Typed hooks for /api/events/* and /api/household/*
-│           ├── app-registry.ts # APP_ICONS + app layout hook
-│           ├── format.ts       # Formatting utilities (dates, temps)
-│           ├── queryClient.ts  # React Query setup + apiRequest helper
-│           ├── radio-service.ts # Singleton radio player service
-│           └── utils.ts        # cn() helper
-├── server/                      # Express backend
-│   ├── index.ts                # Express app setup, middleware
-│   ├── routes.ts               # All API endpoints
-│   ├── middleware.ts           # Auth middleware, async handler, utilities
-│   ├── auth.ts                 # Clerk verification + PAT auth branch
-│   ├── apps/                   # Per-app route modules (apps/<id>.ts; events.ts = /api/events/*)
-│   ├── media-proxy.ts          # Media proxy, radio and TV routes
-│   ├── household-*.ts          # Household address + events-sharing consent (profile service, /api/household/* routes)
-│   ├── household-inbox-*.ts    # Household email: service (routing key, sources), routes (/api/household/inbox/*, /api/service/inbox/deliver)
-│   ├── events-service.ts       # Events recommendations, feedback, calendar linking (events-service-routes.ts: /api/service/events/*)
-│   ├── service-token.ts        # ff_svc_ service token verification (EVENTS_SERVICE_TOKEN_SHA256)
-│   ├── route-inventory.test.ts # Guards the route inventory
-│   ├── config.ts               # getAppBaseUrl() (APP_BASE_URL)
-│   ├── url-guards.ts           # Outbound URL validation (SSRF guards)
-│   ├── oauth-state.ts          # Signed OAuth state (SESSION_SECRET)
-│   ├── api-tokens.ts           # Personal access tokens
-│   ├── mcp.ts                  # MCP server at /mcp
-│   ├── calendar-service.ts     # Shared calendar logic (REST + MCP)
-│   ├── mail-service.ts         # Per-user mailbox logic (REST + MCP)
-│   ├── mail-routes.ts          # /api/mail/* routes
-│   ├── dataset-service.ts      # Agent-registered JSON Schemas + records (REST + MCP)
-│   ├── data-routes.ts          # /api/data/* routes
-│   ├── media-store.ts          # Private file store (MEDIA_LIMITS, MediaDeps)
-│   ├── media-routes.ts         # /api/files/* routes
-│   ├── media-import.ts         # URL rehosting (SSRF-guarded fetch)
-│   ├── mail-rehost.ts          # Rehost email imageUrls into media
-│   ├── firebase.ts             # Firebase initialization & helpers
-│   ├── weather.ts              # Open-Meteo integration
-│   ├── google-photos.ts        # Google Photos OAuth & picker
-│   ├── photo-cache.ts          # Photo caching
-│   ├── *.test.ts               # Server tests (node:test via tsx)
-│   └── static-pages/           # Pre-rendered SEO pages
-├── shared/                      # Shared schemas & types
-│   ├── apps.ts                 # App registry: APP_IDS, APP_MANIFESTS
-│   ├── agent-data.ts           # Zod schemas, types and limits for mailbox + datasets
-│   ├── household.ts            # Household address + events-sharing consent schemas
-│   ├── events.ts               # Event JSON schema, recommendations, feedback, preferences
-│   ├── events-preferences.ts   # Feedback -> preference weights (pure)
-│   └── schema.ts               # Zod schemas for validation
-├── services/
-│   ├── events-pipeline/        # Local Events pipeline (cron, Node 22 only; see docs/events.md)
-│   └── mail-intake/            # Local Gmail intake for household email (5-minute timer; see docs/household-email.md)
-├── bilko.listing.json           # bilko.run card copy (applied with update_project_listing; see docs/bilko-run.md)
-└── script/
-    └── build.ts                # Build script (esbuild + Vite)
-```
-
-## Development Commands
-
-```bash
-npm run dev      # Start dev server (Express + Vite on port 5000)
-npm run build    # Build for production (client → dist/public/, server → dist/index.cjs)
-npm start        # Run production build
-npm run check    # TypeScript type checking
-npm test         # vitest (client) + node:test via tsx (server/*.test.ts)
-```
-
-`npm run dev` loads a local `.env` (via `--env-file`) if present. `.env` is git-ignored; never commit it. Local dev uses the **production Firebase database**, so edits made locally change real data.
-
-## Environment Variables
-
-```env
-# Required
-VITE_CLERK_PUBLISHABLE_KEY    # Frontend Clerk publishable key (also read server-side)
-CLERK_SECRET_KEY              # Backend Clerk secret
-FIREBASE_SERVICE_ACCOUNT      # JSON service account key
-
-# Optional
-APP_BASE_URL                  # Public base URL for OAuth redirects and weather User-Agent (default https://family-frame.replit.app)
-SESSION_SECRET                # OAuth state signing secret
-GOOGLE_CLIENT_ID              # Google Photos OAuth client ID
-GOOGLE_CLIENT_SECRET          # Google Photos OAuth client secret
-PIXABAY_API_KEY               # Pixabay photo source
-HOUSEHOLD_INBOX_ADDRESS       # Operator Gmail inbox for household email; unset = feature shows "not set up"
-EVENTS_SERVICE_TOKEN_SHA256   # SHA-256 hex of the ff_svc_ pipeline token; unset disables the service API
-PUBLISHABLE_KEY_PROD          # Server-side Clerk key override (prod)
-PUBLISHABLE_KEY_DEV           # Server-side Clerk key override (dev)
-
-# Set by tooling/platform (not configured by hand)
-NODE_ENV                      # Set by npm scripts
-PORT                          # Listen port (default 5000)
-REPLIT_DEPLOYMENT             # "1" on Replit deployments
-TZ                            # Only used by client tests
-```
-
-## Architecture Patterns
-
-### Authentication Flow
-1. Clerk Provider wraps the app
-2. User redirected to landing if not signed in
-3. Headers injected with `x-clerk-user-id` and `x-clerk-username`
-4. Server middleware verifies JWT tokens
-5. Protected routes check `x-clerk-user-id` header
-
-### Data Flow
-1. React Query handles all data fetching/caching on client
-2. API requests use `apiRequest()` helper with credentials
-3. Server routes validate headers, fetch/update Firebase data
-4. Zod schemas validate data on both client and server
-
-### React Query Configuration
-- `staleTime: Infinity` (manual refetch only)
-- `refetchOnWindowFocus: false`
-- `retry: false`
-
-### Query Keys (client/src/lib/api.ts)
-Use centralized query keys for consistency:
-```typescript
-import { queryKeys } from "@/lib/api";
-
-// Usage in useQuery
-const { data } = useQuery({ queryKey: queryKeys.messages.all() });
-const { data } = useQuery({ queryKey: queryKeys.calendar.events() });
-```
-
-### Mutation Helpers (client/src/lib/api.ts)
-Use typed mutation hooks for CRUD operations:
-```typescript
-import { useCreateMutation, useUpdateMutation, useDeleteMutation } from "@/lib/api";
-
-// Create with automatic invalidation and toast
-const createMutation = useCreateMutation("/api/resource", {
-  successMessage: "Created!",
-  invalidateKeys: [queryKeys.resource()],
-});
-
-// Update with dynamic endpoint
-const updateMutation = useUpdateMutation(
-  (id) => `/api/resource/${id}`,
-  { invalidateKeys: [queryKeys.resource()] }
-);
-```
-
-### Agent / MCP Access
-Operator guide: `docs/agent-access.md`. Agents authenticate with personal access tokens (`ff_pat_...`, hash-only in Firebase).
-- `server/api-tokens.ts` - token create/verify/revoke and the scope list (`API_TOKEN_SCOPES`)
-- `server/auth.ts` - session-header middleware; the PAT branch sets identity headers and enforces a path allowlist
-- `server/mcp.ts` - stateless Streamable-HTTP MCP server at `/mcp`; tools are thin wrappers over services
-- `server/calendar-service.ts` - shared calendar logic used by both REST routes and MCP tools
-- Rule: any new PAT-reachable path must be added to the allowlist in `server/auth.ts` with a scope; new MCP tools check scope in `server/mcp.ts` and reuse a service, never duplicate route logic.
-- Tokens cannot manage tokens (`/api/tokens/*` stays off the allowlist).
-
-### Agent data (mailbox + datasets + media)
-Framework for agents (e.g. the "Self" project) to publish private data that future apps read. Details and limits: `docs/agent-access.md`.
-- `shared/agent-data.ts` - Zod schemas, types and `MAIL_LIMITS` / `DATA_LIMITS`
-- `server/mail-service.ts` + `server/mail-routes.ts` - mailbox (`/api/mail/*`), RTDB `mailbox/<userId>`
-- `server/dataset-service.ts` + `server/data-routes.ts` - agent-registered JSON Schemas (draft 2020-12, Ajv) and records (`/api/data/*`), RTDB `appData/<userId>`
-- `server/media-store.ts` + `server/media-routes.ts` - private images/PDFs (`/api/files/*`), RTDB `media/<userId>`; `server/media-import.ts` rehosts https URLs (`POST /api/files/import`); `server/mail-rehost.ts` rehosts email `imageUrls` into `mediaIds` (`POST /api/mail/messages/rehost`), retry state at RTDB `mailbox/<userId>/rehostFailures`
-- Media storage is RTDB base64 behind `MediaDeps` (project sash-d5c2d has no Storage bucket); swap the deps to move to a bucket later. `/api/media/proxy` (in `server/media-proxy.ts`) is the unrelated radio/TV stream proxy.
-- `client/src/lib/agent-data.ts` - typed hooks and URL builders for both route sets
-- Scopes `mail:read|write`, `data:read|write`, `media:read|write` (write implies read); MCP tools `mail_*`, `data_*` and `media_*` in `server/mcp.ts` reuse the services.
-- Per-person publishing (`personIds`/`personId`, reserved `ff-person-day` / `ff-person-week` schemas): see `docs/person-publishing.md` and `shared/person-views.ts`.
-- Rule: this data is private per account and never exposed through household connections.
-
-### People person views (Satchel design)
-The person zoom-in follows the claude.ai/design project "Satchel App" (with "Day Timeline Zoom" for the day timeline): warm parchment surfaces, tinted tiles, serif headings.
-- `client/src/pages/people.tsx` - shell: Satchel left nav (identity card, tinted section icons with counts, sync footer), `/:personId/:tab?` routing, hide-empty sections
-- `client/src/components/person/satchel.tsx` - design tokens and primitives only (`SATCHEL_TONES`, `DOW_TONES`, `SERIF`/`MONO`, `MetricTile`, `DateBadge`, `ToneChip`, `OwlAvatar`)
-- `client/src/components/person/satchel-day.tsx` - day-sheet blocks shared by Dashboard and Daily sheets (`MetricTiles`, `MiniTimeline`, `Moments`, `LessonGroups`)
-- `client/src/components/person/person-day-sheet.tsx` - full `DayTimeline` (Day Timeline Zoom)
-- `client/src/components/person/person-{dashboard,inbox,calendar,photos,sheets,more}.tsx` - one file per section
-- `client/src/lib/person-day.ts` - pure, unit-tested logic (timeline layout, current day/week pick, month grid, lanes, `addDaysIso`/`mondayOfIso`/`WEEKDAY_SHORT`); keep logic and date math here, not in components
-- `PersonView` renders each section with `key={person.id}`, so sections need no "reset on person change" effects; sections without data redirect to Dashboard once visibility queries settle
-- Dashboard fits one wall screen by uniform scaling, not by dropping sections: `useFitScale()` (`client/src/hooks/use-fit-scale.ts`, math in `client/src/lib/fit-scale.ts`) lays the page out at width/scale and scales it down to fit the height (>= 1024px wide only, floor 0.6, below that it scrolls). Scaling changes the layout width and text re-wraps, so the hook settles through the pure `stepFitScale` (state in `FitState`): after a grow then a shrink it locks growth at that available height and settles on the lower scale, instead of re-scaling for ever
-- "Today" comes from `useToday()` (`client/src/hooks/use-today.ts`), never `new Date()` at render, so wall displays roll over at midnight
-- Rules: colours come from `SATCHEL_TONES` as literal class strings (Tailwind scans source; never build class names at runtime); every light colour has a `dark:` pair; no hover-only information (wall display).
-- Inbox category chips come from `GET /api/mail/kinds` (per person, all-time counts); tone = publisher `kindTone` else a stable hash (`kindChipTone` in `client/src/lib/agent-data.ts`); never hard-code kind names.
-- Custom sections come from `ff-person-view` records (`shared/person-views.ts`, `client/src/lib/person-view.ts`, `client/src/components/person/person-view-section.tsx`), validated with MCP `person_view_validate`; see `docs/person-publishing.md`.
-- List blocks support `urlField` (https only) and `sortField`/`sortDir` (server-sorted before the limit); datasets bound by a person's custom views are left out of that person's More tab (`moreSchemas`).
-- Not built (no data source yet): the design's Ask bar, "Needs you" card and photo favourite/hide/review states.
-
-### Time-series (metrics) and Utilities
-Agents publish named series of timestamped numbers (bills, readings); tags decide which display shows them. Guide: `docs/time-series.md`.
-- `shared/time-series.ts` - Zod schemas, types and `TS_LIMITS`
-- `server/time-series-service.ts` - logic shared by REST and MCP; RTDB `timeSeries/<userId>`
-- `server/metrics-routes.ts` - `/api/metrics/*` routes; MCP tools `metrics_*` in `server/mcp.ts` reuse the service
-- `client/src/lib/time-series.ts` - typed hooks and pure display logic; `client/src/components/time-series/` - tiles, charts, detail view
-- Scopes `metrics:read|write` (write implies read); a token's scopes are edited in place via `PATCH /api/tokens/:id` (browser session only), never by minting another token
-- Points upsert by `t`, so re-publishing is idempotent
-- `client/src/lib/bills.ts` - pure Bill model (status, grouping); `client/src/lib/bills-chart.ts` - pure chart math; `client/src/components/bills/` - Utilities (Household bills) UI; design source `docs/design/household-bills-v2.dc.html`
-- Rule: bill display text (title, vendor, group, notes, colour) comes from series annotations, never hard-coded vendors; the annotation fields are in `docs/time-series.md`
-- Rule: displays are built by tag. Tag `utilities` feeds the Utilities app (one tile per series; point annotations like `dueDate` follow the conventions in `docs/time-series.md`); never hard-code series ids in the client.
-- Rule: this data is private per account and never exposed through household connections.
-
-### Events and household address
-Operator guide: `docs/events.md`. A local pipeline (`services/events-pipeline/`, operator's cron + Haiku) finds events for households that opted in and publishes them through the service API.
-- The street address lives only at `householdProfiles/<uid>` (`shared/household.ts`); never add it to `settings` or connections payloads (only city/country are copied to `settings.location`).
-- `/api/service/events/` is service-token only (`ff_svc_`, hash in `EVENTS_SERVICE_TOKEN_SHA256`) and every per-household route re-checks current consent (not sharing = 404).
-- LLM prompts never contain the street address, names or birthdays; the service API sends member ages only.
-- `services/events-pipeline` is Node 22 only (`node:sqlite`): keep it out of the root `npm test` / `npm run check`; use `npm run events:test` / `events:check`.
-- Every `claude -p` call pins `--model` (Haiku, `services/events-pipeline/haiku.ts`).
-- The pipeline runs daily; its watch mode (`services/events-pipeline/watch.ts`, every 5 minutes) starts a household's first discovery within minutes of opting in or changing its address.
-- `events:run -- report` profiles recent runs and recommendations (Markdown, no address); the timers send desktop notices on failures and per-household results, off with `EVENTS_NOTIFY=off` (`services/events-pipeline/notify.ts`, `report.ts`).
-- Preference weights come from the append-only feedback log via `shared/events-preferences.ts`; calendar linking rules live in `server/events-service.ts`.
-- `shared/events-visit.ts` - day windows and visit-block suggestion (`dayWindows`, `suggestVisit`), used by both the server and the client; keep that logic there.
-- `shared/events-profile.ts` - household life stages and profile lines from member ages only (`householdProfile`, `PROFILE_GUIDANCE`); profile and preferences are hints, not filters.
-- `services/events-pipeline/trips.ts` + `trips-run.ts` - trip ideas (day trip, weekend; research only, no booking): max 3 active per household, one new per `all` run, kept out of the shared events table; drive limits in `geo.ts`.
-- `shared/events-sources.ts` - source classification (`classifySource`: official, registration platform or listing; default-deny listing), the domain lists and `officialSourceUrl` / `hasOfficialSource`; used by the client, server and pipeline.
-- `services/events-pipeline/links.ts` - SSRF-guarded link checker (statuses ok, dead, moved, blocked, refused, error); a dead official link rejects a candidate, a dead sign-up or ticket link is only dropped.
-- `services/events-pipeline/verify.ts` - official page check for sign-up picks (Haiku, WebFetch only, batches of 4, fail closed); `sources.ts` applies the source policy.
-- `services/events-pipeline/purge.ts` - `events:run -- purge-signups [--dry-run] [--household <id>]` withdraws new, unlinked sign-up recommendations and cleans events without an official source.
-- Rule: every published event needs an official source on the organizer's own domain; never weaken it to raise volume.
-- Month view day panel: `client/src/components/events/events-day-panel.tsx` (`EventsDayPanel`), the full list for the day selected in the month view, rendered by `pages/events.tsx`.
-- Close to home tag: `shared/events-proximity.ts` (`isCloseToHome`: not online, not a trip, within 5 miles / 8.05 km or in the household's city); `server/apps/events.ts` derives `closeToHome` at read time on `GET /api/events/items*` (never stored); the UI shows a "Close to home" chip and filter; the pipeline adds a `close-to-home` search task (focus and near windows, `search.ts`) and `rank.ts` gives those picks +2 per focus day and +1 per later day with their own caps. Details in `docs/events.md`.
-- Browse model (details in `docs/events.md`): `client/src/lib/events-filters.ts` (pure filter groups, `parseBrowse`, `matchesFilters`), `client/src/lib/events-day.ts` (pure day view sections, 7-day strip, `parseDayParam`), `shared/events-activity.ts` (class / sign-up / audience helpers, `isOngoingClass`). Components in `client/src/components/events/`: `events-filter-bar.tsx`, `events-day-view.tsx` (`/day/YYYY-MM-DD`), `events-day-card.tsx`, `events-classes-shelf.tsx`.
-- Filter groups stay logical: When means days, What means kind, How far means distance; do not mix them.
-- Ongoing classes (no dated session) stay off calendar days (agenda, month, day strip); they show in the day view's classes section and the classes shelf.
-- Browse state (view, filters, selected day) uses `useSessionState` (`ff.events.browse.v1`) and is rebuilt with `parseBrowse`.
-- Feedback entries live in RTDB as objects where empty arrays vanish: read them only through `feedbackEntrySchema` in `listFeedback` (`server/events-service.ts`), never as a raw `FeedbackEntry` (cause of the 2026-10-16 outage).
-
-### Calendar Day view
-- Route `/calendar/day/YYYY-MM-DD`; calendar is a nested app, so absolute links use `~/` (e.g. `~/calendar/day/...`).
-- Layout and time formatting logic stays in `client/src/lib/calendar-day.ts` (pure, unit-tested); the component is `client/src/components/calendar/calendar-day-view.tsx`.
-- The day view only renders existing calendar events; it never creates any by itself.
-- The upcoming strip renders only the cards that fit one row (`fitCount` in `client/src/lib/fit-scale.ts`); it never wraps or scrolls sideways.
-
-### Household email
-Operator guide: `docs/household-email.md`. One operator Gmail inbox; households forward to `<base>+<key>[-<person>]`; `services/mail-intake/` (local 5-minute timer) delivers through `POST /api/service/inbox/deliver`.
-- Server: `server/household-inbox-service.ts` and `server/household-inbox-routes.ts`; UI: `client/src/components/household-email-settings.tsx` (Settings > Household email).
-- The routing key is secret and rotatable; rotating retires the old address.
-- Unknown or unauthenticated sources are held until the household approves them.
-- The `ff_svc_` service token reaches only `/api/service/events/` and `/api/service/inbox/`.
-- Organize (bills -> utilities series `mail-<vendor>-<category>`, daily reports -> `ff-person-day`) is opt-in and re-checked on every service call. `INBOX_ORGANIZE=off` disables it; max 20 Haiku calls per run.
-- Mail-intake prompts are the documented exception to the Events no-names rule: email content only (subject and text), no profile data, no tools.
-- Every `claude -p` call pins `--model` via `services/events-pipeline/haiku.ts`.
-- Attachments (PDF bills, daycare photos) are not handled yet.
-- `services/mail-intake` is outside the root `npm test` / `npm run check`; use `npm run inbox:test` / `inbox:check`.
-
-### App Registry (framework vs apps)
-- `shared/apps.ts` is the single list of apps: `APP_IDS`, `APP_MANIFESTS`, `defaultEnabled`.
-- Every `APP_MANIFESTS` entry must set `category` (one of `APP_CATEGORIES`) and `needs` (list of setup needs, `[]` if none). Need text lives in `APP_NEED_COPY`; done/todo state in `appNeedStatus` (both `shared/apps.ts`).
-- `client/src/components/app-page.tsx` (`AppPage`) is the one structured page for every app: it is how an app is added, set up and configured. It is rendered by Settings > Apps (`client/src/components/app-picker.tsx`) and by the gear sheet (`client/src/components/app-settings.tsx`); never build a separate per-app setup screen.
-- A new need type needs an `APP_NEED_COPY` entry and an `appNeedStatus` rule.
-- Shell files (`app-sidebar`, `App.tsx` router, `app-picker`, home, screensaver, app-settings sheet, landing) read the registry; never hard-code app ids there.
-- Adding an app fills these slots only:
-  - `APP_IDS` + `APP_MANIFESTS` entry: `shared/apps.ts`
-  - `APP_ICONS`: `client/src/lib/app-registry.ts`
-  - `APP_PAGES`: `client/src/App.tsx`
-  - optional `APP_SETTINGS_PANELS`: `client/src/components/app-settings-panels.tsx`
-  - optional `runAppDisableHook` case: `client/src/lib/app-lifecycle.ts`
-  - server routes in `server/apps/<id>.ts`, registered from `server/routes.ts`
-- Visibility: new households get only home, settings, clock and weather (`defaultEnabled`, `server/default-user.ts`); `visibleApps` undefined = legacy all-on.
-- Everything else is chosen by the household: `STARTER_PACKS` / `applyStarterPack` (`shared/apps.ts`) via `POST /api/settings/apps/setup` (apply a pack or mark setup done), offered by the one-time Home welcome card (`client/src/components/welcome-card.tsx`, `shouldShowWelcome` in `client/src/lib/display-layout.ts`).
-- Settings are owned per app: a new setting key must be added to `APP_SETTINGS_KEYS` or `HOUSEHOLD_SETTINGS_KEYS` in `shared/schema.ts` (the ownership test enforces it).
-- App defaults are applied on read by `withSettingsDefaults` (`shared/schema.ts`), never seeded into new accounts; new users get sparse settings.
-- Changes go through `PUT /api/settings/apps/:appId` and `POST /api/settings/apps/:appId/move`.
-- Turning an app off hides it from screens but keeps its data and agent/MCP access.
-
-### Server Middleware (server/middleware.ts)
-Use `asyncHandler` to eliminate try-catch boilerplate:
-```typescript
-import { asyncHandler, getOrCreateUser, toArray } from "./middleware";
-
-app.get("/api/resource", asyncHandler(async (req, res) => {
-  const userId = req.headers["x-clerk-user-id"] as string;
-  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
-  const userData = await getOrCreateUser(userId, username);
-  res.json(toArray(userData.items)); // Normalizes Firebase arrays
-}));
-```
-
-## Coding Conventions
-
-### React
-- Functional components with hooks only
-- Custom hooks for reusable logic (useWeatherData, useWakeLock, useClock, useFullscreen)
-- Skeleton components for loading states
-- Error Boundary for top-level error handling
-
-### Reusable Components
-- `EmptyState` - Standard empty state with icon, title, description, action button
-- `FullscreenButton` - Fixed-position fullscreen toggle button
-- `useFullscreen({ autoEnter, onExit })` - Enhanced fullscreen hook with auto-enter and exit callback
-
-### Styling
-- Tailwind CSS utility classes
-- CSS variables (HSL format) for theming
-- Dark mode via `dark` class on HTML element
-- Custom utilities: `hover-elevate`, `toggle-elevate`
-- Fonts are self-hosted via `@fontsource*` imports in `client/src/main.tsx` (Inter Variable, Source Serif 4, JetBrains Mono). Do not add Google Fonts or other third-party font links: they send visitors' IPs to a third party (GDPR)
-
-### API Design
-- RESTful endpoints: `GET /api/resource`, `POST /api/resource/new`, `PATCH /api/resource/:id`
-- JSON request/response with Zod validation
-- Credentials included in all requests
-
-### Format Utilities (client/src/lib/format.ts)
-- `formatTemperature(temp, unit)` - Convert and format temperature
-- `formatRelativeTime(dateString)` - "5m ago", "2h ago", etc.
-- `formatDateDisplay(date)` - "2024/01/15" format
-- `parseLocalDate(dateStr)` - Parse YYYY-MM-DD without timezone issues
-- `getRelativeDayLabel(date)` - "Today", "Tomorrow", or formatted date
-
-### Naming
-- Components: PascalCase (`HomePage`, `WeatherWidget`)
-- Hooks: `useHookName` (`useWeatherData`)
-- Utils: camelCase (`cn()`, `apiRequest()`)
-- Constants: UPPERCASE (`RADIO_STATIONS`, `TV_CHANNELS`)
-
-### Type Safety
-- TypeScript throughout
-- Zod schemas in `/shared/schema.ts` for runtime validation
-- TypeScript inference from Zod (`z.infer<typeof schema>`)
-
-## Key Files
-
-- `client/src/App.tsx` - Main app with Clerk auth and routing
-- `client/src/pages/home.tsx` - Dashboard with widget grid
-- `client/src/pages/settings.tsx` - Comprehensive settings panels
-- `shared/apps.ts` - App registry (APP_IDS, APP_MANIFESTS, defaultEnabled)
-- `client/src/lib/app-registry.ts` - APP_ICONS and app layout hook
-- `client/src/components/app-picker.tsx` - Settings > Apps shelf
-- `client/src/components/app-page.tsx` - AppPage, shared by the shelf and the gear sheet
-- `server/apps/` - Per-app route modules
-- `server/media-proxy.ts` - Media proxy, radio and TV routes
-- `server/route-inventory.test.ts` - Route inventory guard
-- `client/src/lib/api.ts` - Query keys and mutation hook factories
-- `client/src/lib/format.ts` - Date/temperature formatting utilities
-- `client/src/lib/queryClient.ts` - React Query setup and API helpers
-- `client/src/lib/radio-service.ts` - Singleton audio player service
-- `client/src/components/empty-state.tsx` - Reusable empty state component
-- `client/src/hooks/use-fullscreen.ts` - Enhanced fullscreen hook
-- `server/routes.ts` - All API endpoints (~30+ routes)
-- `server/middleware.ts` - Auth middleware, async handler, utilities
-- `server/firebase.ts` - Firebase initialization and data helpers
-- `shared/schema.ts` - Zod schemas and TypeScript types
-- `tailwind.config.ts` - Custom color palette and theme
-
-## Deployment
-
-- **Platform**: Replit (autoscale deployment)
-- **Port**: 5000
-- **Build**: `npm run build`
-- **Run**: `node ./dist/index.cjs`
-- **Release**: see `## Release` below; then in Replit pull from the Git pane and click Publish. Secrets live only in Replit.
-- **bilko.run card**: external-url card that opens the hosted app; see `docs/bilko-run.md`.
+| Area | Read |
+| --- | --- |
+| Folder conventions | `.claude/rules/client.md`, `.claude/rules/server.md` |
+| App registry | `.claude/rules/apps.md` |
+| Agent access (tokens, scopes, MCP, mail, datasets, media) | `docs/agent-access.md`, `.claude/rules/agent-data.md` |
+| People | `docs/person-publishing.md`, `.claude/rules/people.md` |
+| Time-series and Utilities | `docs/time-series.md`, `.claude/rules/time-series.md` |
+| Events | `docs/events.md`, `.claude/rules/events.md` |
+| Running the Events pipeline | `services/events-pipeline/README.md` |
+| Household email | `docs/household-email.md`, `.claude/rules/household-email.md` |
+| Env vars, local dev, deploy | `docs/operations.md` |
+| Release procedure | `.claude/agents/builder.md` |
+| bilko.run card | `docs/bilko-run.md`, `bilko.listing.json` |
+| Validation records (machine-written, read by `script/release.ts`) | `session-manager-operations/reviews/validation/` |
 
 ## Release
 
-Publishing means GitHub `main` contains all good-to-go work. Every session (architect, claude) does it the same way: run `npm run release` from the main checkout (`--dry-run` first; `--include <branch>` for a non-Epic branch the human named).
+Release means GitHub `main` holds all good-to-go work. Run `npm run release` from the
+main checkout (`--dry-run` first; `--include <branch>` for a non-Epic branch the human
+named) when a plan's validator has VERIFIED every PRD, or when the human asks.
+The "Publish to GitHub" HOT KEYS macro runs it through the `builder` agent.
+Held branches (uncommitted changes, open PRDs, REFUTED validation, merge conflict)
+are reported, never forced. Deploy happens when a human pulls `main` in Replit's
+Git pane and clicks Publish.
 
-- Run it when a plan's validator has VERIFIED every PRD, or when the human asks to publish.
-- The HOT KEYS macro "Publish to GitHub" does the same, via the `builder` agent (`.claude/agents/builder.md`).
-- Branches with uncommitted worktree changes, open PRDs, REFUTED validation or a merge conflict are held and reported, never forced.
-- Replit deploys only after a human pulls in the Git pane and clicks Publish.
+## Design
 
-## Design Philosophy
-
-The app uses a warm "Hearth & Heritage" color palette:
-- Primary: Heritage Terracotta (#C05746)
-- Secondary: Sage Leaf (#82937A)
-- Accent: Soft Honey (#F4D06F)
-- Background: Warm Parchment (#FDF8F2)
-
-Designed for visibility on mounted displays with accessibility considerations including ARIA labels, keyboard navigation, and high contrast for multi-generational use.
+Hearth & Heritage palette: `client/src/index.css`. People and Events use the Satchel
+tokens in `client/src/components/person/satchel.tsx`.
