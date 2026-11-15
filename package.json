@@ -16,7 +16,8 @@
     "events:run": "node services/events-pipeline/launch.mjs",
     "inbox:check": "tsc -p services/mail-intake/tsconfig.json",
     "inbox:test": "tsx --test services/mail-intake/*.test.ts",
-    "inbox:run": "tsx services/mail-intake/cli.ts"
+    "inbox:run": "tsx services/mail-intake/cli.ts",
+    "docs:check": "node script/drift-check.cjs --root . --exclude session-manager-operations/"
   },
   "dependencies": {
     "@clerk/express": "^2.1.77",
