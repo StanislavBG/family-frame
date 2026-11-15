@@ -5,7 +5,11 @@ Households can forward email to Family Frame for free. This guide covers how it 
 ## 1. How it works
 
 - The operator owns one dedicated Gmail inbox.
-- Each household gets a plus address: `<base>+<key>` for the household, and `<base>+<key>-<person>` for one person. `<base>` is the inbox address (for example `inbox@gmail.com`), `<key>` is a secret routing key.
+- Each household gets a plus address built from `HOUSEHOLD_INBOX_ADDRESS` (`buildInboxAddress` in `shared/household-inbox.ts`):
+  - household: `<local>+<key>@<domain>`
+  - one person: `<local>+<key>-<personSlug>@<domain>`
+  - `<local>` and `<domain>` are the two halves of the inbox address. `<key>` is the household's secret routing key (10 lowercase letters and digits). `<personSlug>` is the person's name in lowercase letters and digits only (at most 20).
+  - Example: with inbox `inbox@gmail.com`, key `k7m2p9qrst` and person Maria, the household address is `inbox+k7m2p9qrst@gmail.com` and Maria's is `inbox+k7m2p9qrst-maria@gmail.com`.
 - A household forwards mail to its address. Gmail delivers it to the operator's inbox.
 - A local timer runs `npm run inbox:run` every 5 minutes. It reads new Gmail messages, works out the household and person from the plus address, and posts each message to the service API (`POST /api/service/inbox/deliver`).
 - The server stores the mail in the household's mailbox. Agents keep reading it through the usual mail tools.
@@ -78,8 +82,8 @@ Privacy:
 - Haiku runs with no tools.
 - The server re-checks the household's consent on every service call. Turning organize off stops it at once.
 
-Not handled yet: attachments. PDF bills and daycare photos are not read or stored by this step.
+Not handled: attachments. PDF bills and daycare photos are not read or stored by this step.
 
 ## 5. Agents
 
-Agents publish with `mail_upsert_emails` as before. Household email is an extra way in, not a replacement.
+Agents publish with `mail_upsert_emails`. Household email is an extra way in, not a replacement.
