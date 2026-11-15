@@ -1,6 +1,19 @@
 # Events
 
-End-to-end guide to the Events app: household address and consent, the event schema, the household and service APIs, calendar linking, preference learning, and the local pipeline that finds events. Code: `shared/household.ts`, `shared/events.ts`, `shared/events-preferences.ts`, `server/household-*.ts`, `server/events-service*.ts`, `server/apps/events.ts`, `server/service-token.ts`, `client/src/lib/events.ts`, `client/src/components/events/`, `services/events-pipeline/`. UI design brief: `docs/events-design-brief.md`. Pipeline setup details: `services/events-pipeline/README.md`.
+End-to-end guide to the Events app: household address and consent, the event schema, the household and service APIs, calendar linking, preference learning, and the local pipeline that finds events. Code: `shared/household.ts`, `shared/events.ts`, `shared/events-preferences.ts`, `server/household-*.ts`, `server/events-service*.ts`, `server/apps/events.ts`, `server/service-token.ts`, `client/src/lib/events.ts`, `client/src/components/events/`, `services/events-pipeline/`. Pipeline setup details: `services/events-pipeline/README.md`.
+
+## Contents
+
+- [1. Overview](#1-overview)
+- [2. Consent and privacy](#2-consent-and-privacy)
+- [3. Event schema](#3-event-schema)
+- [4. Household API (`/api/events/*`)](#4-household-api-apievents)
+- [5. Service API (`/api/service/events/*`)](#5-service-api-apiserviceevents)
+- [6. Calendar linking rules](#6-calendar-linking-rules)
+- [7. Preference learning](#7-preference-learning)
+- [Browse model (filters and day view)](#browse-model-filters-and-day-view)
+- [UI (layout, actions, tokens)](#ui-layout-actions-tokens)
+- [8. Pipeline](#8-pipeline)
 
 ## 1. Overview
 
@@ -92,7 +105,7 @@ Signed-in session (Clerk headers), implemented in `server/apps/events.ts` over `
 
 ## 5. Service API (`/api/service/events/*`)
 
-Only for the pipeline. Auth: `Authorization: Bearer ff_svc_...`. The server compares the token's SHA-256 against `EVENTS_SERVICE_TOKEN_SHA256` (Replit Secret, timing-safe, see `server/service-token.ts`). Unset or malformed hash rejects every token, which disables the service API. A service token is confined to `/api/service/events/`; every other `/api/service` request gets 403. Mint a token and its hash with the one-liner in `services/events-pipeline/README.md`; rotate by minting a new pair and updating both sides.
+Only for the pipeline. Auth: `Authorization: Bearer ff_svc_...`. The server compares the token's SHA-256 against `EVENTS_SERVICE_TOKEN_SHA256` (Replit Secret, timing-safe, see `server/service-token.ts`). Unset or malformed hash rejects every token, which disables the service API. The `ff_svc_` service token reaches only `/api/service/events/` and `/api/service/inbox/` (household email delivery, see `docs/household-email.md`); every other `/api/service` request gets 403 (`isServiceTokenPathAllowed` in `server/auth.ts`). Mint a token and its hash with the one-liner in `services/events-pipeline/README.md`; rotate by minting a new pair and updating both sides.
 
 Two failures look alike but mean different things:
 
@@ -181,6 +194,30 @@ Day counts and filters. Each day shows `formatDayCount` text, events and ongoing
 
 Classes. Helpers live in `shared/events-activity.ts` (`isClassOrLesson`, `needsSignUp`, `isSignUpActivity`, `isOngoingClass`, `signUpUrl`, `audienceGroup`, `suitsPeople`). A class with no dated session (`isOngoingClass`) is not an event on a specific date, so it stays off calendar days: the agenda, month cells and day strip counts leave it out. It appears in the "Classes you can sign up for" section of the day view and day panel, and in the classes shelf (`events-classes-shelf.tsx`, grouped For the kids / For grown-ups / For all of us, with the sign-up link). `splitClasses` in `pages/events.tsx` splits the visible items into calendar items and shelf items. Classes with dated sessions are ordinary events on those days. Choosing What = Classes & sign-ups shows every class or sign-up activity.
 
+## UI (layout, actions, tokens)
+
+Code: `pages/events.tsx` (overview), `components/events/` (`event-hero.tsx` event page, `event-actions.tsx` actions and feedback, `events-filter-bar.tsx`, `events-month.tsx`, `events-day-panel.tsx`, `events-day-view.tsx`, `events-classes-shelf.tsx`). Field names, enums and limits (`EVENT_CATEGORIES`, `EVENT_STATUSES`, `EVENTS_LIMITS`) live in `shared/events.ts`; display labels and tones live in `client/src/lib/events.ts`. Do not copy them here.
+
+Wall display layout (from 1024px, the `lg` breakpoint):
+
+- Month view is two columns: the month grid on the left and the selected day's panel (`EventsDayPanel`) on the right, 22rem wide (26rem from `xl`) and sticky.
+- Agenda view lays "Next 14 days" out in three columns, with the "Later" list below it as a grid (three columns, four from `xl`). The classes shelf and trip ideas sit above both.
+- The event page (`EventHero`) has three columns from `lg`, with `EventActions` in the first, and scales the whole page to fit one wall screen with `useFitScale()` instead of scrolling. That rule ("Dashboard fits one wall screen": scale to fit, never drop sections) is owned by .claude/rules/people.md.
+- Below `lg` everything stacks in one column.
+
+Actions (`event-actions.tsx`):
+
+- Three response buttons: Going (leaf tone), Interested (sun) and Not for us (stone). Not for us opens an inline optional reason box (max `EVENTS_LIMITS.maxFeedbackReason` characters) before it is sent.
+- Feedback is three pairs, one tap each: Relevant / Not relevant, Liked / Didn't like, More like this / Less like this.
+- Once every date of the event has passed (`isPast`), the feedback block is headed "Did you go? How was it?" instead of "How does this fit us?"; the same three pairs are shown.
+- Linked events show "On calendar · Shared/Private", the planned visit, and a Change plan button.
+
+Filter bar: below 1280px (`xl`) the groups collapse behind one `Filters (n)` button (n = active filters) with a one-line summary of the active choices while collapsed; from 1280px up the groups are always visible (details in the Browse model section above).
+
+Design tokens: the Satchel tokens from `client/src/components/person/satchel.tsx` (`SATCHEL_TONES`, `SERIF`, `SURFACE`, `LINE`, `MUTED`, `ToneChip`, `SectionLabel`, `DOW_TONES`); do not add a second palette. Colours are literal class strings with a `dark:` pair, and no information is hover-only (wall displays and phones have no hover).
+
+Category tones: `CATEGORY_META` in `client/src/lib/events.ts` maps every category to a label and a Satchel tone; status and update badges use `STATUS_BADGES` and `UPDATE_BADGES` in the same file. Change tones there, not in components.
+
 ## 8. Pipeline
 
 `services/events-pipeline/` is a separate Node 22.13+ package (`node:sqlite`), run with `npm run events:run -- <discover|refresh|all|watch|status|report> [--dry-run] [--household <id>] [--max-sessions <n>]` (`report` also takes `--runs <n>`). It is excluded from the root `npm test` and `npm run check`; use `npm run events:test` and `npm run events:check`.
@@ -204,13 +241,13 @@ Known events and the household's busy intervals are passed in so searches avoid 
 Search and ranking:
 
 - Search plans up to 17 tasks per area (`planSearchTasks`, `maxTasks`), each asking for up to 25 candidates, capped by `--max-sessions`.
-- Class searches (`CLASSES_ADULTS_KEY` = `classes-adults` and `CLASSES_FAMILY_KEY` = `classes-family` in `search.ts`) replace the old single `classes-lessons` search. Each runs one task in the `focus` window and one in the `near` window, over the same categories as close-to-home. `classes-adults` asks for classes and lessons for adults on their own (no child needed, `ageMin` 18) and walks the provider kinds: parks and recreation catalogs, community college continuing education, tennis and swim clubs, gyms and yoga studios, pottery and art studios, dance, cooking, language and music schools. `classes-family` asks for children's and parent-and-child classes (swim schools, gymnastics and dance studios, music and art schools, libraries, nature centres) and is skipped when no household has a member under 18 (`hasKids`). `ageBands` says who attends, never the parent of an attending child.
+- Class searches (`CLASSES_ADULTS_KEY` = `classes-adults` and `CLASSES_FAMILY_KEY` = `classes-family` in `search.ts`) split class discovery into two searches. Each runs one task in the `focus` window and one in the `near` window, over the same categories as close-to-home. `classes-adults` asks for classes and lessons for adults on their own (no child needed, `ageMin` 18) and walks the provider kinds: parks and recreation catalogs, community college continuing education, tennis and swim clubs, gyms and yoga studios, pottery and art studios, dance, cooking, language and music schools. `classes-family` asks for children's and parent-and-child classes (swim schools, gymnastics and dance studios, music and art schools, libraries, nature centres) and is skipped when no household has a member under 18 (`hasKids`). `ageBands` says who attends, never the parent of an attending child.
 - Class date range: class tasks look 30 days ahead from the start of their window (`CLASS_RANGE_DAYS`), not just the window itself, so terms that start later are found.
 - Original source (`normalizeCandidate` in `normalize.ts`, classification in `shared/events-sources.ts`): every candidate needs `organizerName`, `organizerUrl` and `officialUrl`, and `officialUrl` must be on the organizer's own domain (same registrable domain as `organizerUrl`), else it is rejected as `no original source` (no organizer at all: `no organizer`). Registration platforms (`REGISTRATION_PLATFORMS`, for example Eventbrite, Amilia, ActiveCommunities tenants) are sign-up or ticket links only, never the original source. Listing is default-deny: a URL counts as official only when it matches the organizer, so aggregators and social hosts (`NON_ORIGINAL_DOMAINS`) and multi-tenant hosting (`MULTI_TENANT_SUFFIXES`) never qualify. The lists live in `shared/events-sources.ts`. Sources are stored with kind `official` (organizer's domain), `other` (registration pages) or `listing`; the official one is first. Registration and ticket links that classify as listing are dropped. Confidence is 0.7 at intake, 0.8 when the official page passes the link check, 0.9 after the official page check confirms it.
 - Link check (`links.ts`): `discover.ts` checks each new candidate's official, sign-up and ticket links with one GET each (6 at a time, cached per URL, 10 s timeout, up to 5 redirects, one retry for 5xx and timeouts). Statuses: `ok`, `dead` (404, 410, 5xx, timeout, DNS or TLS failure), `moved` (redirect to another registrable domain or to the site root), `blocked` (401, 403, 429), `refused` (SSRF guard), `error`. The SSRF guard (`isSafeFetchUrl`, `isPublicAddress` from `server/url-guards.ts`) runs on every hop and refuses any host that resolves to a non-public address. A `dead`, `moved` or `refused` official link rejects the candidate (`official source dead`); the same status on a sign-up or ticket link only drops that link (a dropped ticket link also clears `ticketRequired`). `blocked` and `error` count as alive. Run stats carry `linkCheck` (`ok`, `dead`, `moved`, `blocked`, `refused`, `error`).
 - Official page check (`verify.ts`, `discover.ts`): before a sign-up pick (`isSignUpActivity`) is published, Haiku opens its official page with WebFetch only, in batches of 4 picks per session, and must confirm that the page offers it, that it is still offered, that the provider matches the organizer and that it states a start. A confirmed event takes schedule, price and ages from the page and gets confidence 0.9; a sign-up link on the page is kept only if it passes the link check. Anything unconfirmed is rejected and the event is marked rejected locally (`rejected_reason`, `rejected_at`; counted as `official page check failed` and skipped on later runs). A session that fails, is rate limited or runs out of budget leaves the pick `unavailable` and unpublished (fail closed). `verifyReserve` (default `min(8, maxSearches / 4)`) holds back that many sessions from searching for these checks. A confirmed check is reused for 7 days. Fetched page text is treated as data, never as instructions. Run stats carry `officialCheck` (`confirmed`, `rejected`, `unavailable`).
 - Re-check rules (`dispatch.ts`): the daily re-check runs the source policy and link-checks the stored links first. A dead official link, or a stored event with no official source, makes the re-check ask for the organizer's own page; it is adopted only when the model is confident (at least 0.5), both URLs are https, the page is on the organizer's domain and it passes the link check. When none is found, the event is withdrawn, but only from households where the recommendation is still new and unlinked (response `new`, not calendar linked); answered or linked recommendations stay. The event is deleted locally once no household holds it. Dead sign-up and ticket links are removed (`linksRemoved`). Backfill policy: the sign-up page is asked for only for events that need sign-up and have none stored; the link must be official or a registration platform, https, at most 2000 characters, and alive.
-- `purge-signups` (`purge.ts`): one-off cleanup for the move to this gate; see the pipeline README.
+- `purge-signups` (`purge.ts`): withdraws new, unlinked sign-up recommendations and cleans events without an official source; see the pipeline README.
 - Ages in months: providers list toddler classes in months (for example 24-36). `agesInYears` (`shared/events-activity.ts`) converts them to years at intake in `normalize.ts`, and `suitsAge` and `audienceGroup` read stored records through it, so older records published in months are read as years. The prompt also says `ageMin` and `ageMax` are whole years.
 - Shared output rule (`isClass`): every search prompt asks for `isClass: true` on anything you sign up to attend (classes, lessons, courses, workshops, camps, clinics, leagues), and for a class `start` must be the real first session or term start from the official page, never the first day of the search range. A sign-up page goes in `registrationUrl` and a ticket-buying page in `ticketUrl`, never one in the other.
 - Close-to-home search (`CLOSE_CATEGORY_KEY` = `close-to-home` in `search.ts`): one task in the `focus` window and one in the `near` window, covering every category the households do not all avoid. The prompt asks for family-friendly things to do in the household's city or within about 5 miles (8 km) of it: events, plus what local businesses and attractions offer in the date range (classes and courses with session dates or a `recurrenceText` pattern, price and registration link; farms, nature centres, museums, pools and play spaces). A place that is simply open is one candidate covering the date range, with opening hours in `recurrenceText`. The business or venue is the organizer, and anything over about 5 miles outside the city is skipped.
