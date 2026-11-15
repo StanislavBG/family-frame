@@ -16,6 +16,7 @@ import { useFitScale } from "@/hooks/use-fit-scale";
 import { useToday } from "@/hooks/use-today";
 import { mediaUrl } from "@/lib/agent-data";
 import { queryKeys } from "@/lib/api";
+import { docsUrl } from "@/lib/docs-links";
 import { attentionCount, checkSummary, groupBills, shortMoney, toBill } from "@/lib/bills";
 import type { Bill } from "@/lib/bills";
 import { FIT_SCALE_MIN } from "@/lib/fit-scale";
@@ -226,7 +227,15 @@ export default function UtilitiesPage() {
         <EmptyState
           icon={Receipt}
           title="No bills yet"
-          description='Bills appear here when an agent publishes time-series tagged "utilities" (see docs/time-series.md).'
+          description={
+            <>
+              Bills appear here when an agent publishes time-series tagged "utilities" (see{" "}
+              <a href={docsUrl("time-series.md")} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 text-inherit hover:opacity-80">
+                docs/time-series.md
+              </a>
+              ).
+            </>
+          }
         />
       </div>
     );

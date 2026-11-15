@@ -6,6 +6,7 @@ import type { CalendarEvent, Person } from "@shared/schema";
 import type { PersonDay, PersonWeek } from "@shared/person-views";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { docsUrl } from "@/lib/docs-links";
 import {
   mediaUrl,
   useMailMessages,
@@ -301,7 +302,15 @@ export default function PersonDashboard({ person }: { person: Person }) {
           <EmptyState
             icon={UserRound}
             title={`Nothing here yet for ${person.name}`}
-            description="An agent can publish day sheets, emails, photos and events to this person. See docs/person-publishing.md for how."
+            description={
+              <>
+                An agent can publish day sheets, emails, photos and events to this person. See{" "}
+                <a href={docsUrl("person-publishing.md")} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 text-inherit hover:opacity-80">
+                  docs/person-publishing.md
+                </a>{" "}
+                for how.
+              </>
+            }
           />
         )}
 

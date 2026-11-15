@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 interface EmptyStateProps {
   icon: LucideIcon;
   title: string;
-  description: string;
+  description: React.ReactNode;
   actionLabel?: string;
   onAction?: () => void;
   actionVariant?: "default" | "outline" | "secondary";
