@@ -2,6 +2,19 @@
 
 How a household points its own agent at its own Family Frame account so the **People** app shows each person's calendar, inbox, photos and daily sheets. Nothing here is specific to one household: a family with a daycare toddler and a family with school-age kids use the same stores and tools. For tokens, scopes and general limits see `docs/agent-access.md`.
 
+This doc owns the per-person publishing contract: `personIds` / `personId` on every store, and the three reserved schemas `ff-person-day`, `ff-person-week` and `ff-person-view` (defined in `shared/person-views.ts`).
+
+## Contents
+
+- [1. What the People app shows](#1-what-the-people-app-shows)
+- [2. Setup per household](#2-setup-per-household)
+- [3. Discover person ids](#3-discover-person-ids)
+- [4. Publish, store by store](#4-publish-store-by-store)
+- [5. Idempotency](#5-idempotency)
+- [6. Privacy](#6-privacy)
+- [7. Unknown datasets: the More tab](#7-unknown-datasets-the-more-tab)
+- [8. Custom views (ff-person-view)](#8-custom-views-ff-person-view)
+
 ## 1. What the People app shows
 
 The People app picks one household member and filters existing stores by that person. It adds no storage of its own. Sections sit in a left menu; sections with no data for the person are hidden.
@@ -25,11 +38,7 @@ Do this in the household's **own** account. Data is never copied between account
 
 1. Add the people in **Global Config** (Settings). Each person gets an id.
 2. In **Settings → Agent Access** create a token with `mail:write`, `media:write`, `data:write` and `calendar:write` (the read scopes come with them; `calendar:read` is always included).
-3. Connect the agent to the MCP endpoint:
-
-```bash
-claude mcp add --transport http family-frame https://family-frame.replit.app/mcp --header "Authorization: Bearer ff_pat_..."
-```
+3. Connect the agent to the MCP endpoint with that token, as described in `docs/agent-access.md`.
 
 ## 3. Discover person ids
 
