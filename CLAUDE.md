@@ -34,17 +34,19 @@ Local services (Events pipeline, mail intake) live in `services/`.
 
 | Area | Read |
 | --- | --- |
-| Folder conventions | `.claude/rules/client.md`, `.claude/rules/server.md` |
-| App registry | `.claude/rules/apps.md` |
-| Agent access (tokens, scopes, MCP, mail, datasets, media) | `docs/agent-access.md`, `.claude/rules/agent-data.md` |
-| People | `docs/person-publishing.md`, `.claude/rules/people.md` |
-| Time-series and Utilities | `docs/time-series.md`, `.claude/rules/time-series.md` |
-| Events | `docs/events.md`, `.claude/rules/events.md` |
-| Running the Events pipeline | `services/events-pipeline/README.md` |
-| Household email | `docs/household-email.md`, `.claude/rules/household-email.md` |
-| Env vars, local dev, deploy | `docs/operations.md` |
-| Release procedure | `.claude/agents/builder.md` |
-| bilko.run card | `docs/bilko-run.md`, `bilko.listing.json` |
+| Folder conventions | [.claude/rules/client.md](.claude/rules/client.md), [.claude/rules/server.md](.claude/rules/server.md) |
+| App registry | [.claude/rules/apps.md](.claude/rules/apps.md) |
+| Agent access (tokens, scopes, MCP, mail, datasets, media) | [docs/agent-access.md](docs/agent-access.md), [.claude/rules/agent-data.md](.claude/rules/agent-data.md) |
+| People | [docs/person-publishing.md](docs/person-publishing.md), [.claude/rules/people.md](.claude/rules/people.md) |
+| Time-series and Utilities | [docs/time-series.md](docs/time-series.md), [.claude/rules/time-series.md](.claude/rules/time-series.md) |
+| Events | [docs/events.md](docs/events.md), [.claude/rules/events.md](.claude/rules/events.md) |
+| Running the Events pipeline | [services/events-pipeline/README.md](services/events-pipeline/README.md) |
+| Running the mail intake | [services/mail-intake/README.md](services/mail-intake/README.md) |
+| Household email | [docs/household-email.md](docs/household-email.md), [.claude/rules/household-email.md](.claude/rules/household-email.md) |
+| Env vars, local dev, deploy | [docs/operations.md](docs/operations.md) |
+| Release procedure | [.claude/agents/builder.md](.claude/agents/builder.md) |
+| Replit Agent entry (a pointer) | [replit.md](replit.md) |
+| bilko.run card | [docs/bilko-run.md](docs/bilko-run.md), `bilko.listing.json` |
 | Validation records (machine-written, read by `script/release.ts`) | `session-manager-operations/reviews/validation/` |
 
 ## Release
