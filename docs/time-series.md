@@ -4,6 +4,16 @@ How an agent (for example "Self") publishes named time-series to Family Frame, a
 
 Data is private per account. It is never shared through household connections.
 
+## Contents
+
+- [Data model](#data-model)
+- [REST](#rest)
+- [MCP tools](#mcp-tools)
+- [Tags drive displays](#tags-drive-displays)
+- [Utilities conventions](#utilities-conventions)
+- [Worked example: bills](#worked-example-bills)
+- [Utilities app (Household bills)](#utilities-app-household-bills)
+
 ## Data model
 
 A **series** is a named stream of numeric **points**. Series ids are lowercase slugs: `^[a-z0-9][a-z0-9-]{0,63}$`.
@@ -72,39 +82,25 @@ Tools at `POST /mcp` (see `docs/agent-access.md`). Reads need `metrics:read` or 
 
 Tags decide where a series appears; nothing else needs configuring.
 
-- Tag `utilities` shows the series in the **Utilities** app (one tile per series).
-- Other tags are reserved for future boards (for example a `health` or `garden` board). A series with no matching board is still stored and readable through the API.
-- Add several tags freely, for example `["utilities", "gas"]`; the second tag can group or filter later.
+- Tag `utilities` shows the series in the **Utilities** app (one bill per series; see [Utilities app (Household bills)](#utilities-app-household-bills)).
+- No other tag has a display today. A series without the `utilities` tag is still stored and readable through the REST routes and MCP tools.
+- Add several tags freely, for example `["utilities", "gas"]`; extra tags are stored and filterable with `GET /api/metrics/series?tag=...`.
 
 ## Utilities conventions
 
-The Utilities app reads these conventions. Follow them so tiles show the right thing.
+The Utilities app reads these conventions. Follow them so each bill shows the right thing.
 
 - **One series per vendor/account**, e.g. `pse-gas`, `comcast-internet`.
-- `value` = the **amount due** for that bill.
+- `value` = the **amount due** for that bill. Amounts are shown as US dollars.
 - `unit` = an ISO currency code, e.g. `USD`.
 - Point `t` = the **billing date** (`YYYY-MM-DD`).
-- Optional point `annotations`:
-  - `dueDate` (`YYYY-MM-DD`): shown on the tile, with overdue/due-soon status
-  - `paid` (boolean): `true` shows a **Paid** badge instead of overdue/due soon
-  - `paymentStatus` (string): `paid` shows **Paid**; `autopay` or `autopay-scheduled` shows **Autopay**.
-    Any other value (e.g. `due`, `past-due`, `unknown`) keeps the `dueDate` status.
-    The tile reads `paid`/`paymentStatus` from the **latest** point only.
-  - `periodStart`, `periodEnd` (`YYYY-MM-DD`)
-  - `usage` (number) and `usageUnit` (e.g. `therms`, `kWh`)
-  - `autopay` (boolean)
-  - `invoiceNo` (string)
-- Series `annotations` hold facts about the account, such as `account` and `vendor`.
-- Optional series `annotations.health` reports the publisher's own checks:
-  - `severity`: `ok`, `warn` or `alert`. `warn` shows an amber warning on the tile and `alert` a red one,
-    with the series `summary` as its text (so put the reasons there, e.g. `WARN: next bill 5 days behind`).
-    `ok` or missing shows nothing.
-  - `checkedAt` (ISO datetime): when the publisher last checked this series. Re-publish it on every run,
-    even when nothing changed. Missing or invalid falls back to the series `updatedAt`.
-  - Other keys (e.g. `nextBill`, `collector`) are free-form and not read by the tile.
-- **Stale data**: a series whose `checkedAt` (or `updatedAt`) is older than 48 hours shows a
-  "Not updated recently" marker. When every series on the board is stale, the board shows one banner,
-  "Utilities not updated since <date>", instead.
+- Point `annotations` the app reads (from the **latest** point only):
+  - `dueDate` (`YYYY-MM-DD`): the due date and the bill's status (see [Status rules](#status-rules-latest-point-only))
+  - `paid` (boolean)
+  - `paymentStatus` (string): `paid`, `past-due`, `autopay` or `autopay-scheduled` change the status; other values are ignored.
+  - `autopay` (boolean): send it only when known; `autopay` / `autopay-scheduled` in `paymentStatus` also count as autopay.
+- Other point annotations (`periodStart`, `periodEnd`, `usage`, `usageUnit`, `invoiceNo`, ...) and the point `label` are stored and returned by the API, but the Utilities app does not show them.
+- Series fields and annotations the app reads are listed under [Utilities app (Household bills)](#utilities-app-household-bills).
 
 ## Worked example: bills
 
@@ -164,39 +160,54 @@ curl -X POST "$BASE/api/metrics/series/pse-gas/points" \
 # => {"upserted":2,"pointCount":2}
 ```
 
-The series now appears as a tile in the Utilities app because of its `utilities` tag.
+The series now appears as a bill in the Utilities app because of its `utilities` tag.
 
-## Household bills layout (Utilities app)
+## Utilities app (Household bills)
 
-The Utilities app ("Household bills") shows an Overview (average month, a month-by-month stacked chart, To do and Next up), a Due dates list, and one page per bill. The nav is grouped by `group`. Design source: `docs/design/household-bills-v2.dc.html`.
+The Utilities app (`client/src/pages/utilities.tsx`) lists every series tagged `utilities` and turns each one into a bill with `toBill` (`client/src/lib/bills.ts`). It shows:
+
+- **Overview**: the average month, a 13-month stacked chart (tap a month for its breakdown), **To do** (bills you pay, then bills to check) and **Next up** (the next 3 upcoming bills).
+- **Due dates**: every bill that is not paid, soonest due first.
+- **One page per bill**: latest, average, middle, lowest and highest bill, the yearly total, a 13-month line chart and the bill's note.
+
+The nav is grouped by `group`. Design source: `docs/design/household-bills-v2.dc.html`.
 
 All display text comes from series fields and annotations; nothing is hard-coded per vendor.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
+| `title` (series) | string | The bill's title when `annotations.category` is missing. |
 | `annotations.category` | string | Short plain name shown as the bill's title, e.g. `Electricity`. Default: series `title`. |
-| `annotations.vendorShort` | string | Short company name, e.g. `Snohomish PUD`. Default: `annotations.vendor`. |
+| `annotations.vendorShort` | string | Short company name, e.g. `Snohomish PUD`. Default: `annotations.vendor`, else none. |
 | `annotations.group` | string | Nav group. `Utilities`, `Internet`, `Home` sort first, others alphabetically. Default `Bills`. |
 | `annotations.setAside` | boolean | Lump-sum bills (property tax) are left out of the monthly chart and average, and shown as "Plus <category>: $X/mo set aside". |
-| `description` (series) | string | One or two plain sentences shown under the bill's chart. Write for a grandparent, e.g. "Billed every two months." |
+| `description` (series) | string | The bill's note: one or two plain sentences shown under its chart. Write for a grandparent, e.g. "Billed every two months." |
 | `color` (series) | `#RRGGBB` | The bill's colour in charts and nav. Default palette if omitted. |
+| `annotations.health` (series) | object | `checkedAt` (ISO datetime) and `severity` (`ok`, `warn`, `alert`), read by the footer below. Other keys are free-form and not read. |
+
+The series `summary` is stored but not shown by the Utilities app.
 
 ### Status rules (latest point only)
 
-- **Paid**: `paymentStatus` is `paid`, or `paid: true` without autopay, or autopay and the due date has passed, or there is no `dueDate`.
-- **Check**: past due without confirmed payment, or `autopay` is missing (unknown).
+Checked in this order; the first match wins.
+
+- **Paid**: there is no point or no `dueDate`, or `paymentStatus` is `paid`, or `paid: true` without autopay, or autopay and the due date has passed.
+- **Check**: `paymentStatus` is `past-due`, or the due date has passed.
 - **You pay**: `autopay: false`.
+- **Check**: `autopay` is unknown (missing and not implied by `paymentStatus`).
 - **Upcoming**: everything else; due soon means within 7 days.
 
 Send `autopay` only when known. Omit it when unsure, so the app asks the household to check.
 
-Footer: "All N bills checked this morning" comes from series `annotations.health.checkedAt`. Any `annotations.health.severity` of `warn` or `alert` shows "N bills need a look".
+Footer: "All N bills checked this morning" (or today, yesterday, on a date) comes from the oldest series `annotations.health.checkedAt`. Any `annotations.health.severity` of `warn` or `alert` shows "N bills need a look" instead. With no `checkedAt` on any series there is no footer.
 
 ### Example
 
+Uses `BASE` and `TOKEN` from the worked example above.
+
 ```bash
-curl -X PUT "$FF/api/metrics/series/snohomish-property-tax" \
-  -H "Authorization: Bearer $FF_PAT" -H "Content-Type: application/json" \
+curl -X PUT "$BASE/api/metrics/series/snohomish-property-tax" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{
     "title": "Property tax",
     "description": "Paid twice a year. We set aside a little each month so it is ready.",
