@@ -2,6 +2,24 @@
 
 How to let an AI agent (Claude Code or any MCP/HTTP client) manage your Family Frame calendar, mailbox, files and custom datasets with a personal access token (PAT).
 
+## Contents
+
+- [1. Create a token](#1-create-a-token)
+- [2. Scopes](#2-scopes)
+- [3. Connect Claude Code](#3-connect-claude-code)
+- [4. MCP tools](#4-mcp-tools)
+- [5. REST example](#5-rest-example)
+- [6. Mailbox](#6-mailbox)
+- [7. Datasets](#7-datasets)
+- [8. Publishing from an agent](#8-publishing-from-an-agent)
+- [9. Media](#9-media)
+- [10. Rehosting](#10-rehosting)
+- [11. Hosted images (photo frame source)](#11-hosted-images-photo-frame-source)
+- [Time-series (metrics)](#time-series-metrics)
+- [Change an existing token's access](#change-an-existing-tokens-access)
+- [12. Revocation](#12-revocation)
+- [13. Security notes](#13-security-notes)
+
 ## 1. Create a token
 
 1. Sign in to Family Frame and open **Settings → Agent Access**.
@@ -18,7 +36,7 @@ You can hold at most 10 tokens per account.
 | `calendar:write` | Create/edit/delete events | Non-`GET` calls on `/api/calendar/*` and the write MCP tools. |
 | `mail:read` | Read mailbox | `GET` on `/api/mail/*` and the `mail_list_emails` / `mail_list_kinds` / `mail_get_email` MCP tools. |
 | `mail:write` | Write mailbox | Non-`GET` calls on `/api/mail/*` and the mail write tools. Implies `mail:read`. |
-| `data:read` | Read datasets | `GET` on `/api/data/*` and the `data_list_*` / `data_get_*` MCP tools. |
+| `data:read` | Read datasets | `GET` on `/api/data/*` and the `data_list_*` / `data_get_*` / `person_view_validate` MCP tools. |
 | `data:write` | Write datasets | Non-`GET` calls on `/api/data/*` and the data write tools. Implies `data:read`. |
 | `media:read` | Read files | `GET` on `/api/files/*` and the `media_list` / `media_get_meta` MCP tools. |
 | `media:write` | Write files | Non-`GET` calls on `/api/files/*` and the media write tools. Implies `media:read`. Also required, with `mail:write`, by `POST /api/mail/messages/rehost`. |
@@ -68,6 +86,7 @@ Dataset tools (`data:read` or `data:write` for reads; `data:write` for writes):
 | `data_list_records` | `data:read` | `schemaId`, `emailId`, `personId`, `limit` (1-500), `offset`, `sortField` (dotted data path), `sortDir` (`asc` or `desc`, default `desc`). Sorting happens before `limit` and `offset`; records missing the field come last. |
 | `data_get_record` | `data:read` | `schemaId`, `recordId`. |
 | `data_delete_record` | `data:write` | `schemaId`, `recordId`. |
+| `person_view_validate` | `data:read` | `view` (the data of an `ff-person-view` record), `person` (person id or name). Validates the view against the `ff-person-view` schema, then reports per block how many records or points exist for the person and which configured field paths are missing from the newest record. See `docs/person-publishing.md`. |
 
 Media tools (`media:read` or `media:write` for reads; `media:write` for writes):
 
@@ -161,7 +180,7 @@ Records:
 - `id` matches `[A-Za-z0-9_-]{1,128}`; `data` is validated against the schema's current version.
 - `emailIds` (max 20) link a record to mailbox email ids for provenance; filter with `?emailId=`.
 - `personIds` (max 20) tag a record to household members; filter with `?personId=`. REST takes person ids; MCP tools also accept names.
-- Schema ids starting with `ff-` are reserved for built-in Family Frame schemas (`ff-person-day`, `ff-person-week`) and cannot be registered or replaced; publish records into them as described in `docs/person-publishing.md`.
+- Every schema id starting with `ff-` is reserved for Family Frame and cannot be registered or replaced. The built-in schemas and how to publish records into them are in `docs/person-publishing.md`.
 - Limits: 100 records per call, 262,144 bytes per record, 5000 records per dataset.
 - Batches are all-or-nothing: one invalid record rejects the whole call and nothing is written.
 
@@ -220,14 +239,14 @@ School emails often reference images only by an expiring CDN link. Rehosting cop
 `POST /api/files/import` (`media:write`) with body `{ "url", "id"?, "filename"?, "tags"?, "emailIds"?, "personIds"? }`:
 
 - `https` only, no credentials or custom port, no IP-literal hosts, and the host must resolve to a public address (private, loopback and link-local ranges are refused). At most 3 redirects, each re-checked.
-- The id is `u` + sha256 of the URL unless you pass `id`, so importing the same URL again is free: no fetch, returns the existing file with `created: false` (200; a new import is 201).
+- The id is `u` plus the first 31 hex characters of the URL's SHA-256 unless you pass `id`, so importing the same URL again is free: no fetch, returns the existing file with `created: false` (200; a new import is 201).
 - Returns `{ meta, created }`. The same type sniffing and limits as uploads apply.
 
 `POST /api/mail/messages/rehost` needs `mail:write` **and** `media:write`. Body `{ "emailIds"?: [...up to 50], "limit"?: 1-50 }` (default limit 20). It rehosts the `imageUrls` of emails that still have unprocessed URLs, tags the files `email`, sets `emailIds` (and the email's `personIds`, if any) on them and adds the ids to each email's `mediaIds`. Response: `{ processed, imported, failed: [{ emailId, url, error }], remaining }`. A call handles one bounded batch of emails, so **call it repeatedly until `remaining` is 0**. A URL that has failed 3 times is skipped from then on (failure records live at RTDB `mailbox/<userId>/rehostFailures` and keep only the host, not the full URL). The MCP tool `mail_rehost_images` does the same.
 
 ## 11. Hosted images (photo frame source)
 
-In **Settings → Photos**, choose **Hosted images** (formerly "Agent uploads") as the photo source. The frame then shows the images in your media store, newest first, so an agent can put new photos on the frame by uploading them, with no hand-picking in Google Photos. PDFs are ignored. Rehosted email images are tagged `email` and appear there too; tag a file `hidden` (at upload, or by re-uploading under a new id) to keep it off the frame.
+In **Settings → Photos**, choose **Hosted images** as the photo source. The frame then shows the images in your media store, newest first, so an agent can put new photos on the frame by uploading them, with no hand-picking in Google Photos. PDFs are ignored. Rehosted email images are tagged `email` and appear there too; tag a file `hidden` (at upload, or by re-uploading under a new id) to keep it off the frame.
 
 Choose which images play:
 
@@ -257,8 +276,3 @@ In **Settings → Agent Access**, click **Revoke** on the token and confirm. Acc
 - **Tokens cannot mint tokens**: `/api/tokens/*` is not on the allowlist, so a PAT cannot create, list or revoke tokens; that needs a signed-in browser session.
 - Client-supplied identity headers are stripped; identity comes only from a verified Clerk session or PAT.
 - Treat tokens like passwords: one per agent, revoke when unused.
-
-## Roadmap
-
-- OAuth 2.1 for claude.ai custom connectors, with Clerk as the authorization server.
-- Further tools (messages, shopping list, notes, ...) behind new scopes.
