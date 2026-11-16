@@ -28,9 +28,12 @@ test("the repo's markdown network has no drift findings", () => {
   );
 });
 
-// Mirrors the link rules of Session Manager's mdNetworkScan.cjs (Project Home's
-// Review MD network): inline [text](target) links (images too) and <x.md>
-// autolinks, outside code fences, HTML comments and inline code spans.
+// Counts only inline [text](target) links (images too) and <x.md> autolinks,
+// outside code fences, HTML comments and inline code spans. Since v0.136.0,
+// Session Manager's mdNetworkScan.cjs (Project Home's Review MD network) and
+// drift-check's orphans check also follow backticked .md paths and @path.md
+// imports. This test stays stricter, so every doc is reachable by clickable
+// links (the maintaining-md-network skill prefers markdown links in rendered docs).
 function linkTargets(markdown: string): string[] {
   const targets: string[] = [];
   let fence: string | null = null;
